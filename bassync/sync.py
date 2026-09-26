@@ -114,7 +114,8 @@ def load_map_for_run(cfg: dict, report: RunReport) -> tuple:
         return space_map, _done(report, EXIT_NO_MAP,
                                 f"{count} room map problem(s); nothing written"), False
     logging.error("Room map has %d problem(s). Those rows are left out — their "
-                  "schedules are not touched this run — and the rest of the "
+                  "schedules, and any floor or building schedule they roll up "
+                  "into, are not touched this run — and the rest of the "
                   "campus syncs. Fix them to clear this alert.", count)
     return space_map, None, True
 
@@ -196,6 +197,26 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
             logging.error("No schedules belong to system '%s'.", only_system)
             return _done(report, EXIT_NO_MAP, f"no schedules on system {only_system}")
 
+    # Roll-ups a broken room row feeds keep their current schedule: writing
+    # them now would drop that room's bookings from its corridor and building.
+    # Reported even when no healthy room still feeds one, so the email says
+    # which buildings were left alone.
+    held = {d for d in space_map.held if not only_system or d.system == only_system}
+    if held:
+        logging.warning(
+            "Not writing %d roll-up schedule(s) this run because a broken room "
+            "row feeds them; they keep their current schedule: %s", len(held),
+            ", ".join(sorted(str(d) for d in held)[:10])
+            + (f" (+{len(held) - 10} more)" if len(held) > 10 else ""))
+        for dest in sorted(held, key=str):
+            report.add_schedule(
+                dest.system, dest.target, space_map.labels.get(dest, dest.target),
+                schedule.get(dest, []), "not written",
+                "held: a room that rolls up into it has a broken row "
+                "(see Problems); its current schedule is left as it is")
+        all_destinations = all_destinations - held
+        schedule = {d: w for d, w in schedule.items() if d not in held}
+
     for dest in all_destinations:
         schedule.setdefault(dest, [])
 
@@ -230,10 +251,13 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     # freezes it, and weeks of legitimate drift eventually reads as a mass
     # clear.
     if written:
+        # Merge, not replace, whenever part of the campus was left alone —
+        # failed writes, skipped rows, held roll-ups — so those schedules keep
+        # their baseline for the next comparison.
         saved = safety.save_state(cfg["safety"]["state_file"],
                                   {d: w for d, w in schedule.items() if d in written},
                                   len(events), only_system=only_system,
-                                  merge=code != EXIT_OK)
+                                  merge=code != EXIT_OK or map_problem)
         if not saved:
             report.baseline += " — could NOT be saved for the next run"
 

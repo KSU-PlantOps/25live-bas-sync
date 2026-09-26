@@ -305,7 +305,10 @@ def test_cli_live_run_emails_what_it_scheduled(tmp_path, monkeypatch):
         logging.getLogger().handlers.clear()
     assert code == 0
     subject, body, kw = captured[0]
-    assert subject.startswith("[25Live sync] OK — 3 schedule(s) written")
+    # All three schedules are on a preview system, so nothing was written to a
+    # BAS — the subject says so rather than counting them as written.
+    assert subject.startswith(
+        "[25Live sync] OK — 0 schedule(s) written, 3 preview-only"), subject
     assert "Main Hall 101" in body and "09:00–10:00" in body
     assert "Building Main Hall" in body
     assert "B/Rm1" in kw["attachments"][0][1]
@@ -324,9 +327,108 @@ def test_discover_prints_loadable_yaml(monkeypatch, capsys):
 
 def test_validate_names_a_state_style_that_works(campus, monkeypatch):
     cfg, tmp, _ = campus
+    cfg["collegenet"]["include_states"] = [2, 4]     # encodings now differ
     from bassync.collegenet import CollegeNetClient
     monkeypatch.setattr(CollegeNetClient, "fetch_events", lambda self, sm, now=None: (
-        [object()] * 5 if self.state_param_style == "comma" else []))
+        [object()] * 5 if self._state_params() == {"state": "2,4"} else []))
     name, ok, detail = sync_mod._bookings_check(
         cfg, CollegeNetClient(cfg["collegenet"], TZ), {"1": None})
     assert not ok and "'comma' returns 5" in detail
+
+
+def test_state_probe_sends_each_distinct_request_once(campus, monkeypatch):
+    """With one state, plus/space/comma/repeat are the same request; only
+    that one and `none` are fetched."""
+    cfg, tmp, _ = campus
+    from bassync.collegenet import CollegeNetClient
+    calls = []
+    monkeypatch.setattr(CollegeNetClient, "fetch_events", lambda self, sm, now=None: (
+        calls.append(self._state_params()) or []))
+    counts = CollegeNetClient(cfg["collegenet"], TZ).probe_state_styles({"1": None})
+    assert calls == [{"state": "2"}, {}]
+    assert set(counts) == {"plus", "space", "comma", "repeat", "none"}
+
+
+# ── a broken row never rewrites the roll-ups it feeds ────────────────────────
+
+FLOOR_MAP = """
+buildings:
+  - {id: la, name: Liberal Arts, target: "LA/Bldg"}
+floors:
+  - {building: la, level: 2, target: "LA/F2"}
+  - {building: la, level: 3, target: "LA/F3"}
+spaces:
+  - {space_id: 1, building: la, floor: 2}
+  - {space_id: 3, building: la, floor: 3}
+"""
+
+
+def test_broken_row_holds_its_rollups_instead_of_rewriting_them(campus, monkeypatch):
+    """Room 2 is broken. Writing floor 2 and the building without it would
+    drop its bookings — the corridor would go cold during its classes — so
+    those keep their current schedule; floor 3, fed only by good rows, is
+    written as usual."""
+    cfg, tmp, _ = campus
+    Path(cfg["space_map_file"]).write_text(FLOOR_MAP, encoding="utf-8")
+    monkeypatch.setattr(sync_mod, "_fetch", lambda *a, **kw: [
+        RawEvent("E1", "Class", "1", dt(9, day=10), dt(10, day=10)),
+        RawEvent("E3", "Class", "3", dt(11, day=10), dt(12, day=10))])
+    assert sync_mod.run_sync(cfg) == sync_mod.EXIT_OK          # baseline night
+    first = _state(cfg)["windows"]
+    assert {"sys:LA/F2", "sys:LA/F3", "sys:LA/Bldg"} <= set(first)
+
+    Path(cfg["space_map_file"]).write_text(
+        FLOOR_MAP + "  - {space_id: 2, building: la, floor: 2, "
+                    "pre_condition_minutes: lots}\n", encoding="utf-8")
+    report = RunReport("SYNC", "t", TZ)
+    assert sync_mod.run_sync(cfg, report=report) == sync_mod.EXIT_NO_MAP
+    statuses = {s.target: s.status for s in report.schedules}
+    assert statuses == {"LA/F2": "not written", "LA/Bldg": "not written",
+                        "LA/F3": "preview"}, statuses
+    # The held schedules keep their baseline for the next comparison.
+    after = _state(cfg)["windows"]
+    assert after["sys:LA/F2"] == first["sys:LA/F2"]
+    assert after["sys:LA/Bldg"] == first["sys:LA/Bldg"]
+
+
+def test_bad_own_target_still_feeds_the_building(tmp_path):
+    from bassync.spacemap import load_space_map
+    cfg = load_config("/nonexistent/config.yaml")
+    cfg["systems"] = {"bac": {"driver": "bacnet"}}
+    path = tmp_path / "map.yaml"
+    path.write_text('buildings:\n  - {id: b, target: "12001:100"}\n'
+                    'spaces:\n  - {space_id: 1, building: b, target: "12001:x"}\n',
+                    encoding="utf-8")
+    sm = load_space_map(str(path), cfg)
+    room = sm.spaces["1"]
+    assert room.destination is None
+    assert room.building_destination == Destination("bac", "12001:100")
+    assert any("Invalid BACnet target" in e for e in sm.errors), sm.errors
+
+
+def test_bad_building_buffer_is_blamed_on_the_building(tmp_path):
+    from bassync.spacemap import load_space_map
+    cfg = load_config("/nonexistent/config.yaml")
+    cfg["systems"] = {"sys": {"driver": "preview"}}
+    path = tmp_path / "map.yaml"
+    path.write_text('buildings:\n  - {id: b, target: B, pre_condition_minutes: x}\n'
+                    'spaces:\n  - {space_id: 1, building: b, target: R}\n',
+                    encoding="utf-8")
+    sm = load_space_map(str(path), cfg)
+    assert any("inherited from building b" in e for e in sm.errors), sm.errors
+    assert Destination("sys", "B") in sm.held
+
+
+def test_a_held_rollup_is_reported_even_with_no_healthy_feeder(campus):
+    """The building's only room is broken, so nothing else would mention the
+    building at all; the report must still say it was left alone."""
+    cfg, tmp, _ = campus
+    Path(cfg["space_map_file"]).write_text(
+        'buildings:\n  - {id: b, name: Main Hall, target: "B/Occ"}\n'
+        'spaces:\n  - {space_id: 1, building: b, pre_condition_minutes: soon}\n'
+        '  - {space_id: 2, target: "Other/Rm"}\n', encoding="utf-8")
+    report = RunReport("SYNC", "t", TZ)
+    assert sync_mod.run_sync(cfg, report=report) == sync_mod.EXIT_NO_MAP
+    held = [s for s in report.schedules if s.status == "not written"]
+    assert [(s.target, s.label) for s in held] == [("B/Occ", "Building Main Hall")]
+    assert "note: held" in report.to_text()

@@ -184,13 +184,16 @@ class RestScheduleWriter(ScheduleWriter):
     # ── requests ─────────────────────────────────────────────────────────────
 
     def _request(self, spec: dict, ctx: dict, body=None):
+        """Send one request. `body`, when given, is already rendered;
+        otherwise the spec's payload template is filled here."""
         method = (spec.get("method") or "GET").upper()
         url = self.base_url + _fill_str(spec["path"], ctx)
-        payload = body if body is not None else spec.get("payload")
-        if payload is not None:
+        payload = body
+        if payload is None and spec.get("payload") is not None:
             # In a JSON body the target is data, not a URL path segment, so it
             # goes in as written rather than percent-encoded.
-            payload = _fill(payload, {**ctx, "target": ctx.get("target_raw", "")})
+            payload = _fill(spec["payload"],
+                            {**ctx, "target": ctx.get("target_raw", "")})
         return self.session.request(method, url, json=payload,
                                     timeout=spec.get("timeout", HTTP_TIMEOUT))
 

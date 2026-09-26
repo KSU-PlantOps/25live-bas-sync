@@ -99,3 +99,18 @@ def test_niagara_ord_encoding_and_absolute_targets():
     assert "%20" in writer._endpoint("Bldg A/Rm 101")
     assert "slot:/Schedules" in writer._endpoint("Bldg A/Rm 101")
     writer.close()
+
+
+def test_niagara_tls_failure_says_how_to_fix_it():
+    """TLS is verified by default since 1.2; a self-signed station must get
+    a message that names the setting, not a bare SSL traceback."""
+    import requests
+
+    from bassync.drivers.niagara import NiagaraScheduleWriter
+    writer = NiagaraScheduleWriter("n4", {"host": "n4.example.edu"}, TZ)
+
+    def refuse(*a, **kw):
+        raise requests.exceptions.SSLError("certificate verify failed")
+    writer.session.get = refuse
+    ok, detail = writer.health_check()
+    assert not ok and "verify_tls" in detail, detail

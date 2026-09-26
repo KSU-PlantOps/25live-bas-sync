@@ -15,6 +15,7 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import requests
@@ -204,8 +205,17 @@ class CollegeNetClient:
         """
         results: dict = {}
         original = self.state_param_style
+        sent: dict = {}
         try:
             for style in STATE_PARAM_STYLES:
+                # With a single state most encodings are the same request;
+                # fetch each distinct one once. Compared as the encoded query
+                # string, which is what the server actually receives.
+                key = urlencode(sorted(self._state_params(style).items()), doseq=True)
+                if key in sent:
+                    results[style] = results[sent[key]]
+                    continue
+                sent[key] = style
                 self.state_param_style = style
                 try:
                     results[style] = len(self.fetch_events(space_map))

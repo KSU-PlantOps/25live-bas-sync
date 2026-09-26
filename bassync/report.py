@@ -99,22 +99,27 @@ class RunReport:
         return self.exit_code == 0
 
     def counts(self) -> dict:
-        written = [s for s in self.schedules if s.status in ("written", "preview")]
+        """Schedules by outcome. `written` means written to a BAS; a preview
+        system's schedules are counted separately, since nothing was sent."""
+        written = [s for s in self.schedules if s.status == "written"]
+        done = [s for s in self.schedules if s.status in ("written", "preview")]
         return {
             "written": len(written),
-            "occupied": sum(1 for s in written if s.windows),
-            "cleared": sum(1 for s in written if not s.windows),
+            "preview": sum(1 for s in self.schedules if s.status == "preview"),
+            "occupied": sum(1 for s in done if s.windows),
+            "cleared": sum(1 for s in done if not s.windows),
             "failed": sum(1 for s in self.schedules if s.status == "failed"),
             "not_written": sum(1 for s in self.schedules if s.status == "not written"),
-            "windows": sum(len(s.windows) for s in written),
+            "windows": sum(len(s.windows) for s in done),
         }
 
     def subject(self, prefix: str = "") -> str:
         c = self.counts()
         day = self.started.strftime("%a %b %d")
         if self.ok:
-            body = (f"OK — {c['written']} schedule(s) written, "
-                    f"{c['windows']} booking window(s) ({day})")
+            preview = f", {c['preview']} preview-only" if c["preview"] else ""
+            body = (f"OK — {c['written']} schedule(s) written{preview}, "
+                    f"{c['windows']} occupancy window(s) ({day})")
         else:
             body = f"FAILED (exit {self.exit_code}) — {self.outcome or 'see details'} ({day})"
         return f"{prefix} {body}".strip()
@@ -134,8 +139,10 @@ class RunReport:
         if self.event_count is not None:
             lines.append(f"25Live: {self.event_count} booking(s) for {self.rooms} mapped room(s)")
         if self.schedules:
-            lines.append(f"Schedules: {c['written']} written ({c['occupied']} with "
-                         f"bookings, {c['cleared']} cleared), {c['failed']} failed"
+            lines.append(f"Schedules: {c['written']} written"
+                         + (f", {c['preview']} preview-only" if c["preview"] else "")
+                         + f" ({c['occupied']} with bookings, {c['cleared']} cleared), "
+                         f"{c['failed']} failed"
                          + (f", {c['not_written']} not written" if c["not_written"] else ""))
         if self.safety_ok is not None:
             verdict = "passed" if self.safety_ok else (
@@ -190,7 +197,8 @@ class RunReport:
             for s in self._sorted_schedules():
                 head = f"[{s.status.upper()}] {s.label}  ({s.system}:{s.target})"
                 if s.error:
-                    rows.append(f"{head}\n      error: {s.error}")
+                    kind = "error" if s.status == "failed" else "note"
+                    rows.append(f"{head}\n      {kind}: {s.error}")
                 elif not s.windows:
                     rows.append(f"{head}\n      no bookings — cleared")
                 else:
@@ -225,7 +233,8 @@ class RunReport:
                        "<th>Target</th><th>Bookings</th></tr>")
             for s in self._sorted_schedules():
                 if s.error:
-                    detail = f"<span style=\"color:#cf222e\">{e(s.error)}</span>"
+                    tone = "#cf222e" if s.status == "failed" else "#9a6700"
+                    detail = f"<span style=\"color:{tone}\">{e(s.error)}</span>"
                 elif not s.windows:
                     detail = "<em>no bookings — cleared</em>"
                 else:

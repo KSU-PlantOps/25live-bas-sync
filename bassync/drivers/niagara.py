@@ -157,6 +157,13 @@ class NiagaraScheduleWriter(ScheduleWriter):
         url = f"{self.base}/about"
         try:
             r = self.session.get(url, timeout=HTTP_TIMEOUT_HEALTH)
+        except requests.exceptions.SSLError as exc:
+            # TLS is verified by default since 1.2, and stations often use a
+            # self-signed certificate.
+            return False, (f"{url}: TLS certificate not trusted ({exc}). Set "
+                           "verify_tls to the station's CA bundle path, or to "
+                           "false for a self-signed certificate on a trusted "
+                           "network.")
         except requests.RequestException as exc:
             return False, f"{url}: {exc}"
         if r.status_code in (401, 403):

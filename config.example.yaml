@@ -259,8 +259,9 @@ safety:
   state_file: ""                # blank -> state/last_run.json
 
   # A broken row in space_mapping.yaml:
-  #   skip   report it, leave that row's schedules untouched, sync the rest of
-  #          the campus, and exit 2 so the alert fires (the default)
+  #   skip   report it, leave that row's schedule — and the floor/building
+  #          schedules it rolls up into — untouched, sync the rest of the
+  #          campus, and exit 2 so the alert fires (the default)
   #   abort  write nothing anywhere until the map is fixed
   on_map_errors: skip
 

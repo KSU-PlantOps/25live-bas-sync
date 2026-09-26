@@ -256,3 +256,22 @@ def test_heartbeat_is_written():
             w.close()
         expected = datetime(2026, 10, 1, 2, 0, tzinfo=TZ).timestamp() / 3600
         assert abs(float(sim.heartbeat.presentValue) - expected) < 1
+
+
+def test_a_busy_port_fails_the_connect_and_cleans_up():
+    """BACpypes3 binds in the background and retries forever. The connect
+    timeout must cover the bind, and a failed connect must leave nothing
+    half-started behind — a retry reports the same clean error."""
+    port = _free_port()
+    blocker = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    blocker.bind(("127.0.0.1", port))
+    try:
+        w = BacnetScheduleWriter("sim", {"local_address": f"127.0.0.1/32:{port}",
+                                         "connect_timeout": 1}, TZ)
+        for _attempt in range(2):
+            ok, detail = w.health_check()
+            assert not ok and "did not bind" in detail, detail
+            assert w._app is None and w._loop is None
+        w.close()
+    finally:
+        blocker.close()

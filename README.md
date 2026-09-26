@@ -268,9 +268,13 @@ granularity patterns side by side.
 
 **A broken row doesn't cost you the campus.** A row the loader can't use — a
 non-numeric buffer, a malformed target, a floor of a building that no longer
-exists — is reported and left out; its schedules aren't touched that night,
-the rest of the campus syncs, and the run exits `2` so the alert fires. Set
-`safety.on_map_errors: abort` to write nothing until the map is fixed instead.
+exists — is reported and left out, the rest of the campus syncs, and the run
+exits `2` so the alert fires. Nothing the broken row affects is touched that
+night: not its own schedule, and not the floor or building schedules it rolls
+up into, which keep their current schedule rather than being rewritten
+without its bookings. A room whose own target is malformed still feeds its
+floor and building. Set `safety.on_map_errors: abort` to write nothing until
+the map is fixed instead.
 
 ### Editing rooms with the GUI
 
@@ -279,7 +283,7 @@ Run `python editor.py` (Windows users can double-click `Edit-Rooms.bat`):
 - **Rooms** tab — Add/Edit/Delete rooms. **Building**, **Floor** and **System**
   are dropdowns, so joining a roll-up or moving a room to another BAS is a pick
   from a list rather than something to remember. The Target is checked against
-  the chosen system's driver as you type it in.
+  the chosen system's driver when you confirm the row.
 - **Buildings** tab — manage roll-up schedules; renaming a building id repoints
   the rooms and floors that referenced it. Deleting one removes its floors too,
   and won't proceed while rooms roll up *only* into it.
@@ -692,8 +696,9 @@ Nothing to edit, but read these before the first run:
 3. **The safety state moved** from `logs/last_run.json` to `state/last_run.json`.
    The old file is read once as the baseline, so nothing is lost. In Docker,
    mount the `state` volume (the new compose file does).
-4. **A broken room-map row no longer stops the whole run.** It's left out, the
-   rest syncs, and the run exits `2`. Set `safety.on_map_errors: abort` to keep
+4. **A broken room-map row no longer stops the whole run.** The row, and the
+   floor and building schedules it rolls up into, are left alone; the rest
+   syncs, and the run exits `2`. Set `safety.on_map_errors: abort` to keep
    the old behaviour.
 5. **Config is validated**, so a value that was silently ignored before (a
    misspelt timezone, a negative buffer) now stops the run with a message.

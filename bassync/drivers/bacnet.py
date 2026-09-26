@@ -170,16 +170,22 @@ class BacnetTarget:
         return f"{self.key}@{self.address}" if self.address else self.key
 
 
+_ROUTED_RE = re.compile(r"^(?P<net>\d+):(?P<mac>0[xX][0-9a-fA-F]+|\d+)$")
+
+
 def _normalize_address(address: Optional[str]) -> Optional[str]:
     """
-    An IPv4 address gets the default port; anything else is passed through.
+    One spelling per address, so two ways of writing the same pin agree.
 
-    `10.4.2.30` -> `10.4.2.30:47808`. A routed station (`2001:0x21`, network
-    2001 MAC 0x21) already contains a colon and is left for BACpypes3 to
-    interpret.
+    `10.4.2.30` -> `10.4.2.30:47808` (the default port). A routed MS/TP
+    station, `network:mac`, gets its MAC in decimal: `2001:0x21` ->
+    `2001:33`, which is also how BACpypes3 prints it.
     """
     if not address:
         return None
+    routed = _ROUTED_RE.match(address)
+    if routed:
+        return f"{int(routed.group('net'))}:{int(routed.group('mac'), 0)}"
     if ":" not in address:
         return f"{address}:{DEFAULT_BACNET_PORT}"
     return address
@@ -279,9 +285,10 @@ def value_kind(value: Any) -> str:
     from bacpypes3.primitivedata import Boolean, Double, Enumerated, Integer, Null, Real, Unsigned
     if hasattr(value, "get_value"):
         value = value.get_value()
+    # Most specific first: in BACpypes3, Double is a subclass of Real.
     for cls, kind in ((Null, "null"), (Boolean, "boolean"),
                       (Enumerated, "enumerated"), (Unsigned, "unsigned"),
-                      (Integer, "integer"), (Real, "real"), (Double, "double")):
+                      (Integer, "integer"), (Double, "double"), (Real, "real")):
         if isinstance(value, cls):
             return kind
     return type(value).__name__.lower()
@@ -552,7 +559,7 @@ class BacnetScheduleWriter(ScheduleWriter):
             self._app = self._loop.run_until_complete(
                 asyncio.wait_for(self._start(), timeout=self.connect_timeout))
         except asyncio.TimeoutError as exc:
-            self._close_loop()
+            self.close()                 # the half-started stack, then the loop
             raise DriverError(
                 f"System '{self.system_name}': the BACnet stack did not bind "
                 f"within {self.connect_timeout:g}s on {self.local_address}. "
@@ -561,7 +568,7 @@ class BacnetScheduleWriter(ScheduleWriter):
                 "local_address its own port, e.g. \"10.4.1.55/24:47809\") and "
                 "that the interface is up.") from exc
         except Exception as exc:
-            self._close_loop()
+            self.close()
             raise DriverError(f"Could not start the BACnet stack: {exc}") from exc
         logging.info("BACnet stack up on %s as device %d (%s)",
                      self.local_address, self.device_id,

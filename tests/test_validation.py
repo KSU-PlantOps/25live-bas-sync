@@ -97,8 +97,13 @@ def test_default_system_must_exist():
 
 
 def test_defaults_file_is_validated_too():
-    with pytest.raises(ConfigError, match="default_pre_condition_minutes"):
+    """Named as the operator wrote it — the defaults.yaml key — and once."""
+    with pytest.raises(ConfigError) as info:
         _load("", defaults="pre_condition_minutes: -30\n")
+    message = str(info.value)
+    assert "defaults.yaml: pre_condition_minutes must be at least 0" in message
+    assert "default_pre_condition_minutes" not in message
+    assert "1 problem(s)" in message
     _cfg, warnings = _load("", defaults="lookahead: 9\n")
     assert any("lookahead" in w for w in warnings), warnings
 
@@ -236,3 +241,54 @@ def test_niagara_driver_is_deprecated_but_still_loads():
 def test_bacnet_has_no_deprecation_warning():
     _cfg, warnings = _load("systems:\n  station:\n    driver: bacnet\n")
     assert warnings == [], warnings
+
+
+def test_text_settings_are_type_checked():
+    """`default_system: 5` used to crash on .strip() before validation ran."""
+    cfg, _ = _load("systems:\n  '5':\n    driver: preview\ndefault_system: 5\n")
+    assert cfg["default_system"] == "5"
+    with pytest.raises(ConfigError, match="log_file must be text"):
+        _load("log_file: [a, b]\n")
+
+
+def test_malformed_legacy_niagara_block_is_reported():
+    with pytest.raises(ConfigError, match="`niagara:`"):
+        _load("niagara: yes\n")
+
+
+def test_password_warning_understands_aliases_and_auth_none(caplog, monkeypatch):
+    import logging
+    for var in ("BAS_SYS_A_PASSWORD", "BAS_SYS_B_PASSWORD", "BAS_SYS_C_PASSWORD"):
+        monkeypatch.delenv(var, raising=False)
+    cfg, _ = _load(
+        "systems:\n"
+        "  a: {driver: BACnet}\n"
+        "  b: {driver: rest, base_url: 'https://x', auth: {mode: none},"
+        " write: {path: /w}}\n"
+        "  c: {driver: rest, base_url: 'https://x', write: {path: /w}}\n")
+    with caplog.at_level(logging.WARNING):
+        load_credentials(cfg)
+    text = caplog.text
+    assert "System 'a'" not in text and "System 'b'" not in text
+    assert "System 'c' (rest) has no password" in text
+
+
+def test_routed_pins_are_one_address_however_they_are_written():
+    text = ('buildings: []\nspaces:\n'
+            '  - {space_id: 1, target: "12001:5@2001:0x21"}\n'
+            '  - {space_id: 2, target: "12001:6@2001:33"}\n')
+    sm = with_yaml(text, lambda p: load_space_map(p, bacnet_config()))
+    assert sm.errors == [], sm.errors
+    assert sm.destinations() == {Destination("bac", "12001:5@2001:33"),
+                                 Destination("bac", "12001:6@2001:33")}
+
+
+def test_double_schedules_are_not_mistaken_for_real():
+    """In BACpypes3 Double subclasses Real; a DOUBLE schedule must be
+    written with DOUBLE values."""
+    pytest.importorskip("bacpypes3")
+    from bacpypes3.primitivedata import Double
+
+    from bassync.drivers.bacnet import encode_value, value_kind
+    assert value_kind(Double(0.0)) == "double"
+    assert type(encode_value("double", True)) is Double

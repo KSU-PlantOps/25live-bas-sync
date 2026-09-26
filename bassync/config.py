@@ -103,7 +103,8 @@ DEFAULTS: dict[str, Any] = {
                                         #   be emptied in one run
         "state_file": "",               # blank -> state/last_run.json
         # What a broken row in space_mapping.yaml does to the run:
-        #   skip   report it, leave that row's schedules untouched, sync the
+        #   skip   report it, leave that row's schedule — and the floor and
+        #          building schedules it rolls up into — untouched, sync the
         #          rest of the campus, and exit non-zero so it alerts
         #   abort  write nothing anywhere until the map is fixed
         "on_map_errors": "skip",
@@ -232,7 +233,7 @@ LEGACY_NIAGARA_KEYS = {
 }
 
 
-def migrate_legacy_systems(cfg: dict) -> None:
+def migrate_legacy_systems(cfg: dict, errors: Optional[list] = None) -> None:
     """
     Fold a pre-1.0 top-level `niagara:` block into `systems:` in place.
 
@@ -246,6 +247,12 @@ def migrate_legacy_systems(cfg: dict) -> None:
     if not legacy:
         return
     systems = cfg.setdefault("systems", {})
+    if not isinstance(legacy, dict) or not isinstance(systems, dict):
+        # Reported, not raised: validate_config names a non-mapping systems:.
+        if errors is not None and not isinstance(legacy, dict):
+            errors.append("`niagara:` (the pre-1.0 block) must be a mapping of "
+                          "settings.")
+        return
     if "niagara" in systems:
         # An explicit systems: entry of the same name takes precedence; the
         # legacy block only fills gaps it didn't specify.
@@ -300,19 +307,32 @@ def load_config(path: str, defaults_path: Optional[str] = None,
         found.extend(_unknown_keys(user, CONFIG_SCHEMA, str(path)))
         _deep_merge(cfg, user)
 
+    errors: list = []
     if defaults_path:
         gd = read_yaml(defaults_path)
         for key in gd:
             if key not in DEFAULTS_FILE_MAP:
                 found.append(f"{defaults_path}: unknown key `{key}` — ignored "
                              f"(known: {', '.join(DEFAULTS_FILE_MAP)}).")
+        # Checked here, under the names the operator actually typed, so a bad
+        # value in defaults.yaml isn't reported as an internal config key.
+        where = f"{defaults_path}: "
         for file_key, cfg_key in DEFAULTS_FILE_MAP.items():
-            if gd.get(file_key) is not None:
-                cfg["collegenet"][cfg_key] = gd[file_key]
+            if gd.get(file_key) is None:
+                continue
+            checked = {file_key: gd[file_key]}
+            problems: list = []
+            _as_int(checked, file_key, where, problems,
+                    minimum=1 if file_key == "lookahead_days" else 0,
+                    maximum=366 if file_key == "lookahead_days" else 1440)
+            if problems:
+                errors.extend(problems)
+            else:
+                cfg["collegenet"][cfg_key] = checked[file_key]
 
-    migrate_legacy_systems(cfg)
+    migrate_legacy_systems(cfg, errors)
 
-    errors = validate_config(cfg, found)
+    errors.extend(validate_config(cfg, found))
     if errors:
         raise ConfigError(
             f"{path}: {len(errors)} problem(s):\n  - " + "\n  - ".join(errors))
@@ -463,6 +483,18 @@ def _int_list(section: dict, key: str, where: str, errors: list) -> None:
         errors.append(f"{where}{key} must be a list of numbers, got {value!r}.")
 
 
+def _as_str(section: dict, key: str, where: str, errors: list) -> None:
+    """A text setting. Numbers are accepted and kept as text (YAML reads an
+    unquoted `default_system: 5` as an int); anything else is an error."""
+    value = section.get(key)
+    if value is None or isinstance(value, str):
+        return
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        section[key] = str(value)
+        return
+    errors.append(f"{where}{key} must be text, got {value!r}.")
+
+
 def check_timezone(value, where: str, errors: list) -> None:
     """IANA zone names only. A typo here used to surface as a
     ZoneInfoNotFoundError traceback from inside --validate itself."""
@@ -498,9 +530,13 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
         return errors                      # the rest assumes the shapes
 
     check_timezone(cfg.get("timezone"), "", errors)
+    for key in ("default_system", "space_map_file", "log_file"):
+        _as_str(cfg, key, "", errors)
 
     cn = cfg["collegenet"]
     w = "collegenet."
+    for key in ("instance", "base_url", "username", "password"):
+        _as_str(cn, key, w, errors)
     _as_int(cn, "lookahead_days", w, errors, minimum=1, maximum=366)
     _as_int(cn, "default_pre_condition_minutes", w, errors, minimum=0, maximum=1440)
     _as_int(cn, "default_post_buffer_minutes", w, errors, minimum=0, maximum=1440)
@@ -514,12 +550,14 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
     _as_float(retry, "backoff_seconds", "retry.", errors, minimum=0, maximum=300)
 
     safety = cfg["safety"]
+    _as_str(safety, "state_file", "safety.", errors)
     _as_bool(safety, "enabled", "safety.", errors)
     _as_int(safety, "min_events", "safety.", errors, minimum=0)
     _as_float(safety, "max_cleared_fraction", "safety.", errors, minimum=0, maximum=1)
     _as_choice(safety, "on_map_errors", "safety.", errors, MAP_ERROR_POLICIES)
 
     alerts = cfg["alerts"]
+    _as_str(alerts, "webhook_url", "alerts.", errors)
     _as_bool(alerts, "enabled", "alerts.", errors)
     _as_bool(alerts, "notify_on_success", "alerts.", errors)
     _as_bool(alerts, "webhook_notify_on_success", "alerts.", errors)
@@ -529,6 +567,8 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
         errors.append("alerts.email must be a mapping of settings.")
     elif email:
         w = "alerts.email."
+        for key in ("smtp_host", "username", "from_addr", "subject_prefix"):
+            _as_str(email, key, w, errors)
         _as_bool(email, "enabled", w, errors)
         _as_int(email, "smtp_port", w, errors, minimum=1, maximum=65535)
         _as_choice(email, "security", w, errors, SMTP_SECURITY)
@@ -539,6 +579,8 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
         if to_addrs is not None and not isinstance(to_addrs, (list, str)):
             errors.append("alerts.email.to_addrs must be a list of addresses.")
 
+    for key in ("ping_url", "ping_fail_url"):
+        _as_str(cfg["monitoring"], key, "monitoring.", errors)
     _as_int(cfg, "log_max_mb", "", errors, minimum=0)
     _as_int(cfg, "log_backups", "", errors, minimum=0, maximum=1000)
 
@@ -608,6 +650,16 @@ LEGACY_DRIVER_PASSWORD_ENV = {
 WEBHOOK_URL_ENV = "BAS_ALERT_WEBHOOK_URL"
 
 
+def _driver_name(driver) -> str:
+    """The registered name for a driver setting, resolving aliases
+    (`BACnet`, `n4`, `none`); the raw text if it isn't a known driver."""
+    from .drivers import DriverError, load_driver_class
+    try:
+        return load_driver_class(str(driver or "")).name
+    except DriverError:
+        return str(driver or "")
+
+
 def load_credentials(cfg: dict) -> None:
     """
     Apply passwords from the environment and warn about anything still unset.
@@ -638,7 +690,7 @@ def load_credentials(cfg: dict) -> None:
     for name, sys_cfg in (cfg.get("systems") or {}).items():
         if not isinstance(sys_cfg, dict):
             continue
-        driver = sys_cfg.get("driver", "")
+        driver = _driver_name(sys_cfg.get("driver", ""))
         env_var = system_password_env(name)
         value = os.environ.get(env_var)
         if not value:
@@ -650,10 +702,12 @@ def load_credentials(cfg: dict) -> None:
             continue
         existing = sys_cfg.get("password")
         if existing in (None, "", PLACEHOLDER_PASSWORD):
-            # BACnet/IP has no credential of its own, and the preview driver
-            # talks to nothing, so silence is correct there; every other
-            # driver authenticates.
-            if driver not in ("bacnet", "preview"):
+            # BACnet/IP has no credential of its own, the preview driver
+            # talks to nothing, and a rest system can be set to auth: none;
+            # silence is correct there. Everything else logs in.
+            auth_mode = ((sys_cfg.get("auth") or {}).get("mode")
+                         if isinstance(sys_cfg.get("auth"), dict) else None)
+            if driver not in ("bacnet", "preview") and auth_mode != "none":
                 logging.warning(
                     "System '%s' (%s) has no password — set %s before a live run.",
                     name, driver or "?", env_var)

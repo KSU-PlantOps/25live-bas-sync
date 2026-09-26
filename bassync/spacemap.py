@@ -28,7 +28,10 @@ Inheritance, all with the same precedence — room > building > global:
 
 A broken row is reported in `errors` and left out; the rest of the map still
 loads. Whether the run then proceeds without it is the caller's policy
-(`safety.on_map_errors`) — see bassync/sync.py.
+(`safety.on_map_errors`) — see bassync/sync.py. The floor and building
+schedules a broken room would have fed are listed in `held`: writing them
+without that room's bookings would be wrong, so a run leaves them untouched
+until the row is fixed.
 """
 
 import difflib
@@ -114,6 +117,15 @@ def _resolve(room_value, building_value, default):
     return default
 
 
+def _value_source(row: dict, building: dict, key: str, where: str,
+                  building_id: Optional[str]) -> str:
+    """Where a room's buffer value came from, for its error message: a bad
+    value inherited from the building is the building's row to fix."""
+    if row.get(key) is None and building.get(key) is not None:
+        return f"{where} (inherited from building {building_id})"
+    return where
+
+
 def _target_of(row: dict) -> Optional[str]:
     """
     The schedule address for a row, or None when it has none.
@@ -155,7 +167,8 @@ class SpaceMap:
 
     def __init__(self, spaces: dict, errors: list, warnings: list,
                  building_count: int = 0, floor_count: int = 0,
-                 labels: Optional[dict] = None, fatal: bool = False):
+                 labels: Optional[dict] = None, fatal: bool = False,
+                 held: Optional[set] = None):
         self.spaces = spaces              # { space_id: SpaceConfig }
         self.errors = errors              # rows left out, or the whole file
         self.warnings = warnings          # worth saying, not worth stopping for
@@ -167,6 +180,9 @@ class SpaceMap:
         # True when the file itself couldn't be read — nothing loaded, so
         # there is nothing a "skip the bad rows" policy could still sync.
         self.fatal = fatal
+        # Roll-ups a broken row feeds. They are still managed schedules, but
+        # a run must not rewrite them without that row's bookings.
+        self.held = held or set()
 
     def __bool__(self) -> bool:
         return bool(self.spaces)
@@ -208,6 +224,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     errors: list = []
     warnings: list = []
     labels: dict = {}
+    held: set = set()
 
     p = Path(path)
     if not p.exists():
@@ -325,14 +342,18 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
 
     space_map: dict = {}
 
-    def _register(space_id: str, sc: SpaceConfig, label: str) -> None:
+    def _register(space_id: str, sc: SpaceConfig, label: str) -> bool:
         if space_id in space_map:
+            kept = space_map[space_id]
             errors.append(
                 f"25Live space_id {space_id} is mapped twice ({label} and "
-                f"{space_map[space_id].space_name}). Each space may appear "
-                "once; the second entry was left out.")
-            return
+                f"{kept.space_name}). Each space may appear once; the second "
+                "entry was left out.")
+            # Roll-ups only the dropped entry fed would lose its bookings.
+            held.update(set(sc.rollup_destinations()) - set(kept.all_destinations()))
+            return False
         space_map[space_id] = sc
+        return True
 
     # ── 2) Rooms ─────────────────────────────────────────────────────────────
     for row in (data.get("spaces") or []):
@@ -385,18 +406,23 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                             "it will NOT drive a corridor schedule.")
 
         bld = building or {}
+        # From here on the row's roll-ups are known. If the row turns out to
+        # be broken, those schedules must not be rewritten without it.
+        rollups = [d for d in (fdest, bdest) if d is not None]
         system = str(_resolve(row.get("system"), bld.get("system"),
                               default_system) or "")
         if not system:
             errors.append(
                 f"{where}: no `system:` and no default. Set `default_system:` "
                 "in config.yaml or name one per room.")
+            held.update(rollups)
             continue
         if known_systems and system not in known_systems:
             errors.append(
                 f"{where}: system '{system}' is not defined under `systems:` in "
                 f"config.yaml. Known: "
                 f"{', '.join(sorted(known_systems)) or '(none)'}.")
+            held.update(rollups)
             continue
 
         # A room without its own `target:` is normal: plenty of buildings can
@@ -423,11 +449,15 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                 pre_condition_minutes=_minutes(
                     _resolve(row.get("pre_condition_minutes"),
                              bld.get("pre_condition_minutes"), default_pre),
-                    "pre_condition_minutes", where),
+                    "pre_condition_minutes",
+                    _value_source(row, bld, "pre_condition_minutes", where,
+                                  room_building)),
                 post_buffer_minutes=_minutes(
                     _resolve(row.get("post_buffer_minutes"),
                              bld.get("post_buffer_minutes"), default_post),
-                    "post_buffer_minutes", where),
+                    "post_buffer_minutes",
+                    _value_source(row, bld, "post_buffer_minutes", where,
+                                  room_building)),
                 merge_gap_minutes=_minutes_or_default(
                     row.get("merge_gap_minutes"), default_gap,
                     "merge_gap_minutes", where),
@@ -436,10 +466,11 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
             )
         except RowError as exc:
             errors.append(str(exc))
+            held.update(rollups)
             continue
 
-        _label(rdest, name)
-        _register(space_id, space, f"room {row.get('space_name', space_id)}")
+        if _register(space_id, space, f"room {row.get('space_name', space_id)}"):
+            _label(rdest, name)
 
     # ── 3) Buildings that are themselves bookable in 25Live ──────────────────
     #     e.g. an atrium with its own 25Live space. Its own events then count
@@ -471,6 +502,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
             )
         except RowError as exc:
             errors.append(str(exc))
+            held.add(dest)           # its own bookings would be missing
             continue
         _register(space_id, space, f"building {building_id}")
 
@@ -480,7 +512,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     #     builder unions their bookings and the schedule is written once —
     #     instead of twice, with the second write erasing the first. It is
     #     also where malformed targets are caught, before any run.
-    space_map = _canonicalize(space_map, cfg, labels, errors)
+    space_map, held = _canonicalize(space_map, cfg, labels, errors, held)
 
     # ── 5) Two rooms pointing at one schedule ────────────────────────────────
     #     Legal and sometimes intentional (an air-wall room split into A/B in
@@ -509,17 +541,20 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         logging.warning("%s", w)
     return SpaceMap(space_map, errors, warnings,
                     building_count=len(buildings), floor_count=len(floor_dest),
-                    labels=labels)
+                    labels=labels, held=held)
 
 
-def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list) -> dict:
+def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
+                  held: set) -> tuple:
     """
     Rewrite every destination to its driver's canonical form, and drop what a
-    driver says is unusable.
+    driver says is unusable. Returns (space map, held destinations), both
+    canonical.
 
-    A bad room target drops that room. A bad floor or building target is
-    reported once and removed from the rooms that roll up into it; a room left
-    driving nothing is then dropped too.
+    Every unusable target is reported once. A room whose own target is bad
+    still feeds its floor and building — only its own schedule is left alone;
+    a bad floor or building target is removed from the rooms that roll up into
+    it. A room left driving nothing at all is dropped.
     """
     from .drivers import DriverError, load_driver_class
 
@@ -556,8 +591,6 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list) -> dic
 
     out: dict = {}
     for space_id, sc in space_map.items():
-        if sc.destination is not None and sc.destination in invalid:
-            continue                               # reported above
         fixed = SpaceConfig(
             space_id=sc.space_id, space_name=sc.space_name,
             space_type=sc.space_type,
@@ -570,13 +603,14 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list) -> dic
             floor_destination=_fix(sc.floor_destination),
         )
         if not fixed.all_destinations():
-            errors.append(f"Room {space_id}: every schedule it rolls up into "
-                          "is invalid (see above), so its bookings would drive "
-                          "nothing.")
+            errors.append(f"Room {space_id}: every schedule it would write or "
+                          "roll up into is invalid (see above), so its bookings "
+                          "would drive nothing.")
             continue
         out[space_id] = fixed
 
     for original, canonical in canon.items():
         if original in labels and canonical not in labels:
             labels[canonical] = labels[original]
-    return out
+    held_out = {canon.get(d, d) for d in held if d not in invalid}
+    return out, held_out

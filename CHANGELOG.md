@@ -57,8 +57,9 @@ A hardening release from a full review of the code, deployment and docs, plus
   device at a pinned address is now read back and must be the device named in
   the target.
 - **Two spellings of one BACnet schedule overwrote each other** (`12001:5` and
-  `12001:5@10.4.2.30`). Targets are canonicalised per driver, a pin applies to
-  the whole device, and conflicting pins are an error.
+  `12001:5@10.4.2.30`). Targets are canonicalised per driver — including
+  routed MS/TP pins, `2001:0x21` = `2001:33` — a pin applies to the whole
+  device, and conflicting pins are an error.
 - **The BACnet connect timeout didn't cover the socket bind** (BACpypes3 binds
   in the background), so a busy port failed every write one by one.
 - **25Live paging could loop 1,000 times.** An instance ignoring the paging
@@ -74,8 +75,11 @@ A hardening release from a full review of the code, deployment and docs, plus
   is written atomically with a `.prev` backup, is read from the 1.x location
   once, and a run without one warns every time.
 - **One broken room-map row stopped the whole campus.** Bad rows are now left
-  out and the rest syncs (exit `2`); `safety.on_map_errors: abort` restores
-  the old behaviour.
+  out and the rest syncs (exit `2`); the floor and building schedules a broken
+  row rolls up into are left as they are rather than rewritten without its
+  bookings, a room with a malformed target of its own still feeds its
+  roll-ups, and the safety baseline is merged so nothing left alone loses its
+  history. `safety.on_map_errors: abort` restores the old behaviour.
 - **One system's bad setting could abort every system** — only `DriverError`
   was contained. Any exception from a system now fails only that system.
 - `send_alert` could raise on a malformed setting despite promising not to.

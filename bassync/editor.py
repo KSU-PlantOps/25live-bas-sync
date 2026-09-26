@@ -1075,7 +1075,10 @@ def run_gui(map_path: Path) -> int:
             bar.start(12)
             # A network call can't be cancelled half-way; don't pretend.
             box.protocol("WM_DELETE_WINDOW", lambda: None)
-            box.grab_set()
+            try:
+                box.grab_set()
+            except tk.TclError:
+                pass                 # not viewable yet on some window managers
             outcome: dict = {}
 
             def runner():
