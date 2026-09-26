@@ -49,6 +49,15 @@
 #   its bookings would drive nothing at all.
 #
 #
+# EVERY TARGET IS A SCHEDULE THE SYNC OWNS
+#
+#   Each run replaces the target's whole exception list with this week's
+#   bookings. Point targets at schedules dedicated to bookings (weekly
+#   schedule empty or Unoccupied), OR'd into the zone's normal occupancy in
+#   the controller — never at the schedule operators put holidays on.
+#   `--validate` warns about entries on a target that a live run would erase.
+#
+#
 # INHERITANCE
 #   `system`, `pre_condition_minutes` and `post_buffer_minutes` all resolve the
 #   same way:   room override  >  building override  >  global default
@@ -93,11 +102,19 @@
 #                                     Merges ACROSS rooms (the roll-ups) use
 #                                     the global default.
 #   note                  (optional)  free text; the sync ignores it, and the
-#                                     editor preserves it across saves
+#                                     editor preserves it across saves (also
+#                                     allowed on buildings and floors)
+#
+# A key the sync doesn't recognise is reported as a warning with a suggestion
+# ("unknown key `tagret` — did you mean `target`?"): since `target:` is
+# optional, a misspelt one would otherwise silently make a roll-up-only room.
 #
 # ── target syntax, by driver ──
 #   bacnet    "12001:5"              device instance : Schedule object instance
 #             "12001:5@10.4.2.30"    pin the address, skipping Who-Is
+#             "12001:5@2001:0x21"    a routed MS/TP device (network 2001, MAC 0x21)
+#             A pin applies to the whole device: pin it once and every target
+#             on that device uses it; two different pins are an error.
 #   niagara   "Bldg/Rm101_Occ"       ORD relative to schedule_base_path
 #             "slot:/Other/Sched"    an absolute ORD is used as-is
 #   rest      whatever your configured path template expects
