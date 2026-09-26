@@ -1,6 +1,6 @@
 # Keep the build context small and never leak local config/secrets into the
-# image. (The Dockerfile only COPYs main.py, the entrypoint, and requirements,
-# but this also speeds up builds.)
+# image. (The Dockerfile only COPYs main.py, bassync/, the entrypoint, and the
+# requirement/constraint files, but this also speeds up builds.)
 .git
 .gitignore
 .github
@@ -18,11 +18,16 @@ defaults.yaml
 space_mapping.yaml
 config/
 logs/
+state/
 *.log
 
 # Not needed at runtime
 editor.py
 Edit-Rooms.bat
 Test.py
+tests/
+.pytest_cache
+.ruff_cache
+.mypy_cache
 *.md
 LICENSE

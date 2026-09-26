@@ -35,5 +35,15 @@ services:
 
     volumes:
       - ./config:/config:ro      # config.yaml, defaults.yaml, space_mapping.yaml
-      - ./logs:/app/logs         # optional; logs also go to `docker compose logs`
+      # Named volumes, not host folders: Docker creates a missing host folder
+      # owned by root, which the container's non-root user can't write — and
+      # an unwritable state directory silently disables the safety baseline.
+      # Read the logs with `docker compose logs`, or copy the files out with
+      # `docker compose cp sync:/app/logs ./logs`.
+      - state:/app/state         # safety baseline + run lock — keep this
+      - logs:/app/logs
     restart: unless-stopped
+
+volumes:
+  state:
+  logs:

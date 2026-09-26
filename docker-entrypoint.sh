@@ -1,5 +1,5 @@
 #!/bin/sh
-# Entrypoint for the 25Live -> Niagara sync container.
+# Entrypoint for the 25Live -> BAS sync container.
 #
 # Default (SYNC_AT unset): a ONE-SHOT run. Whatever args were passed after the
 # image name go straight to main.py (e.g. --validate / --dry-run / --discover),
@@ -10,38 +10,28 @@
 # the container stays up and runs the sync once per day at that time. Set
 # SYNC_ON_START=1 to also run once immediately on startup. This makes
 # `docker compose up -d` a self-contained nightly sync with no external cron.
+# The scheduling itself is bassync/scheduler.py, which handles the DST
+# changeover (02:00 does not exist on the spring-forward date).
 set -eu
 
-run_sync() {
-    # Don't let a single failed run kill the scheduler loop; main.py already
-    # logs the reason and alerts (if configured).
-    python main.py "$@" || echo "[entrypoint] sync exited non-zero ($?)" >&2
-}
+# The safety rail compares each run with the previous one, using a small state
+# file in /app/state. If that directory is not writable — or not a volume, so
+# it vanishes with the container — the comparison silently has nothing to
+# compare against. Say so loudly, every start.
+if ! ( : > /app/state/.write-test ) 2>/dev/null; then
+    echo "[entrypoint] WARNING: /app/state is not writable by uid $(id -u)." \
+         "The mass-clear safety check will have no baseline. Mount a named" \
+         "volume there (docker compose does), not a root-owned host folder." >&2
+else
+    rm -f /app/state/.write-test
+fi
 
 # One-shot mode — the idiomatic container default.
 if [ -z "${SYNC_AT:-}" ]; then
     exec python main.py "$@"
 fi
 
-# Validate SYNC_AT once up front so a typo fails fast instead of looping.
-if ! echo "$SYNC_AT" | grep -Eq '^[0-2][0-9]:[0-5][0-9]$'; then
-    echo "[entrypoint] SYNC_AT='$SYNC_AT' is not HH:MM (24-hour). Exiting." >&2
-    exit 2
-fi
-
-echo "[entrypoint] scheduler on: 'python main.py $*' daily at $SYNC_AT (TZ=${TZ:-UTC})"
-
 if [ "${SYNC_ON_START:-0}" = "1" ]; then
-    echo "[entrypoint] running once on start"
-    run_sync "$@"
+    exec python -m bassync.scheduler "$SYNC_AT" --on-start -- "$@"
 fi
-
-while true; do
-    now_s=$(date +%s)
-    next_s=$(date -d "today $SYNC_AT" +%s)
-    [ "$next_s" -le "$now_s" ] && next_s=$(date -d "tomorrow $SYNC_AT" +%s)
-    wait_s=$((next_s - now_s))
-    echo "[entrypoint] next run at $(date -d "@$next_s" '+%Y-%m-%d %H:%M %Z') (in ${wait_s}s)"
-    sleep "$wait_s"
-    run_sync "$@"
-done
+exec python -m bassync.scheduler "$SYNC_AT" -- "$@"
