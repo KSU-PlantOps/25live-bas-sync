@@ -5,7 +5,25 @@ on:
     branches: [ main ]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
+  lint:
+    name: lint + types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install
+        run: pip install -r requirements.txt -r requirements-bacnet.txt -r requirements-dev.txt -c constraints.txt
+      - name: Ruff
+        run: ruff check .
+      - name: Mypy
+        run: mypy
+
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -15,7 +33,8 @@ jobs:
         python-version: ["3.13", "3.14"]
         # The BACnet driver is an optional extra. Run the suite both with and
         # without BACpypes3 installed, so neither the lazy import nor the
-        # "skipped" path silently rots.
+        # "skipped" path silently rots. With it installed, the simulated-
+        # controller tests talk real BACnet/IP over loopback.
         bacnet: [ "with-bacnet", "without-bacnet" ]
     name: py${{ matrix.python-version }} (${{ matrix.bacnet }})
     steps:
@@ -25,15 +44,68 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
       - name: Install BACpypes3
         if: matrix.bacnet == 'with-bacnet'
-        run: pip install -r requirements-bacnet.txt
+        run: pip install -r requirements-bacnet.txt -c constraints.txt
       - name: Byte-compile
-        run: python -m compileall -q main.py editor.py Test.py bassync
+        run: python -m compileall -q main.py editor.py Test.py bassync tests
       - name: Run offline tests
-        run: python Test.py
+        run: python -m pytest --cov=bassync --cov-report=term-missing:skip-covered
       - name: CLI smoke test
         run: |
           python main.py --list-drivers
           python main.py --version
+          python -m bassync.scheduler 29:00 && exit 1 || test $? -eq 2
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck docker-entrypoint.sh
+
+  audit:
+    name: dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: pip-audit (pinned versions)
+        run: |
+          pip install pip-audit
+          pip-audit -r constraints.txt
+
+  package:
+    name: pip install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Install the package
+        run: pip install ".[bacnet]" -c constraints.txt
+      - name: Console scripts work outside the checkout
+        run: |
+          cd "$RUNNER_TEMP"
+          bas-sync --version
+          bas-sync --list-drivers
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: docker build -t 25live-bas-sync:ci .
+      - name: Smoke test
+        run: |
+          docker run --rm 25live-bas-sync:ci --version
+          docker run --rm 25live-bas-sync:ci --list-drivers
+          # A bad SYNC_AT must stop the scheduler with exit 2, not crash-loop.
+          docker run --rm -e SYNC_AT=29:00 25live-bas-sync:ci && exit 1 || test $? -eq 2
+          # A named volume at /app/state must be writable by the app user.
+          docker run --rm -v ci-state:/app/state --entrypoint sh 25live-bas-sync:ci \
+            -c 'touch /app/state/probe && echo state volume writable'
