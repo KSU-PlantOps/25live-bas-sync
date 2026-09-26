@@ -204,15 +204,16 @@ typo, like `notify_on_sucess`) is logged as a warning.
 ```bash
 # Linux / macOS
 export BAS_25LIVE_PASSWORD=...
-export BAS_SYS_SUPERVISOR_PASSWORD=...     # one per system that needs one
+export BAS_SYS_EBO_WEST_PASSWORD=...       # one per system that logs in (rest)
 
 # Windows (PowerShell)
 $env:BAS_25LIVE_PASSWORD = "..."
-$env:BAS_SYS_SUPERVISOR_PASSWORD = "..."
+$env:BAS_SYS_EBO_WEST_PASSWORD = "..."
 ```
 
 The variable name is `BAS_SYS_` + the system's name, uppercased with
-non-alphanumerics as underscores. BACnet systems need no credential. Alert
+non-alphanumerics as underscores. BACnet systems — including Niagara
+stations reached through their BACnet export — need no credential. Alert
 email uses `BAS_SMTP_PASSWORD`; a webhook URL can come from
 `BAS_ALERT_WEBHOOK_URL` if you'd rather not keep it in the file.
 
@@ -244,8 +245,8 @@ Each entry carries:
   | `bacnet` | `12001:5` | device instance 12001, Schedule object instance 5 |
   | `bacnet` | `12001:5@10.4.2.30` | …with the address pinned, skipping Who-Is |
   | `bacnet` | `12001:5@2001:0x21` | …a routed MS/TP device: network 2001, MAC 0x21 |
-  | `niagara` | `Bldg/Rm101_Occ` | ORD relative to `schedule_base_path` |
-  | `niagara` | `slot:/Other/Sched` | an absolute ORD, used as-is |
+  | `bacnet` | `2001:1` | a Niagara station's exported schedule — see [Tridium Niagara](#tridium-niagara) |
+  | `niagara` *(deprecated)* | `Bldg/Rm101_Occ` | ORD relative to `schedule_base_path` |
   | `rest` | whatever your path template expects | |
 
   **Required on a building or floor** — those entries exist to name a schedule.
@@ -294,7 +295,7 @@ Run `python editor.py` (Windows users can double-click `Edit-Rooms.bat`):
   (saved to `defaults.yaml`).
 - **Tools** menu — *Test 25Live connection*, *Test BAS connections*
   (health-checks every configured system and reports them all, so "BACnet is
-  fine, the supervisor is down" is the answer you get), and *Preview (dry run)*.
+  fine, the EBO API is down" is the answer you get), and *Preview (dry run)*.
   They run in the background, so the window stays responsive.
 
 Every table has live search, click-to-sort headers, and a Duplicate action, and
@@ -320,7 +321,7 @@ python main.py --test-alert     # prove the reports/alerts actually reach you
 python main.py --discover       # list 25Live spaces with upcoming events
 python main.py --dry-run        # fetch + build, print what WOULD be written
 python main.py                  # live run
-python main.py --system supervisor   # limit to one BAS (commissioning)
+python main.py --system ebo_campus   # limit to one BAS (commissioning)
 python main.py --force          # override the mass-clear safety check
 ```
 
@@ -424,8 +425,8 @@ YAML on a workstation, then mount it in.)
 > Run it with `network_mode: host` (already set in the compose file) and set
 > `local_address` to the *host's* address. On Docker Desktop for Mac/Windows,
 > host networking is limited — run the BACnet path directly on a Linux host or
-> a VM on the controls network. The `niagara` and `rest` drivers are ordinary
-> HTTP and work fine under bridge networking.
+> a VM on the controls network. The `rest` driver is ordinary HTTP and works
+> fine under bridge networking.
 
 **1. Put your config where the container can mount it.** Create a `config/`
 folder holding `config.yaml`, `defaults.yaml`, and `space_mapping.yaml` (copy the
@@ -457,7 +458,7 @@ Two ways to run it:
 
   ```bash
   docker run --rm --network host \
-    -e BAS_25LIVE_PASSWORD=... -e BAS_SYS_SUPERVISOR_PASSWORD=... \
+    -e BAS_25LIVE_PASSWORD=... \
     -e TZ=America/New_York \
     -v "$(pwd)/config:/config:ro" \
     -v bas-sync-state:/app/state \
@@ -576,22 +577,52 @@ your API is assumed; `config.example.yaml` has a commented starting template and
 
 ### Tridium Niagara
 
-**Use the `bacnet` driver against the station's exported schedule.** Niagara's
-BACnet server exports a schedule through a BACnet Schedule Export descriptor. A
-BACnet write to that export's `Exception_Schedule` becomes **native special
-events on the BooleanSchedule**, visible and editable in Workbench. It's also
-the path commercial booking-to-HVAC products use for Niagara. Get the device
-instance from the station's BACnet device object and the schedule instances
-from the export descriptors.
+**Use the `bacnet` driver against the station's BACnet schedule export.** A
+Niagara station's BACnet driver can export any schedule as a standard BACnet
+Schedule object. The sync writes that object's `Exception_Schedule` like any
+other controller's, and the station applies it to the BooleanSchedule as
+**native special events — visible and editable in Workbench**. Nothing extra
+is installed on the station; it is also the path commercial booking-to-HVAC
+products use for Niagara.
 
-The **`niagara`** driver writes special events through a REST service on the
-station. **Stock Niagara 4 does not ship that API**, so the driver only works
-where your station has such a service. Niagara's standard web API, oBIX,
-reads and writes point values and invokes point actions, but we have found no
-stock way to create schedule special events through it. Its `rest_base`, `special_event_type` and ORD style are settable
-from `config.yaml`, and `--validate` checks every ORD before a live run. TLS
-is verified by default; point `verify_tls` at the station's CA bundle rather
-than turning it off.
+Setting up one zone, in Workbench:
+
+1. **Booking schedule.** Add a `BooleanSchedule` for the zone's bookings
+   (say `Rm101_Booking`) with an empty weekly schedule and its default output
+   `false`. Nothing else goes on it — the sync owns its special events.
+2. **Combine.** Wire its output and the zone's normal schedule into an `Or`
+   (kitControl) and use that as the zone's occupancy command. Holidays and
+   shutdowns stay on the normal schedule, where the sync never writes.
+3. **Export.** Under the station's `BacnetNetwork`, open the Local Device's
+   **Export Table** (Bacnet Export Manager), discover the new schedule and
+   add it. Note the exported Schedule object's instance number, and the Local
+   Device's own device instance.
+4. **Map it.** Give the room (or floor, or building) the target
+   `"<station device instance>:<exported schedule instance>"` — e.g. `"2001:1"`
+   — on a `bacnet` system. A station on the same network as your other
+   controllers can share their `bacnet` system; one behind its own BBMD gets a
+   system of its own.
+
+Then run `--validate`. It reads every exported schedule back, reports its value
+type, and warns about any special events already on it that a live run would
+replace.
+
+- The station must accept BACnet writes from the sync's address. If it's on
+  another subnet, register through its BBMD (`bbmd_address`) or pin its
+  address in the target (`2001:1@10.4.5.20`).
+- A schedule that already carries many special events can be slow to accept a
+  whole-array write. A dedicated booking schedule avoids that, and
+  `operation_timeout` raises the ceiling if needed.
+- For a station-side heartbeat, export a `NumericWritable` as an analog value
+  and set `heartbeat_object: "2001:analog-value,<instance>"` on the system.
+
+**The `niagara` driver is deprecated.** It wrote special events through a REST
+service that stock Niagara 4 doesn't ship. Niagara's standard web API, oBIX,
+reads and writes point values and invokes point actions, but we found no stock
+way to create schedule special events through it. Existing configurations keep
+working, with a warning in the log; see
+[Upgrading](#moving-off-the-niagara-driver) to move a station to the BACnet
+export.
 
 ### Any other BTL-listed controller
 
@@ -666,18 +697,39 @@ Nothing to edit, but read these before the first run:
    the old behaviour.
 5. **Config is validated**, so a value that was silently ignored before (a
    misspelt timezone, a negative buffer) now stops the run with a message.
-6. The `niagara` driver now **verifies TLS by default**; set `verify_tls` to
-   your station's CA bundle (or `false`, explicitly).
+6. **The `niagara` driver is deprecated** — Niagara stations are driven
+   through their BACnet schedule export (below). It still works, logs a
+   warning, and now verifies TLS by default: set `verify_tls` to your
+   station's CA bundle (or `false`, explicitly) until you move off it.
 7. `rest` driver: `{target}` in a JSON payload is no longer percent-encoded,
    and a payload value that is exactly `"{value}"`, `"{index}"` or `"{count}"`
    is now sent as a JSON boolean/number instead of a string.
+
+### Moving off the `niagara` driver
+
+For each station, one schedule at a time if you like:
+
+1. In Workbench, add each target's BooleanSchedule to the station's BACnet
+   **Export Table** (see [Tridium Niagara](#tridium-niagara)) and note the
+   exported instance numbers and the station's device instance.
+2. Add (or reuse) a `bacnet` system that can reach the station, and change
+   the building/floor/room from the `niagara` system to it, replacing each ORD
+   target with `"<device instance>:<schedule instance>"`.
+3. Replace `heartbeat_path` with a `heartbeat_object` on an exported point.
+4. `--validate`, then `--dry-run`, then a live run; once nothing references
+   the `niagara` system, delete it and its `BAS_SYS_<NAME>_PASSWORD`.
+
+`--system <name>` lets you cut one station over and check it before the rest.
+If these schedules already carry this sync's special events from the old
+driver, the first BACnet write replaces them, as intended.
 
 ### From a pre-1.0 release
 
 Existing beta/RC deployments keep working — the upgrade is additive:
 
 - A pre-1.0 `config.yaml` with a top-level **`niagara:`** block is automatically
-  promoted to `systems: {niagara: {driver: niagara, ...}}` and made the default.
+  promoted to `systems: {niagara: {driver: niagara, ...}}` and made the default
+  (that driver is now deprecated — see above).
 - `BAS_NIAGARA_PASSWORD` is still honored alongside the new
   `BAS_SYS_<NAME>_PASSWORD` form.
 - **`niagara_path:`** in `space_mapping.yaml` is still read. The editor renames
@@ -735,7 +787,7 @@ for validating behavior against your own 25Live instance and your own BAS.
 |---|---|
 | `main.py` | CLI entry point from a checkout (the CLI itself is `bassync/cli.py`). |
 | `bassync/` | The sync engine (importable, unit-tested). |
-| `bassync/drivers/` | BAS integrations — `bacnet`, `niagara`, `rest`, `preview`. |
+| `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
 | `bassync/editor.py` · `editor.py` | GUI to add/edit rooms, floors, buildings and connections (Tkinter), and its launcher. |
 | `Edit-Rooms.bat` | Double-click launcher for the editor (Windows). |
 | `config.example.yaml` | Connection/system template → copy to `config.yaml`. |

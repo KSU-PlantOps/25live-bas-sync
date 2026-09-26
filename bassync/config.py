@@ -72,8 +72,8 @@ DEFAULTS: dict[str, Any] = {
     # ── BAS systems this campus writes to ──
     # Each key is a system name that space_mapping.yaml can reference. The
     # `driver` picks the integration; every other key is passed to that driver.
-    # A single-BAS site can leave this alone and use the legacy `niagara:`
-    # block — migrate_legacy_systems() folds it in automatically.
+    # A pre-1.0 config's top-level `niagara:` block is folded in here by
+    # migrate_legacy_systems(), onto the (deprecated) niagara driver.
     "systems": {},
 
     # System used by any building/room that doesn't name one. Blank means "the
@@ -562,6 +562,9 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
             continue
         if sys_cfg.get("timezone") not in (None, ""):
             check_timezone(sys_cfg.get("timezone"), where, errors)
+        if getattr(cls, "deprecated", ""):
+            warnings.append(f"{where[:-1]}: the {cls.name} driver is deprecated — "
+                            f"{cls.deprecated}")
         known = set(cls.config_keys) | {"driver", "timezone", "password", "note"}
         for key in sys_cfg:
             if key not in known:

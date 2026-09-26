@@ -70,7 +70,9 @@ FILE_HEADER = """\
 #   target:  the schedule's address in that system:
 #              bacnet   "12001:5"        device instance : schedule instance
 #                                        ("@10.4.2.30" pins the address)
-#              niagara  "Bldg/Rm101_Occ" ORD under schedule_base_path
+#                                        (a Niagara station: its BACnet-
+#                                        exported schedule, e.g. "2001:1")
+#              niagara  "Bldg/Rm101_Occ" deprecated driver; ORD
 #              rest     whatever your API path template expects
 """
 
@@ -435,8 +437,10 @@ def config_sections(system_name: str, driver: str) -> list:
     """The Connection tab's sections for the currently selected system."""
     sections = list(GLOBAL_CONFIG_SECTIONS[:1])
     if system_name:
-        sections.append((f"BAS system: {system_name}  ({driver or 'no driver'})",
-                         system_config_fields(system_name, driver)))
+        title = f"BAS system: {system_name}  ({driver or 'no driver'})"
+        if driver == "niagara":
+            title += "  — deprecated: use bacnet with the station's schedule export"
+        sections.append((title, system_config_fields(system_name, driver)))
     sections.extend(GLOBAL_CONFIG_SECTIONS[1:])
     return sections
 

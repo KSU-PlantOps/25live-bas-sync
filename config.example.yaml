@@ -12,8 +12,8 @@
 #
 # SECRETS ARE NOT STORED HERE. Set them as environment variables:
 #   BAS_25LIVE_PASSWORD              the 25Live service-account password
-#   BAS_SYS_<SYSTEM>_PASSWORD        each BAS system's password, e.g.
-#                                    BAS_SYS_SUPERVISOR_PASSWORD
+#   BAS_SYS_<SYSTEM>_PASSWORD        the password of a system that logs in
+#                                    (rest), e.g. BAS_SYS_EBO_WEST_PASSWORD
 #   BAS_SMTP_PASSWORD                alert email, if you enable it
 #   BAS_ALERT_WEBHOOK_URL            optional; overrides alerts.webhook_url
 # ─────────────────────────────────────────────────────────────────────────────
@@ -150,28 +150,41 @@ systems:
     event_priority: 16
     verify_writes: true
 
-  # ── niagara: a station REST service ────────────────────────────────────────
-  # Writes BooleanSchedule special events through a REST service on the
-  # station. Stock Niagara 4 does not ship this API, so confirm your station
-  # has one (see README, "Tridium Niagara") — for most stations the bacnet
-  # driver against the station's exported schedule is the proven path, and it
-  # still shows the bookings as native special events in Workbench.
-  # Password: BAS_SYS_SUPERVISOR_PASSWORD
-  supervisor:
-    driver: niagara
-    host: "niagara.example.edu"   # localhost if this runs on the station server
-    port: 443                     # confirm — often 443 or 8443
-    https: true
-    username: "svc-scheduler"
-    # TLS is verified by default. For a self-signed station certificate, set
-    # this to the path of its CA bundle; `false` disables checking (logged).
-    verify_tls: false
-    schedule_base_path: "slot:/Schedules"
-    heartbeat_path: "slot:/Schedules/_LastSync"   # "" to disable
-    # Confirm these against your station's REST service if writes 404:
-    # rest_base: "/rest/v1"
-    # special_event_type: "baja:BooleanSchedule$SpecialEvent"
+  # ── A Tridium Niagara station — also BACnet ────────────────────────────────
+  # Niagara stations are driven through their BACnet schedule export: add the
+  # booking BooleanSchedule to the station's BacnetNetwork > Local Device >
+  # Export Table, and target "<station device instance>:<exported schedule
+  # instance>". The station applies the writes as native special events,
+  # visible in Workbench. See README, "Tridium Niagara".
+  #
+  # A station on the same network as other controllers can share their
+  # system; this one sits behind its own BBMD, so it gets its own.
+  niagara_station:
+    driver: bacnet
+    local_address: "10.4.1.55/24"
+    device_id: 599003
+    device_name: "25Live-BAS-Sync-Niagara"
+    bbmd_address: "10.4.5.1"
     event_priority: 16
+    verify_writes: true
+    # An exported NumericWritable the sync stamps after every run:
+    # heartbeat_object: "2001:analog-value,10"
+
+  # ── niagara (DEPRECATED): a station REST service ──────────────────────────
+  # Kept only so existing deployments keep running; it needs a REST service
+  # stock Niagara 4 doesn't ship, and logs a deprecation warning. New
+  # stations: use the BACnet export above. README, "Moving off the niagara
+  # driver", has the steps. Password: BAS_SYS_SUPERVISOR_PASSWORD.
+  #
+  # supervisor:
+  #   driver: niagara
+  #   host: "niagara.example.edu"
+  #   port: 443
+  #   https: true
+  #   username: "svc-scheduler"
+  #   verify_tls: "/etc/ssl/station-ca.pem"   # or false for a self-signed cert
+  #   schedule_base_path: "slot:/Schedules"
+  #   heartbeat_path: "slot:/Schedules/_LastSync"
 
   # ── preview: writes nothing ────────────────────────────────────────────────
   # Point buildings here while you commission them. They log what they would

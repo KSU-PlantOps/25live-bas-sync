@@ -60,6 +60,10 @@ class ScheduleWriter(ABC):
     #: every driver accepts (driver, timezone, password, note).
     config_keys: tuple = ()
 
+    #: Non-empty for a driver that still works but should not be used for new
+    #: systems: the reason and what to use instead. Logged as a config warning.
+    deprecated: str = ""
+
     # ── configuration ────────────────────────────────────────────────────────
 
     @classmethod

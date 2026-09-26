@@ -2,15 +2,18 @@
 # Copyright (C) 2026 Ryan Bibby and contributors
 # Licensed under the GNU General Public License v3.0 or later. See LICENSE.
 """
-Tridium Niagara (N4) driver — writes BooleanSchedule SpecialEvents through a
-REST service on the station.
+DEPRECATED — Tridium Niagara (N4) driver that writes BooleanSchedule
+SpecialEvents through a REST service on the station.
 
-Stock Niagara 4 does not ship this API: its standard web API, oBIX, reads and
-writes point values and invokes point actions, but offers no way we have found
-to create schedule special events. So this driver needs a station with such a
-service. For most stations the recommended path is the `bacnet` driver against
-the station's BACnet Schedule Export — the station turns those writes into
-native special events, visible in Workbench.
+Use the `bacnet` driver against the station's BACnet schedule export instead
+(README, "Tridium Niagara"). The station applies those writes to the
+BooleanSchedule as native special events, visible and editable in Workbench,
+using only what a stock Niagara 4 station with the BACnet driver provides.
+
+This driver is kept so existing deployments keep running, and it logs a
+deprecation warning. Stock Niagara 4 does not ship the REST API it calls: the
+standard web API, oBIX, reads and writes point values and invokes point
+actions, but offers no way we have found to create schedule special events.
 
 Like every driver, it owns its targets: each run deletes the schedule's special
 events and writes this run's bookings, so point it at dedicated booking
@@ -61,8 +64,12 @@ class NiagaraScheduleWriter(ScheduleWriter):
     """Writes SpecialEvents to Niagara N4 BooleanSchedules via REST."""
 
     name = "niagara"
-    description = ("Tridium Niagara N4 — BooleanSchedule special events via a "
-                   "station REST service (not in stock N4; see README).")
+    description = ("DEPRECATED — Niagara special events via a station REST "
+                   "service. Use bacnet against the station's schedule export.")
+    deprecated = ("it needs a REST service stock Niagara 4 doesn't ship. Use the "
+                  "bacnet driver against the station's BACnet schedule export: "
+                  "the bookings still appear as native special events in "
+                  "Workbench. See README, 'Tridium Niagara'.")
     config_keys = ("host", "port", "https", "username", "verify_tls",
                    "schedule_base_path", "heartbeat_path", "rest_base",
                    "special_event_type", "event_priority", "ord_style")

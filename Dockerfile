@@ -6,7 +6,7 @@
 #
 # Build:  docker build -t 25live-bas-sync .
 # Run:    docker run --rm --network host \
-#           -e BAS_25LIVE_PASSWORD=... -e BAS_SYS_SUPERVISOR_PASSWORD=... \
+#           -e BAS_25LIVE_PASSWORD=... \
 #           -v "$(pwd)/config:/config:ro" \
 #           -v bas-sync-state:/app/state \
 #           25live-bas-sync --validate
@@ -18,7 +18,7 @@
 # NOTE ON BACNET: the bacnet driver binds a real NIC address and relies on
 # broadcast for Who-Is, neither of which survives Docker's default bridge
 # network. Run it with host networking and point `local_address` at the HOST's
-# address. The niagara and rest drivers are ordinary HTTP and need none of this.
+# address. The rest driver is ordinary HTTP and needs none of this.
 
 # Matches the recommended runtime rather than the 3.13 floor.
 FROM python:3.14-slim

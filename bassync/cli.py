@@ -20,9 +20,9 @@ The BAS side is pluggable. One run can drive a mixed campus:
     bacnet    standard BACnet/IP Schedule objects — Automated Logic WebCTRL,
               Schneider EcoStruxure Building Operation, Tridium Niagara, and
               any other BTL-listed controller
-    niagara   Niagara N4 BooleanSchedule special events via a station
-              REST service (not in stock N4 — the bacnet driver against the
-              station's schedule export is the usual Niagara path)
+    niagara   DEPRECATED: Niagara special events via a station REST service
+              (not in stock N4). Niagara stations use `bacnet` against the
+              station's BACnet schedule export.
     rest      a vendor REST API you describe in config.yaml
     preview   writes nothing; logs and optionally exports CSV
 

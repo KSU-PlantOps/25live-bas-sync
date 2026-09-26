@@ -10,9 +10,10 @@ Driver registry.
               controller all expose them, so one integration covers the whole
               campus against a published standard rather than a per-vendor,
               per-version API.
-    niagara   Tridium Niagara N4 BooleanSchedule special events via a REST
-              service on the station. Stock N4 doesn't ship one; for most
-              stations use `bacnet` against the station's schedule export.
+    niagara   DEPRECATED. Niagara special events via a REST service on the
+              station, which stock N4 doesn't ship. Niagara stations use
+              `bacnet` against the station's BACnet schedule export, which
+              still produces native special events in Workbench.
     rest      Generic REST driver you describe in config.yaml — the escape
               hatch for a vendor API when BACnet is not available.
     preview   Writes nothing; logs and optionally exports CSV. Useful for

@@ -115,8 +115,8 @@
 #             "12001:5@2001:0x21"    a routed MS/TP device (network 2001, MAC 0x21)
 #             A pin applies to the whole device: pin it once and every target
 #             on that device uses it; two different pins are an error.
-#   niagara   "Bldg/Rm101_Occ"       ORD relative to schedule_base_path
-#             "slot:/Other/Sched"    an absolute ORD is used as-is
+#             "2001:1"               a Niagara station's BACnet-exported schedule
+#   niagara   "Bldg/Rm101_Occ"       (deprecated driver) ORD under schedule_base_path
 #   rest      whatever your configured path template expects
 #
 # Pre-1.0 maps used `niagara_path:` instead of `target:`. That still works —
@@ -150,11 +150,13 @@ buildings:
     pre_condition_minutes: 60      # old building, slow to come up
     post_buffer_minutes: 30
 
-  # A building still on the Niagara supervisor, not yet cut over to BACnet.
+  # ── A Tridium Niagara station ──
+  # Driven through the station's BACnet schedule export: the target is the
+  # station's device instance and the exported schedule's instance.
   - id: student_center
     name: "Student Center"
-    system: supervisor
-    target: "StudentCenter/Building_Occ"
+    system: niagara_station
+    target: "2001:1"
     space_id: 9001                 # the atrium is itself bookable in 25Live
 
 
@@ -221,11 +223,11 @@ spaces:
     building: heritage_hall
     note: "Ballroom — check whether AHU-1 can be split before adding a target"
 
-  # ── A room on the Niagara supervisor, addressed by ORD. ──
+  # ── A room on the Niagara station: another exported booking schedule. ──
   - space_id: 9010
     space_name: "Student Center Ballroom"
     building: student_center
-    target: "StudentCenter/Ballroom_Occ"
+    target: "2001:2"
 
   # ── Commissioning: same map, pointed at the `preview` system so it only
   #    logs until you are ready to cut it over. ──

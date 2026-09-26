@@ -217,3 +217,22 @@ def test_value_encoding_matches_the_schedule_type():
     assert isinstance(encode_value("unsigned", False, 1, 2), Unsigned)
     assert value_kind(Enumerated(0)) == "enumerated"
     assert value_kind(Boolean(False)) == "boolean"
+
+
+def test_niagara_driver_is_deprecated_but_still_loads():
+    """Niagara stations are driven through their BACnet schedule export; the
+    REST driver keeps working for existing sites, with a warning saying so."""
+    cfg, warnings = _load("systems:\n  station:\n    driver: niagara\n"
+                          "    host: n4.example.edu\n")
+    assert cfg["systems"]["station"]["driver"] == "niagara"
+    assert any("niagara driver is deprecated" in w and "schedule export" in w
+               for w in warnings), warnings
+    # A pre-1.0 top-level `niagara:` block is promoted to the same driver, so
+    # those sites see the warning too.
+    _cfg, legacy = _load("niagara:\n  host: n4.example.edu\n")
+    assert any("deprecated" in w for w in legacy), legacy
+
+
+def test_bacnet_has_no_deprecation_warning():
+    _cfg, warnings = _load("systems:\n  station:\n    driver: bacnet\n")
+    assert warnings == [], warnings

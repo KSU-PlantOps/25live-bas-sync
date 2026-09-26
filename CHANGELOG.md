@@ -100,9 +100,15 @@ A hardening release from a full review of the code, deployment and docs, plus
   always worked, although the docs said hand-entered exceptions would survive.
   Give the sync dedicated booking schedules, combined with the normal
   schedule in the controller.
-- The `niagara` driver verifies TLS by default, and the docs are explicit that
-  it needs a REST service stock Niagara 4 doesn't ship; the BACnet schedule
-  export is the recommended Niagara path.
+- **Niagara stations are driven through their BACnet schedule export** with
+  the `bacnet` driver: the station applies the writes as native special
+  events, visible in Workbench, with nothing extra on the station. The README
+  has a step-by-step setup and a migration guide, and the examples show a
+  station this way.
+- **The `niagara` driver is deprecated.** It needs a REST service stock
+  Niagara 4 doesn't ship (and oBIX, the standard web API, has no stock way to
+  create special events). It keeps working for existing deployments, logs a
+  deprecation warning, and now verifies TLS by default.
 - `rest` driver: `{target}` is no longer percent-encoded inside JSON payloads,
   and a payload value that is exactly `"{value}"`, `"{index}"` or
   `"{count}"` is sent as a JSON boolean/number.

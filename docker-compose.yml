@@ -19,7 +19,7 @@ services:
 
     # Required by the bacnet driver: it binds a real NIC address and needs
     # broadcast for Who-Is, neither of which works on the default bridge.
-    # Comment this out if every system you use is niagara or rest.
+    # Comment this out if every system you use is rest.
     network_mode: host
 
     # Passes through every variable in .env — including per-system
