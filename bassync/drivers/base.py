@@ -12,12 +12,26 @@ once.
 Everything above this line (25Live, buffers, merging, building roll-ups) is
 vendor-neutral. Everything vendor-specific lives in a driver.
 
+Ownership
+---------
+The sync OWNS whatever it writes to. Each target should be a schedule (or
+exception list) dedicated to bookings, combined with the building's normal
+occupancy logic inside the controller — not the same object operators edit by
+hand. A driver therefore replaces the target's booking overlay wholesale on
+every run, which is what makes a run idempotent and a cancelled booking
+actually disappear.
+
 Writing a new driver
 --------------------
 1. Subclass `ScheduleWriter`, set `name`, implement `write_schedule`.
-2. Override `health_check` / `target_exists` so `--validate` can pre-flight it.
-3. Register it in `bassync/drivers/__init__.py`.
-4. Document the `target` string syntax in the module docstring — that string is
+2. List the settings it reads in `config_keys` (anything else under that
+   system in config.yaml is reported as a probable typo), and check their
+   values in `check_config`.
+3. Override `health_check` / `target_exists` so `--validate` can pre-flight it.
+4. Override `normalize_targets` if two different strings can name the same
+   schedule, so they are written once instead of overwriting each other.
+5. Register it in `bassync/drivers/__init__.py`.
+6. Document the `target` string syntax in the module docstring — that string is
    what operators type into space_mapping.yaml.
 """
 
@@ -41,6 +55,32 @@ class ScheduleWriter(ABC):
 
     #: One-line description shown by `--list-drivers`.
     description: str = ""
+
+    #: Settings this driver reads from its `systems:` entry, besides the ones
+    #: every driver accepts (driver, timezone, password, note).
+    config_keys: tuple = ()
+
+    # ── configuration ────────────────────────────────────────────────────────
+
+    @classmethod
+    def check_config(cls, sys_cfg: dict) -> list:
+        """Problems with this system's settings, as messages. Called when the
+        config is loaded, so a bad value fails the run up front instead of
+        half-way through the writes."""
+        return []
+
+    @classmethod
+    def normalize_targets(cls, sys_cfg: dict, targets: list) -> tuple:
+        """
+        Canonical form of every target, and the ones that are unusable.
+
+        Returns ({original: canonical}, {original: error message}). Two room
+        map entries whose targets canonicalise to the same string are the
+        same schedule; the sync unions their bookings and writes it once.
+        Without this, `12001:5` and `12001:5@10.4.2.30` would be written
+        separately and the second write would erase the first.
+        """
+        return {t: str(t).strip() for t in targets}, {}
 
     def __init__(self, system_name: str, cfg: dict, tz: ZoneInfo,
                  retry: Optional[dict] = None):
@@ -84,6 +124,15 @@ class ScheduleWriter(ABC):
         """
         return True, "not checked (driver cannot verify targets)"
 
+    def inspect_target(self, target: str) -> tuple:
+        """
+        (exists, detail, notes) for --validate. `notes` are warnings that do
+        not fail validation — e.g. entries on the target that a live run is
+        about to replace. The default just wraps target_exists().
+        """
+        exists, detail = self.target_exists(target)
+        return exists, detail, []
+
     # ── writing ──────────────────────────────────────────────────────────────
 
     @abstractmethod
@@ -112,9 +161,16 @@ class ScheduleWriter(ABC):
 
     # ── optional extras ──────────────────────────────────────────────────────
 
+    @property
+    def has_heartbeat(self) -> bool:
+        """True when this system is configured to write a heartbeat."""
+        return False
+
     def write_heartbeat(self, stamp) -> None:
         """Stamp a 'last successful sync' point so the BAS itself can alarm if
-        the nightly job stops running. Optional; the default does nothing."""
+        the nightly job stops running. Optional; the default does nothing.
+        Raises DriverError on failure (reported as a warning, not a failed
+        run)."""
 
     @staticmethod
     def split_at_midnight(windows: list) -> list:

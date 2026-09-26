@@ -2,11 +2,19 @@
 # Copyright (C) 2026 Ryan Bibby and contributors
 # Licensed under the GNU General Public License v3.0 or later. See LICENSE.
 """
-Tridium Niagara (N4) driver — writes BooleanSchedule SpecialEvents over REST.
+Tridium Niagara (N4) driver — writes BooleanSchedule SpecialEvents through a
+REST service on the station.
 
-Use this instead of the `bacnet` driver when you want the bookings to appear as
-real Niagara special events that operators can see and edit in Workbench, or
-when the station's schedules are not exported to BACnet.
+Stock Niagara 4 does not ship this API: its standard web API, oBIX, reads and
+writes point values and invokes point actions, but offers no way we have found
+to create schedule special events. So this driver needs a station with such a
+service. For most stations the recommended path is the `bacnet` driver against
+the station's BACnet Schedule Export — the station turns those writes into
+native special events, visible in Workbench.
+
+Like every driver, it owns its targets: each run deletes the schedule's special
+events and writes this run's bookings, so point it at dedicated booking
+schedules, not ones operators put holidays on.
 
 Target syntax
 -------------
@@ -36,8 +44,8 @@ from urllib.parse import quote
 
 import requests
 
-from .base import DriverError, ScheduleWriter
 from ..httputil import mount_retries
+from .base import DriverError, ScheduleWriter
 
 # Value pushed for an occupied window (True = Occupied on a BooleanSchedule).
 OCCUPIED_VALUE = True
@@ -53,7 +61,27 @@ class NiagaraScheduleWriter(ScheduleWriter):
     """Writes SpecialEvents to Niagara N4 BooleanSchedules via REST."""
 
     name = "niagara"
-    description = "Tridium Niagara N4 — BooleanSchedule SpecialEvents over REST."
+    description = ("Tridium Niagara N4 — BooleanSchedule special events via a "
+                   "station REST service (not in stock N4; see README).")
+    config_keys = ("host", "port", "https", "username", "verify_tls",
+                   "schedule_base_path", "heartbeat_path", "rest_base",
+                   "special_event_type", "event_priority", "ord_style")
+
+    @classmethod
+    def check_config(cls, sys_cfg: dict) -> list:
+        problems = []
+        port = sys_cfg.get("port", 443)
+        try:
+            if isinstance(port, bool) or not 1 <= int(port) <= 65535:
+                raise ValueError
+        except (TypeError, ValueError):
+            problems.append(f"port must be 1-65535, got {port!r}.")
+        try:
+            if not 1 <= int(sys_cfg.get("event_priority", 16)) <= 16:
+                raise ValueError
+        except (TypeError, ValueError):
+            problems.append("event_priority must be 1-16.")
+        return problems
 
     def __init__(self, system_name: str, cfg: dict, tz, retry=None):
         super().__init__(system_name, cfg, tz, retry)
@@ -77,7 +105,9 @@ class NiagaraScheduleWriter(ScheduleWriter):
         # Retry only safe/idempotent verbs. POST writes are excluded so a retry
         # can never create duplicate special events.
         mount_retries(self.session, retry, allowed_methods=["GET", "DELETE"])
-        self.session.verify = cfg.get("verify_tls", False)
+        # Verify by default. A station with a self-signed certificate should
+        # point verify_tls at its CA bundle; `false` still works, loudly.
+        self.session.verify = cfg.get("verify_tls", True)
         if not self.session.verify:
             logging.warning(
                 "System '%s': Niagara TLS verification is DISABLED "
@@ -172,6 +202,10 @@ class NiagaraScheduleWriter(ScheduleWriter):
             raise DriverError(
                 f"Write failed {target}: HTTP {r.status_code} {r.text[:200]}")
 
+    @property
+    def has_heartbeat(self) -> bool:
+        return bool(self.heartbeat_path)
+
     def write_heartbeat(self, stamp: datetime) -> None:
         """Stamp a point so the station itself can alarm if the job stops."""
         if not self.heartbeat_path:
@@ -179,8 +213,10 @@ class NiagaraScheduleWriter(ScheduleWriter):
         endpoint = (f"{self.base}/{self._encode_ord(self.heartbeat_path)}"
                     "/out")
         try:
-            self.session.post(endpoint, json={"value": stamp.isoformat()},
-                              timeout=HTTP_TIMEOUT_HEALTH)
+            r = self.session.post(endpoint, json={"value": stamp.isoformat()},
+                                  timeout=HTTP_TIMEOUT_HEALTH)
         except requests.RequestException as exc:
-            logging.warning("Could not write heartbeat to %s: %s",
-                            self.heartbeat_path, exc)
+            raise DriverError(f"heartbeat {self.heartbeat_path}: {exc}") from exc
+        if r.status_code >= 400:
+            raise DriverError(f"heartbeat {self.heartbeat_path}: HTTP "
+                              f"{r.status_code} {r.text[:200]}")

@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "25live-bas-sync"
+description = "Drive building automation occupancy schedules from CollegeNET 25Live room bookings."
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+requires-python = ">=3.13"
+authors = [{ name = "Ryan Bibby and contributors" }]
+dynamic = ["version"]
+dependencies = [
+    "requests>=2.31,<3",
+    "python-dateutil>=2.8,<3",
+    "PyYAML>=6,<7",
+    "tzdata>=2024.1",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Home Automation",
+]
+
+[project.optional-dependencies]
+# The BACnet driver. Imported lazily, so HTTP-only sites can skip it.
+bacnet = ["bacpypes3>=0.0.98,<0.1"]
+
+[project.urls]
+Homepage = "https://github.com/KSU-PlantOps/25live-bas-sync"
+Changelog = "https://github.com/KSU-PlantOps/25live-bas-sync/blob/main/CHANGELOG.md"
+
+[project.scripts]
+bas-sync = "bassync.cli:main"
+
+[project.gui-scripts]
+bas-sync-editor = "bassync.editor:main"
+
+[tool.setuptools]
+packages = ["bassync", "bassync.drivers"]
+
+[tool.setuptools.dynamic]
+version = { attr = "bassync.__version__" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+extend-exclude = [".venv", "venv"]
+
+[tool.ruff.lint]
+# pyflakes + pycodestyle errors + import sorting + a few bug-catchers.
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",   # long lines are wrapped by hand for readability; not enforced
+    "B904",   # `raise ... from` is used where it adds information
+    "B027",   # driver hooks (connect/close/heartbeat) are optional no-ops by design
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011", "B017"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["bassync"]
+ignore_missing_imports = true
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
