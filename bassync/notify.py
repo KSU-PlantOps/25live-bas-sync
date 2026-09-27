@@ -282,7 +282,8 @@ def _validate_email_cfg(email_cfg: dict) -> Optional[str]:
         # Sending unauthenticated when a username was configured gets rejected
         # by most relays with an opaque 5xx. Say what is actually wrong.
         return (f"alerts.email.username is set but ${SMTP_PASSWORD_ENV} is not — "
-                "set it, or clear the username for an open relay")
+                "set it (in the environment, or the web UI's Alerts page), or "
+                "clear the username for an open relay")
     return None
 
 

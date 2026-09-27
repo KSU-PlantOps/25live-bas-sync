@@ -167,7 +167,7 @@ if it isn't on the controls network — with Docker and the compose plugin.
 ```bash
 git clone https://github.com/KSU-PlantOps/25live-bas-sync.git
 cd 25live-bas-sync
-cp .env.example .env        # set BAS_WEB_PASSWORD and BAS_25LIVE_PASSWORD
+cp .env.example .env        # set BAS_WEB_PASSWORD
 mkdir -p config             # your settings will live here
 docker compose up -d
 ```
@@ -183,9 +183,9 @@ follow *Getting started* on the status page:
 4. **Schedule** — nightly at 02:00 by default; add a midday time to pick up
    same-day bookings sooner.
 
-Passwords stay in `.env` (the web UI shows which ones are missing); after
-changing it, `docker compose up -d` restarts the container with the new
-values. The settings you make in the web UI are ordinary YAML files in
+Passwords can be set on the web UI (Connection and Alerts pages), or in `.env`
+— which wins — followed by `docker compose up -d` to restart with them. The web
+UI shows which are missing and where each one comes from, never the value. The settings you make in the web UI are ordinary YAML files in
 `./config`, so you can back them up, diff them, or keep them in git.
 
 To run a published release rather than build locally, delete `build: .` from
@@ -201,10 +201,12 @@ its exact tag, e.g. `:1.3.0rc1`).
 | **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
 | **Rooms · Buildings · Floors** | The room map, with search and sortable columns; add, edit, copy and delete. Renaming a building repoints its rooms and floors; deleting one takes its floors and won't leave rooms driving nothing. |
-| **Connection** | 25Live, BAS systems (add, remove, change driver), timezone and default system; which passwords are set. *Validate* per system. |
+| **Connection** | 25Live, BAS systems (add, remove, change driver), timezone and default system; the passwords, set or cleared here. *Validate* per system. |
+| **Alerts** | Email (SMTP server, security, account and password, recipients, full or summary report, CSV), webhooks (Slack, Teams, generic) and the dead-man's-switch pings; *Send a test*. |
 | **Defaults · Schedule** | The run-up/run-down/merge-gap/lookahead defaults, and when the sync runs. |
 | **Files** | The three YAML files as text, for anything the forms don't cover (alerts, email, safety limits); a zip of all three. |
 | **Logs** | The sync's and the service's logs. |
+| **Access** | Signing in with Microsoft Entra ID, and which Entra groups may sign in with which role. |
 
 Every sync and tool runs as the ordinary `bas-sync` command in a process of its
 own, one at a time, so the web UI can't do anything the command line couldn't —
@@ -213,11 +215,51 @@ same checks the nightly sync does and asks before saving anything it would
 reject; each save is atomic, keeps a `.bak`, and is refused if someone else
 changed the file since you opened the form.
 
+### Sign-in and roles
+
+Three roles, each including the one before:
+
+| Role | Can |
+|---|---|
+| **Basic** | See the status page and sync history; *Sync now* (every system). |
+| **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), sync one system, stop a job; add and edit rooms, buildings and floors. |
+| **Admin** | Everything: connection, systems and passwords, alerts, defaults, schedule, the files, access — and *Force*, which overrides the mass-clear safety check. |
+
+People sign in with **Microsoft Entra ID**, and their Entra groups decide the
+role; the **local password** (`BAS_WEB_PASSWORD`) signs in as Admin, to set
+that up and to get back in if it breaks. Without either, the web UI stays off
+and only the schedule runs.
+
+**Setting up Entra sign-in** (the Access page walks through it, with the exact
+redirect URI to use):
+
+1. In the Entra admin center, register an app — single tenant, redirect URI of
+   type *Web*: `https://<this server>/auth/callback`. Microsoft only redirects
+   to HTTPS, so the web UI needs HTTPS first (below).
+2. Give it a client secret, and add a **groups claim** (Token configuration →
+   Add groups claim → Security groups). Emit *Group ID* and enter groups by
+   object ID, or, for groups synced from on-premises AD, *sAMAccountName* and
+   enter them by name.
+3. On the Access page: the tenant ID, client ID and secret, then the groups —
+   for example `VPN_Role_PlantOps_BAS` → Basic, `BAS_Users` → Advanced,
+   `BAS_Admins` → Admin. Try it in a private window, then turn the local
+   password off if you like.
+
+Someone in several groups gets the highest of their roles. Entra lists nested
+memberships in the groups claim, so a group inside another counts for both —
+except with *Groups assigned to the application* (the option for very large
+directories), where only groups assigned to the app directly count. Changes on
+the Access page apply to people already signed in, and a refused sign-in shows
+there with the group values the token carried, so a mismatch between IDs and
+names is easy to spot. Access settings live in `config/web.yaml`; the client
+secret in the state folder (or `BAS_WEB_SSO_CLIENT_SECRET`). If SSO breaks with
+the local password off, set `local_password: true` in `web.yaml`.
+
 **Security.** It can start a sync that writes to building controllers, so:
 
-- **One password**, `BAS_WEB_PASSWORD`. Without it the web UI stays off and only
-  the schedule runs. Five wrong tries lock the address out for five minutes;
-  changing the password signs everyone out. Sessions last 12 hours.
+- **Every page and action checks the role.** Five wrong local passwords lock
+  the address out for five minutes; changing the password, the SSO app or a
+  group's role applies to open sessions. Sessions last 12 hours.
 - **HTTPS**: set `BAS_WEB_TLS_CERT` and `BAS_WEB_TLS_KEY`, or put it behind a
   reverse proxy that terminates TLS and set `BAS_WEB_BEHIND_PROXY=1`. Only
   behind a proxy that does its own sign-in, `BAS_WEB_AUTH=none` turns the
@@ -227,8 +269,8 @@ changed the file since you opened the form.
   and firewall the port to the people who use it.
 - Forms carry CSRF tokens; a strict Content-Security-Policy allows no inline
   script and nothing from other sites, so it also works with no internet at all.
-- Every change and every job is logged with the address that made it, in the
-  service log (**Logs → Service**).
+- Every change and every job is logged with who made it and from where, in
+  the service log (**Logs → Service**).
 
 Outside Docker, `pip install ".[bacnet,web]"` and run `bas-sync-service` (with
 `BAS_WEB_PASSWORD` set) for the same service and web UI.
@@ -360,7 +402,10 @@ Every value is checked at startup. A wrong type or a misspelt timezone stops the
 run with one line naming the key; a key the sync doesn't recognise (usually a
 typo, like `notify_on_sucess`) is logged as a warning.
 
-**2. Secrets** — passwords are **never** stored in files:
+**2. Secrets** — passwords are **never** stored in the settings files. Set
+them in the environment — or, with the web UI, on its Connection and Alerts
+pages, which keep them in `state/secrets.json`, readable only by the service.
+A variable set in the environment always wins:
 
 ```bash
 # Linux / macOS
@@ -952,7 +997,8 @@ for validating behavior against your own 25Live instance and your own BAS.
 | `bassync/` | The sync engine (importable, unit-tested). |
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
 | `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI), its job runner, and the run history. |
-| `bassync/web/` | The web UI (Flask): pages, templates and static files. |
+| `bassync/web/` | The web UI (Flask): pages, templates and static files; `access.py` (roles) and `entra.py` (Microsoft sign-in). |
+| `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
 | `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
 | `bassync/editor.py` · `editor.py` | The desktop editor (Tkinter), and its launcher. |
 | `Edit-Rooms.bat` | Double-click launcher for the editor (Windows). |

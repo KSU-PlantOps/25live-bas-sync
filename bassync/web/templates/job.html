@@ -9,7 +9,7 @@
   {% elif job.exit_code == 0 %}<span class="dot ok"></span> Finished — exit 0
   {% else %}<span class="dot bad"></span> Finished — exit {{ job.exit_code }}{% endif %}
 </p>
-{% if job.running %}
+{% if job.running and can('stop_job') %}
   <form method="post" action="{{ url_for('job_stop', job_id=job.id) }}" class="inline"
         data-confirm="{{ 'Stop the sync part-way? Schedules already written stay written; run it again to bring everything into agreement.' if job.kind == 'sync' else 'Stop this job?' }}">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
@@ -31,7 +31,7 @@
     {% for s in discovered %}
       <tr><td>{{ s.space_id }}</td><td>{{ s.space_name }}</td>
         <td>{% if s.mapped %}<span class="hint">in the room map</span>
-            {% else %}<a href="{{ url_for('map_form', kind='rooms', space_id=s.space_id, space_name=s.space_name) }}">Add as a room</a>{% endif %}</td></tr>
+            {% elif can('edit_map') %}<a href="{{ url_for('map_form', kind='rooms', space_id=s.space_id, space_name=s.space_name) }}">Add as a room</a>{% endif %}</td></tr>
     {% endfor %}
     </tbody>
   </table>

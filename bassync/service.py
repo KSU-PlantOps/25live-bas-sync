@@ -72,6 +72,15 @@ class Paths:
     space_map: Path
     state_dir: Path
     log_file: Path
+    web: Optional[Path] = None             # web.yaml; default beside config.yaml
+
+    @property
+    def web_file(self) -> Path:
+        return self.web or self.config.parent / "web.yaml"
+
+    @property
+    def secrets_file(self) -> Path:
+        return self.state_dir / "secrets.json"
 
     @property
     def runs_dir(self) -> Path:
@@ -101,8 +110,9 @@ def resolve_paths() -> Paths:
             state_dir = Path(cfg["safety"]["state_file"]).parent
         if cfg.get("log_file"):
             log_file = Path(cfg["log_file"])
+    web = os.environ.get("BAS_WEB_CONFIG") or ""
     return Paths(config, defaults, Path(space_map or paths.space_map_file()),
-                 state_dir, log_file)
+                 state_dir, log_file, Path(web) if web else None)
 
 
 class Service:
@@ -281,9 +291,20 @@ def health(files: Paths) -> int:
     return 0
 
 
-def web_settings(environ) -> dict:
+def sso_ready(files: Paths, environ) -> bool:
+    """Whether Entra sign-in is switched on and complete (see bassync/web)."""
+    from . import secretstore
+    from .web import access
+    settings, error = access.load(files.web_file)
+    secret = secretstore.get("BAS_WEB_SSO_CLIENT_SECRET", files.secrets_file, environ)
+    return (not error and settings["sso"]["enabled"]
+            and not access.sso_problems(settings, bool(secret)))
+
+
+def web_settings(environ, sso: bool = False) -> dict:
     """What the web UI should do, from the environment. `enabled` is False
-    (with a reason) when there is no password and auth isn't turned off."""
+    (with a reason) when nobody could sign in: no password, no working
+    single sign-on, and auth not turned off."""
     auth = (environ.get("BAS_WEB_AUTH") or "password").strip().lower()
     password = environ.get("BAS_WEB_PASSWORD") or ""
     cert = environ.get("BAS_WEB_TLS_CERT") or ""
@@ -298,8 +319,9 @@ def web_settings(environ) -> dict:
            "enabled": True, "reason": ""}
     if auth not in ("password", "none"):
         out.update(enabled=False, reason=f"BAS_WEB_AUTH={auth!r} is not `password` or `none`")
-    elif auth == "password" and not password:
-        out.update(enabled=False, reason="BAS_WEB_PASSWORD is not set")
+    elif auth == "password" and not password and not sso:
+        out.update(enabled=False, reason="BAS_WEB_PASSWORD is not set, and single "
+                                         "sign-on isn't set up")
     elif not 0 < port < 65536:
         out.update(enabled=False, reason=f"BAS_WEB_PORT={environ.get('BAS_WEB_PORT')!r} is not a port")
     elif bool(cert) != bool(key):
@@ -366,7 +388,11 @@ def main(argv: Optional[list] = None) -> int:
     signal.signal(signal.SIGINT, _on_signal)
 
     server = None
-    settings = web_settings(os.environ)
+    try:
+        sso = sso_ready(files, os.environ)
+    except Exception:                              # noqa: BLE001 — flask missing, etc.
+        sso = False
+    settings = web_settings(os.environ, sso)
     if args.no_web:
         logging.info("[service] web UI off (--no-web)")
     elif not settings["enabled"]:
@@ -384,7 +410,7 @@ def main(argv: Optional[list] = None) -> int:
             logging.info("[service] web UI on %s://%s:%d%s", scheme, settings["host"],
                          settings["port"],
                          " — NO LOGIN (BAS_WEB_AUTH=none)" if settings["auth"] == "none" else "")
-            if settings["auth"] == "password" and len(settings["password"]) < 12:
+            if settings["password"] and len(settings["password"]) < 12:
                 logging.warning("[service] BAS_WEB_PASSWORD is shorter than 12 "
                                 "characters; anyone who reaches this port can "
                                 "start a sync")

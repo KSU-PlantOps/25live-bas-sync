@@ -40,6 +40,7 @@ retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', 
     settings it doesn't show: {{ error }} — <a href="{{ url_for('file_edit', name='config') }}">fix it here</a>.</div>
 {% endif %}
 {% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+{% if not can('admin') %}<p class="flash warn">Read-only: changing these needs the Admin role.</p>{% endif %}
 
 <section class="card">
   <h2>BAS systems</h2>
@@ -52,18 +53,21 @@ retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', 
   {% else %}
     <p class="hint">No BAS systems yet. Add one — most campuses need one <code>bacnet</code> system.</p>
   {% endif %}
+  {% if can('admin') %}
   <form method="post" action="{{ url_for('system_add') }}" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input name="name" placeholder="new system name, e.g. campus" pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" required aria-label="New system name">
     <select name="driver" aria-label="Driver">{% for d in drivers %}<option {{ 'selected' if d == 'bacnet' }}>{{ d }}</option>{% endfor %}</select>
     <button {{ 'disabled' if error }}>Add system</button>
   </form>
+  {% endif %}
 </section>
 
 <form method="post" class="card form" action="{{ url_for('connection_save') }}">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="version" value="{{ version }}">
   <input type="hidden" name="system" value="{{ selected }}">
+  <fieldset class="plain full-form" {{ 'disabled' if not can('admin') }}>
   {% for title, fields in sections %}
     <h2 class="full">{{ title }}</h2>
     {% if selected and title.startswith('BAS system') %}
@@ -95,15 +99,19 @@ retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', 
       <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
       <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label></div>
   {% endif %}
+  {% if can('admin') %}
   <div class="buttons full">
     <button class="primary" {{ 'disabled' if error }}>Save</button>
     <a class="button" href="{{ url_for('connection', system=selected) }}">Discard changes</a>
   </div>
+  {% endif %}
+  </fieldset>
 </form>
 
 {% if selected %}
 <section class="card">
   <h2>Test</h2>
+  {% if can('run_tools') %}
   <form method="post" action="{{ url_for('jobs') }}" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input type="hidden" name="kind" value="validate">
@@ -111,23 +119,22 @@ retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', 
     <button {{ 'disabled' if current_job }}>Validate {{ selected }}</button>
     <span class="hint">checks 25Live and this system — its reachability and every target — using the saved settings; writes nothing</span>
   </form>
+  {% endif %}
+  {% if can('admin') %}
   <form method="post" action="{{ url_for('system_delete', name=selected) }}" class="inline"
         data-confirm="Remove the system '{{ selected }}' from config.yaml?">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <button class="danger">Remove {{ selected }}</button>
   </form>
+  {% endif %}
 </section>
 {% endif %}
 
 <section class="card">
   <h2>Passwords</h2>
-  <table class="list">
-    {% for var, purpose, is_set in secrets %}
-      <tr><td><code>{{ var }}</code></td><td>{{ purpose }}</td>
-          <td>{% if is_set %}<span class="ok">set</span>{% else %}<span class="bad">not set</span>{% endif %}</td></tr>
-    {% endfor %}
-  </table>
-  <p class="hint">Set them in <code>.env</code> next to docker-compose.yml, then <code>docker compose up -d</code> to restart
-  with them. They are never shown or stored here.</p>
+  {% include "_passwords.html" %}
+  <p class="hint">Set one here, and it is stored in the service's state folder, readable only by the service — never in
+  the settings files, and never shown again. One set in <code>.env</code> (or the container's environment) wins, and
+  can only be changed there.</p>
 </section>
 {% endblock %}

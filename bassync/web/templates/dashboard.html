@@ -5,6 +5,7 @@
 <h1>Status</h1>
 
 {# ── things that need attention ── #}
+{% if can('view_all') %}
 {% if not health.writable %}
   <div class="flash error">The settings folder <code>{{ paths.config.parent }}</code> isn't writable
     by the service, so changes made here can't be saved. In Docker, see "Config folder" in the README.</div>
@@ -27,7 +28,7 @@
   </div>
 {% endif %}
 
-{% if not health.config_exists or not health.counts.systems or not health.counts.rooms %}
+{% if can('admin') and (not health.config_exists or not health.counts.systems or not health.counts.rooms) %}
 <section class="card">
   <h2>Getting started</h2>
   <ol class="steps">
@@ -42,6 +43,8 @@
   </ol>
 </section>
 {% endif %}
+
+{% endif %}{# view_all: things that need attention #}
 
 {# ── at a glance ── #}
 <div class="grid">
@@ -66,7 +69,7 @@
     {% endif %}
     {% if service.pending_since %}<p class="hint">A sync is due and will start when the running job finishes.</p>{% endif %}
     {% if service.schedule.error %}<p class="bad">{{ service.schedule.error }}</p>{% endif %}
-    <p><a href="{{ url_for('schedule') }}">Change the schedule</a></p>
+    {% if can('view_all') %}<p><a href="{{ url_for('schedule') }}">{{ 'Change' if can('admin') else 'See' }} the schedule</a></p>{% endif %}
   </section>
   <section class="card">
     <h2>Room map</h2>
@@ -92,16 +95,19 @@
     <form method="post" action="{{ url_for('jobs') }}" class="inline" data-confirm="Sync now? This writes schedules to the BAS.">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <input type="hidden" name="kind" value="sync">
-      {% if systems | length > 1 %}
+      {% if systems | length > 1 and can('run_tools') %}
         <select name="system" aria-label="Limit to one system">
           <option value="">All systems</option>
           {% for s in systems %}<option>{{ s }}</option>{% endfor %}
         </select>
       {% endif %}
+      {% if can('force') %}
       <label class="check" title="Override the mass-clear safety check — for a semester break, when a big drop in bookings is real">
         <input type="checkbox" name="force" value="1" data-confirm-checked="Force overrides the mass-clear safety check. Only do this when a big drop in bookings is expected (a break). Continue?"> Force</label>
+      {% endif %}
       <button class="primary" {{ 'disabled' if current_job }}>Sync now</button>
     </form>
+    {% if can('run_tools') %}
     {% for kind, label, hint in [('dry-run', 'Dry run', 'fetch and build; writes nothing'),
                                 ('validate', 'Validate', 'checks config, 25Live, every BAS and target; writes nothing'),
                                 ('test-alert', 'Test alert', 'sends a sample report to every alert channel')] %}
@@ -117,6 +123,7 @@
       <button title="lists 25Live spaces with bookings, to add as rooms" {{ 'disabled' if current_job }}>Discover spaces</button>
       <label class="check">next <input type="number" name="days" value="30" min="1" max="366" class="tiny"> days</label>
     </form>
+    {% endif %}
   </div>
 </section>
 
@@ -133,6 +140,7 @@
       </table>
     {% else %}<p class="hint">None yet.</p>{% endif %}
   </section>
+  {% if can('view_all') %}
   <section class="card">
     <h2>Recent jobs <a class="more" href="{{ url_for('jobs') }}">all</a></h2>
     {% if jobs %}
@@ -145,9 +153,10 @@
       </table>
     {% else %}<p class="hint">None yet.</p>{% endif %}
   </section>
+  {% endif %}
 </div>
 
-{% if health.config_warnings or health.map_warnings %}
+{% if can('view_all') and (health.config_warnings or health.map_warnings) %}
 <details class="card">
   <summary>{{ (health.config_warnings | length) + (health.map_warnings | length) }} warning(s) worth a look</summary>
   <ul>{% for w in health.config_warnings + health.map_warnings %}<li>{{ w }}</li>{% endfor %}</ul>

@@ -8,15 +8,25 @@
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
 </head>
 <body class="login">
-  <form method="post" class="card narrow">
+  <form method="post" class="card narrow" action="{{ url_for('login') }}">
     <h1>25Live <span aria-hidden="true">→</span> BAS sync</h1>
     {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
-    <label>Password
-      <input type="password" name="password" autocomplete="current-password" autofocus required>
-    </label>
-    <input type="hidden" name="next" value="{{ next }}">
-    <button class="primary">Sign in</button>
-    <p class="hint">The password is <code>BAS_WEB_PASSWORD</code> in the service's environment.</p>
+    {% if sso %}
+      <a class="button primary wide" href="{{ url_for('auth_login', next=next) }}">Sign in with Microsoft</a>
+    {% endif %}
+    {% if local %}
+      {% if sso %}<details class="local"><summary>Local password (administrators)</summary>{% endif %}
+      <label>Password
+        <input type="password" name="password" autocomplete="current-password" {{ 'autofocus' if not sso }} required>
+      </label>
+      <input type="hidden" name="next" value="{{ next }}">
+      <button class="{{ '' if sso else 'primary' }}">Sign in</button>
+      <p class="hint">The password is <code>BAS_WEB_PASSWORD</code> in the service's environment.</p>
+      {% if sso %}</details>{% endif %}
+    {% endif %}
+    {% if not sso and not local %}
+      <p>No way to sign in is set up. Set <code>BAS_WEB_PASSWORD</code> in the service's environment and restart it.</p>
+    {% endif %}
   </form>
 </body>
 </html>

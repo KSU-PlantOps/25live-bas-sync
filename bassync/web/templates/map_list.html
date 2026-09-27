@@ -22,7 +22,7 @@
 {% endif %}
 
 <div class="toolbar">
-  <a class="button primary" href="{{ url_for('map_form', kind=kind) }}">Add {{ spec.one }}</a>
+  {% if can('edit_map') %}<a class="button primary" href="{{ url_for('map_form', kind=kind) }}">Add {{ spec.one }}</a>{% endif %}
   <input type="search" placeholder="Filter" data-filter="rows" class="filter" aria-label="Filter">
   {% if campuses %}
     <select data-campus-filter="rows" aria-label="Campus">
@@ -47,9 +47,11 @@
             {% else %}{{ row.get(key, '') if row.get(key) is not none else '' }}{% endif %}</td>
       {% endfor %}
       <td class="row-actions">
+        {% if can('edit_map') %}
         <a href="{{ url_for('map_form', kind=kind, index=loop.index0) }}">Edit</a>
         <a href="{{ url_for('map_form', kind=kind, copy=loop.index0) }}">Copy</a>
         <a href="{{ url_for('map_delete', kind=kind, index=loop.index0) }}" class="danger">Delete</a>
+        {% endif %}
       </td>
     </tr>
   {% else %}

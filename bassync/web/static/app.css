@@ -77,8 +77,8 @@ input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); ou
 input.tiny { width: 5em; }
 form.inline { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 0 .6rem .4rem 0; }
 .form { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: .7rem 1rem; align-items: start; }
-.form > label { padding-top: .45rem; font-weight: 600; }
-.form .field input:not([type=checkbox]), .form .field select { width: min(100%, 520px); }
+.form > label, .form > fieldset > label { padding-top: .45rem; font-weight: 600; }
+.form .field input:not([type=checkbox]), .form .field select, .form .field textarea { width: min(100%, 520px); }
 .form .full, .form h2 { grid-column: 1 / -1; }
 .form h2 { margin: .8rem 0 0; padding-top: .6rem; border-top: 1px solid var(--border); }
 .form h2:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }
@@ -89,7 +89,7 @@ textarea.code { width: 100%; min-height: 60vh; line-height: 1.4; tab-size: 2; }
 body.login label { display: block; font-weight: 600; margin: .8rem 0; }
 body.login input { width: 100%; margin-top: .3rem; }
 body.login button { width: 100%; margin-top: .4rem; }
-@media (max-width: 720px) { .form { grid-template-columns: 1fr; } .form > label { padding-top: 0; } }
+@media (max-width: 720px) { .form { grid-template-columns: 1fr; } .form > label, .form > fieldset > label { padding-top: 0; } }
 
 /* tables */
 table.list { border-collapse: collapse; width: 100%; }
@@ -139,3 +139,10 @@ ol.steps li.done { color: var(--muted); text-decoration: line-through; }
   table.wide td, table.wide th { white-space: nowrap; }
   .grid.two { grid-template-columns: 1fr; }
 }
+
+/* roles: read-only forms, the sign-in page */
+fieldset.plain { border: 0; margin: 0; padding: 0; min-width: 0; }
+fieldset.full-form { display: contents; }
+.button.wide { display: block; text-align: center; margin: .8rem 0; }
+details.local { margin-top: .8rem; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }

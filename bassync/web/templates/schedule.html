@@ -9,8 +9,10 @@ timezone ({{ service.schedule.timezone }}).</p>
     times below. Remove it from <code>.env</code> / docker-compose.yml to manage the schedule here.</div>
 {% endif %}
 {% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+{% if not can('admin') %}<p class="flash warn">Read-only: changing these needs the Admin role.</p>{% endif %}
 <form method="post" class="card form">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <fieldset class="plain full-form" {{ 'disabled' if not can('admin') }}>
   <label for="s-enabled">Scheduled syncs</label>
   <div class="field"><label class="check"><input type="checkbox" id="s-enabled" name="enabled" value="1" {{ 'checked' if form.enabled }}> on</label>
     <small>off = only when someone presses Sync now</small></div>
@@ -19,7 +21,8 @@ timezone ({{ service.schedule.timezone }}).</p>
     <small>24-hour, comma-separated. A second, midday run picks up same-day bookings sooner.</small></div>
   <label for="s-start">On start</label>
   <div class="field"><label class="check"><input type="checkbox" id="s-start" name="run_on_start" value="1" {{ 'checked' if form.run_on_start }}> also sync when the service starts</label></div>
-  <div class="buttons full"><button class="primary">Save</button></div>
+  {% if can('admin') %}<div class="buttons full"><button class="primary">Save</button></div>{% endif %}
+  </fieldset>
 </form>
 <section class="card">
   <h2>Coming up</h2>

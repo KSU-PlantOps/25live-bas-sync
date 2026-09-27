@@ -13,18 +13,24 @@ things. It never talks to 25Live or a BAS itself: every sync and tool is a
 
 Security, since this can start a sync that writes to building controllers:
 
-- One password, BAS_WEB_PASSWORD, checked in constant time; five wrong
-  attempts from an address lock it out for five minutes. Changing the
-  password signs every session out.
+- Microsoft Entra ID single sign-on, with Entra groups mapped to three roles
+  (Basic, Advanced, Admin — see access.py), set up on the Access page; and
+  one local password, BAS_WEB_PASSWORD, which is Admin, for setting SSO up
+  and for getting back in when it breaks. The password is checked in
+  constant time, and five wrong attempts from an address lock it out for
+  five minutes. Changing it — or the SSO app, or a group's role — takes
+  effect on sessions already open.
+- Every page and every action checks the role.
 - Signed, HttpOnly, SameSite session cookies (Secure over HTTPS), which
   expire after 12 hours.
 - A CSRF token on every form and every state-changing request.
 - A strict Content-Security-Policy: no inline script, nothing loaded from
   anywhere but this server — which also means it works on a controls network
   with no internet.
-- Every change and every job is logged with the address that made it.
+- Every change and every job is logged with who made it, and from where.
 """
 
+import functools
 import hashlib
 import hmac
 import logging
@@ -40,12 +46,15 @@ from zoneinfo import ZoneInfo
 
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 
-from .. import __version__
+from .. import __version__, secretstore
+from . import access, entra
 
 SESSION_HOURS = 12
 LOGIN_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300
-_OPEN_ENDPOINTS = {"login", "static", "healthz"}
+_OPEN_ENDPOINTS = {"login", "static", "healthz", "auth_login", "auth_callback"}
+SSO_SECRET = "BAS_WEB_SSO_CLIENT_SECRET"
+SSO_PENDING_SECONDS = 600
 
 
 class LoginThrottle:
@@ -121,26 +130,61 @@ def create_app(service, settings: dict) -> Flask:
 
     auth_required = settings.get("auth", "password") != "none"
     password = settings.get("password") or ""
-    fingerprint = hmac.new(app.config["SECRET_KEY"], password.encode(),
-                           hashlib.sha256).hexdigest()[:32]
+    key = app.config["SECRET_KEY"]
+    password_fp = hmac.new(key, password.encode(), hashlib.sha256).hexdigest()[:32]
     throttle = LoginThrottle()
+    authority_override = os.environ.get("BAS_WEB_SSO_AUTHORITY", "")
     app.extensions["bassync"] = {"service": service, "settings": settings,
-                                 "write_lock": threading.Lock()}
+                                 "write_lock": threading.Lock(), "last_refusal": None}
+
+    def sso_fp(conf: dict) -> str:
+        """Changes when the SSO app does, which signs its sessions out."""
+        text = f"{conf['sso']['tenant_id']}|{conf['sso']['client_id']}".lower()
+        return hmac.new(key, text.encode(), hashlib.sha256).hexdigest()[:32]
+
+    def sso_usable(conf: dict) -> bool:
+        return conf["sso"]["enabled"] and not access.sso_problems(conf, bool(sso_secret()))
+
+    def local_usable(conf: dict) -> bool:
+        return bool(password) and conf["local_password"]
 
     # ── request guards ───────────────────────────────────────────────────────
+
+    def _who() -> Optional[tuple]:
+        """(user, role) for this session, or None. The role is worked out
+        again on every request, so a changed password, SSO app or group role
+        applies to sessions already open."""
+        if not auth_required:
+            return {"name": "anyone", "via": "none"}, "admin"
+        if not session.get("auth"):
+            return None
+        conf = load_access()
+        via = session.get("via")
+        if via == "password":
+            if local_usable(conf) and hmac.compare_digest(str(session.get("fp", "")),
+                                                          password_fp):
+                return {"name": "local admin", "via": "password"}, "admin"
+            return None
+        if via == "sso" and sso_usable(conf) and hmac.compare_digest(
+                str(session.get("fp", "")), sso_fp(conf)):
+            role = access.role_for(session.get("groups"), conf)
+            if role:
+                return dict(session.get("user") or {}, via="sso"), role
+        return None
 
     @app.before_request
     def _guard():
         g.addr = request.remote_addr or "?"
+        g.user, g.role = {"name": "", "via": ""}, None
         if request.endpoint in _OPEN_ENDPOINTS:
             return None
-        if auth_required and not (session.get("auth")
-                                  and hmac.compare_digest(str(session.get("pw", "")),
-                                                          fingerprint)):
+        who = _who()
+        if who is None:
             session.clear()
             if request.method == "GET" and not request.path.startswith("/api/"):
                 return redirect(url_for("login", next=request.full_path.rstrip("?")))
             abort(401)
+        g.user, g.role = who
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -165,33 +209,95 @@ def create_app(service, settings: dict) -> Flask:
             response.headers["Strict-Transport-Security"] = "max-age=31536000"
         return response
 
-    # ── login ────────────────────────────────────────────────────────────────
+    def _signed_in(via: str, user: dict, fp: str, groups=()) -> None:
+        session.clear()
+        session.permanent = True
+        session.update(auth=True, via=via, user=user, fp=fp, groups=list(groups),
+                       csrf=secrets.token_urlsafe(32))
+
+    # ── signing in ───────────────────────────────────────────────────────────
 
     @app.route("/login", methods=["GET", "POST"])
     def login():
         if not auth_required:
             return redirect(url_for("dashboard"))
+        conf = load_access()
         target = _safe_next(request.values.get("next"))
-        error = ""
+        error = request.args.get("error", "") if request.method == "GET" else ""
         if request.method == "POST":
             wait = throttle.locked_for(g.addr)
-            if wait:
+            if not local_usable(conf):
+                error = "Sign in with Microsoft — the local password is turned off."
+            elif wait:
                 error = f"Too many wrong passwords. Try again in {wait // 60 + 1} minute(s)."
             elif hmac.compare_digest(request.form.get("password", "").encode(),
                                      password.encode()):
                 throttle.succeeded(g.addr)
-                session.clear()
-                session.permanent = True
-                session.update(auth=True, pw=fingerprint,
-                               csrf=secrets.token_urlsafe(32))
-                logging.info("[web] sign-in from %s", g.addr)
+                _signed_in("password", {"name": "local admin"}, password_fp)
+                logging.info("[web] local-password sign-in from %s", g.addr)
                 return redirect(target)
             else:
                 throttle.failed(g.addr)
                 logging.warning("[web] wrong password from %s", g.addr)
                 error = "That password isn't right."
-        return render_template("login.html", error=error, next=target), (
-            401 if error else 200)
+        return render_template("login.html", error=error, next=target,
+                               sso=sso_usable(conf), local=local_usable(conf)), (
+            401 if error and request.method == "POST" else 200)
+
+    @app.route("/auth/login")
+    def auth_login():
+        conf = load_access()
+        if not sso_usable(conf):
+            return redirect(url_for("login", error="Single sign-on isn't set up."))
+        pending = entra.new_request()
+        pending["next"] = _safe_next(request.args.get("next"))
+        session["sso_pending"] = pending
+        try:
+            return redirect(entra.authorize_url(conf, redirect_uri(conf), pending,
+                                                authority_override))
+        except entra.SsoError as exc:
+            return redirect(url_for("login", error=str(exc)))
+
+    @app.route("/auth/callback")
+    def auth_callback():
+        conf = load_access()
+        pending = session.pop("sso_pending", None)
+
+        def refuse(message: str, *log_args):
+            logging.warning("[web] SSO sign-in refused from %s: %s", g.addr,
+                            log_args[0] if log_args else message)
+            return redirect(url_for("login", error=message))
+
+        if not sso_usable(conf):
+            return refuse("Single sign-on isn't set up.")
+        if not pending or time.time() - pending.get("started", 0) > SSO_PENDING_SECONDS:
+            return refuse("That sign-in took too long or was already used. Try again.")
+        if request.args.get("error"):
+            detail = (request.args.get("error_description") or request.args["error"])
+            return refuse(f"Microsoft said: {detail.splitlines()[0][:300]}")
+        if not hmac.compare_digest(request.args.get("state", ""), pending["state"]):
+            return refuse("That sign-in didn't start here. Try again.")
+        try:
+            claims = entra.redeem(conf, sso_secret() or "", request.args.get("code", ""),
+                                  redirect_uri(conf), pending, authority_override)
+        except entra.SsoError as exc:
+            return refuse(str(exc))
+        user = entra.identity(claims)
+        groups = claims.get("groups") or []
+        role = access.role_for(groups, conf)
+        if role is None:
+            app.extensions["bassync"]["last_refusal"] = {
+                "when": datetime.now(timezone.utc).isoformat(), "user": user,
+                "groups": [str(x) for x in groups[:60]], "count": len(groups)}
+            return refuse("Your account isn't in a group that may use this. Ask "
+                          "an administrator to add one of your groups on the "
+                          "Access page.",
+                          f"{user['username'] or user['name']} is in none of the "
+                          f"configured groups ({len(groups)} group(s) in the token)")
+        _signed_in("sso", user, sso_fp(conf), access.matching(groups, conf))
+        logging.info("[web] SSO sign-in: %s (%s) as %s, from %s", user["name"],
+                     user["username"], role, g.addr)
+        return redirect(pending.get("next") or "/")
 
     @app.route("/logout", methods=["POST"])
     def logout():
@@ -210,6 +316,10 @@ def create_app(service, settings: dict) -> Flask:
             "app_version": __version__,
             "csrf_token": session.get("csrf", ""),
             "auth_required": auth_required,
+            "user": g.get("user") or {},
+            "role": g.get("role"),
+            "role_label": access.ROLE_LABELS.get(g.get("role") or "", ""),
+            "can": lambda capability: access.can(g.get("role"), capability),
             "current_job": service.jobs.current,
             "local_time": lambda value, fmt="%Y-%m-%d %H:%M": local_time(service, value, fmt),
             "relative": relative_time,
@@ -217,6 +327,7 @@ def create_app(service, settings: dict) -> Flask:
         }
 
     @app.errorhandler(400)
+    @app.errorhandler(403)
     @app.errorhandler(404)
     @app.errorhandler(413)
     def _error(exc):
@@ -236,9 +347,44 @@ def ctx() -> dict:
     return current_app.extensions["bassync"]
 
 
+def load_access() -> dict:
+    """web.yaml, read fresh (it's small) so a change applies at once."""
+    conf, _error = access.load(ctx()["service"].paths.web_file)
+    return conf
+
+
+def sso_secret() -> Optional[str]:
+    return secretstore.get(SSO_SECRET, ctx()["service"].paths.secrets_file)
+
+
+def redirect_uri(conf: dict) -> str:
+    """Where Entra sends the browser back: the Public URL if one is set, else
+    this request's own address. It must match the app registration exactly."""
+    base = conf["sso"]["public_url"].rstrip("/")
+    return f"{base}/auth/callback" if base else url_for("auth_callback", _external=True)
+
+
+def requires(view: str, change: Optional[str] = None):
+    """Refuse the request unless the role has `view` (and `change`, for a
+    POST). One decorator per route, so no page is left unchecked."""
+    def wrap(fn):
+        @functools.wraps(fn)
+        def inner(*args, **kwargs):
+            needed = change if (change and request.method == "POST") else view
+            if not access.can(g.get("role"), needed):
+                abort(403, f"Your role ({access.ROLE_LABELS.get(g.get('role') or '', 'none')}) "
+                           "can't do that.")
+            return fn(*args, **kwargs)
+        inner.required = (view, change)                    # type: ignore[attr-defined]
+        return inner
+    return wrap
+
+
 def audit(message: str, *args) -> None:
-    """Log a change with the address that made it."""
-    logging.info("[web] " + message + " (from %s)", *args, g.get("addr", "?"))
+    """Log a change with who made it, and from where."""
+    user = g.get("user") or {}
+    who = user.get("username") or user.get("name") or "?"
+    logging.info("[web] " + message + " (by %s, from %s)", *args, who, g.get("addr", "?"))
 
 
 def notice(message: str, kind: str = "ok") -> None:

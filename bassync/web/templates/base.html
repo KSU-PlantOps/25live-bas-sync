@@ -10,14 +10,16 @@
 </head>
 <body>
 {% set nav = [
-  ('dashboard', 'Status'), ('runs', 'History'), ('jobs', 'Jobs'),
-  ('map_list:rooms', 'Rooms'), ('map_list:buildings', 'Buildings'), ('map_list:floors', 'Floors'),
-  ('connection', 'Connection'), ('defaults', 'Defaults'), ('schedule', 'Schedule'),
-  ('files_list', 'Files'), ('logs', 'Logs')] %}
+  ('dashboard', 'Status', 'view_basic'), ('runs', 'History', 'view_basic'), ('jobs', 'Jobs', 'view_all'),
+  ('map_list:rooms', 'Rooms', 'view_all'), ('map_list:buildings', 'Buildings', 'view_all'),
+  ('map_list:floors', 'Floors', 'view_all'), ('connection', 'Connection', 'view_all'),
+  ('alerts', 'Alerts', 'view_all'), ('defaults', 'Defaults', 'view_all'),
+  ('schedule', 'Schedule', 'view_all'), ('files_list', 'Files', 'view_all'),
+  ('logs', 'Logs', 'view_all'), ('access_page', 'Access', 'admin')] %}
 <header class="top">
   <a class="brand" href="{{ url_for('dashboard') }}">25Live <span aria-hidden="true">→</span> BAS sync</a>
   <nav>
-    {% for key, label in nav %}
+    {% for key, label, capability in nav if can(capability) %}
       {% set endpoint, _, kind = key.partition(':') %}
       {% set href = url_for(endpoint, kind=kind) if kind else url_for(endpoint) %}
       {% set args = request.view_args or {} %}
@@ -28,10 +30,11 @@
     {% endfor %}
   </nav>
   <div class="who">
-    {% if current_job %}
+    {% if current_job and can('view_basic') %}
       <a class="pill running" href="{{ url_for('job', job_id=current_job.id) }}">{{ current_job.label }} running…</a>
     {% endif %}
     {% if auth_required %}
+      <span class="hint" title="{{ user.username or '' }}">{{ user.name }} · {{ role_label }}</span>
       <form method="post" action="{{ url_for('logout') }}">
         <input type="hidden" name="csrf" value="{{ csrf_token }}">
         <button class="link">Sign out</button>

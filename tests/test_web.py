@@ -9,76 +9,26 @@ pytest.importorskip("flask")
 
 from bassync import history, mapedit  # noqa: E402
 from bassync.report import RunReport  # noqa: E402
-from bassync.service import Paths, Service, web_settings  # noqa: E402
-from bassync.web import create_app  # noqa: E402
+from bassync.service import Paths, Service  # noqa: E402
 
 from .helpers import TZ, dt  # noqa: E402
 from .test_service import FakeJobs  # noqa: E402
-
-PASSWORD = "correct horse battery staple"
-CONFIG = {
-    "collegenet": {"instance": "demo", "username": "svc"},
-    "systems": {
-        "campus": {"driver": "bacnet", "local_address": "10.0.0.5/24"},
-        "west": {"driver": "rest", "base_url": "https://ebo.example.edu",
-                 "write": {"method": "PUT", "path": "/s/{target}"}},
-    },
-    "default_system": "campus",
-    "timezone": "America/New_York",
-}
-MAP = {
-    "buildings": [{"id": "SCI", "name": "Science", "target": "12001:5"},
-                  {"id": "ART", "system": "west", "target": "art/main"}],
-    "floors": [{"building": "SCI", "level": 1, "target": "12001:6"}],
-    "spaces": [{"space_id": 101, "space_name": "Lab", "building": "SCI", "floor": 1,
-                "target": "12001:7"},
-               {"space_id": 102, "building": "SCI"}],
-}
-
-
-@pytest.fixture
-def site(tmp_path):
-    (tmp_path / "config.yaml").write_text("# hand-written comment\n" + yaml.safe_dump(CONFIG),
-                                          encoding="utf-8")
-    (tmp_path / "space_mapping.yaml").write_text(yaml.safe_dump(MAP), encoding="utf-8")
-    files = Paths(tmp_path / "config.yaml", tmp_path / "defaults.yaml",
-                  tmp_path / "space_mapping.yaml", tmp_path / "state",
-                  tmp_path / "logs" / "25live_sync.log")
-    service = Service(files, jobs=FakeJobs(), environ={})
-    service.tick()
-    return service
-
-
-def app_for(service, **env):
-    env.setdefault("BAS_WEB_PASSWORD", PASSWORD)
-    app = create_app(service, web_settings(env))
-    app.config["TESTING"] = True
-    return app
+from .webhelpers import (  # noqa: E402
+    CONFIG,
+    MAP,
+    PASSWORD,
+    app_for,
+    csrf,
+    post,
+    signed_in_client,
+    the_map,
+    version,
+)
 
 
 @pytest.fixture
 def client(site):
-    c = app_for(site).test_client()
-    r = c.post("/login", data={"password": PASSWORD, "next": "/"})
-    assert r.status_code == 302
-    return c
-
-
-def csrf(client) -> str:
-    with client.session_transaction() as s:
-        return s["csrf"]
-
-
-def post(client, url, data=None, **kw):
-    return client.post(url, data={"csrf": csrf(client), **(data or {})}, **kw)
-
-
-def version(client, url) -> str:
-    return re.search(r'name="version" value="([^"]*)"', client.get(url).text).group(1)
-
-
-def the_map(site):
-    return yaml.safe_load(site.paths.space_map.read_text())
+    return signed_in_client(site)
 
 
 # ── signing in ───────────────────────────────────────────────────────────────

@@ -718,7 +718,13 @@ def load_credentials(cfg: dict) -> None:
 
     A password written into config.yaml is honored but warned about — the file
     is gitignored, not encrypted, and tends to end up in a backup or a ticket.
+
+    Any of these the environment lacks are filled in first from the passwords
+    the web UI stores in state/secrets.json (bassync/secretstore.py); the
+    environment always wins.
     """
+    from . import secretstore
+    secretstore.fill_environ(secretstore.store_file(cfg))
     cn_pw = os.environ.get("BAS_25LIVE_PASSWORD")
     if cn_pw:
         cfg["collegenet"]["password"] = cn_pw

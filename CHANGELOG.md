@@ -19,12 +19,28 @@ unchanged. Read *Upgrading → From 1.2* in the README before switching.
   connections and BAS systems, defaults and the schedule, with the same checks
   as the desktop editor and the sync; the settings files as text; the logs.
   Discovered 25Live spaces can be added as rooms in one click.
-- Web UI security: one password (`BAS_WEB_PASSWORD`) with lockout after five
-  wrong tries, signed sessions that end when the password changes, CSRF
+- Web UI security: a local password (`BAS_WEB_PASSWORD`) with lockout after
+  five wrong tries, signed sessions that end when the password changes, CSRF
   tokens, a strict Content-Security-Policy, optional HTTPS
   (`BAS_WEB_TLS_CERT`/`_KEY`) or a trusted reverse proxy, and every change
   logged with the address that made it. Edits made at the same time by two
   people are caught rather than one silently undoing the other.
+- **Sign-in with Microsoft Entra ID and three roles** — Basic (status, history,
+  Sync now), Advanced (everything visible, the tools, editing rooms, buildings
+  and floors) and Admin (full control, and Force). Entra groups, by object ID
+  or name, are mapped to roles on the new Access page; the highest role wins,
+  changes apply to open sessions, and a refused sign-in shows the groups its
+  token carried. The local password stays as an Admin way in, and can be
+  turned off once SSO works. Every page and action checks the role, and the
+  audit log names the person.
+- **Alerts page**: email (SMTP server, security, account, recipients, report
+  style, CSV), webhooks and dead-man's-switch pings, with *Send a test*.
+- **Passwords from the web UI**: the 25Live, BAS-system, SMTP and SSO secrets
+  can be set on the web UI and are kept in `state/secrets.json`, readable only
+  by the service. The environment still wins, and every way of running the
+  sync reads the stored ones.
+- **Campus on buildings**: an optional label, shown and filterable on every
+  room-map list and counted on the status page; the sync ignores it.
 - **The service** (`bas-sync-service`, the image's `serve`): runs the sync on
   its schedule and serves the web UI. Every sync and tool is the ordinary
   command in a process of its own, one at a time.

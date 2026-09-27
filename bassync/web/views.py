@@ -21,9 +21,9 @@ from typing import Optional
 from zoneinfo import available_timezones
 
 import yaml
-from flask import Response, abort, redirect, render_template, request, send_file, url_for
+from flask import Response, abort, g, redirect, render_template, request, send_file, url_for
 
-from .. import history, mapedit
+from .. import history, mapedit, secretstore
 from ..config import (
     STATE_PARAM_STYLES,
     ConfigError,
@@ -34,8 +34,10 @@ from ..config import (
 )
 from ..drivers import driver_names
 from ..jobs import KINDS, JobBusy
+from ..mapedit import _dig
 from ..scheduler import next_run_any
-from . import audit, campus_zone, ctx, notice
+from . import SSO_SECRET as SSO_SECRET_NAME
+from . import access, audit, campus_zone, ctx, load_access, notice, redirect_uri, requires
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Reading the files
@@ -137,10 +139,15 @@ def _rooms_by_campus(buildings: list, rooms: list) -> list:
 
 
 def secret_status(raw: dict) -> list:
-    """(variable, what it's for, is it set) for each password the config needs.
-    Only whether it is set — never the value."""
-    out = [("BAS_25LIVE_PASSWORD", "25Live service account",
-            bool(os.environ.get("BAS_25LIVE_PASSWORD")))]
+    """(variable, what it's for, where it's set) for each password the config
+    needs: "environment", "stored" (set on this web UI), or None. Never the
+    value."""
+    store = files().secrets_file
+
+    def where(var):
+        return secretstore.source(var, store)
+
+    out = [("BAS_25LIVE_PASSWORD", "25Live service account", where("BAS_25LIVE_PASSWORD"))]
     for name, sys_cfg in sorted((raw.get("systems") or {}).items()):
         if not isinstance(sys_cfg, dict):
             continue
@@ -149,13 +156,11 @@ def secret_status(raw: dict) -> list:
         if driver in ("bacnet", "preview") or (auth or {}).get("mode") == "none":
             continue
         var = system_password_env(name)
-        legacy = os.environ.get("BAS_NIAGARA_PASSWORD") if driver == "niagara" else None
-        out.append((var, f"system '{name}' ({driver})",
-                    bool(os.environ.get(var) or legacy)))
+        found = where(var) or (where("BAS_NIAGARA_PASSWORD") if driver == "niagara" else None)
+        out.append((var, f"system '{name}' ({driver})", found))
     email = ((raw.get("alerts") or {}).get("email") or {})
     if isinstance(email, dict) and email.get("enabled") and email.get("username"):
-        out.append(("BAS_SMTP_PASSWORD", "alert email (SMTP)",
-                    bool(os.environ.get("BAS_SMTP_PASSWORD"))))
+        out.append(("BAS_SMTP_PASSWORD", "alert email (SMTP)", where("BAS_SMTP_PASSWORD")))
     return out
 
 
@@ -299,6 +304,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── dashboard ────────────────────────────────────────────────────────────
 
     @app.route("/")
+    @requires("view_basic")
     def dashboard():
         service = svc()
         raw, _err = load_config_raw()
@@ -312,6 +318,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             paths=files())
 
     @app.route("/api/status")
+    @requires("view_basic")
     def api_status():
         service = svc()
         job = service.jobs.current
@@ -326,6 +333,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── jobs: sync now and the tools ─────────────────────────────────────────
 
     @app.route("/jobs", methods=["GET", "POST"])
+    @requires("view_all", "sync")
     def jobs():
         service = svc()
         if request.method == "GET":
@@ -334,6 +342,14 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         kind = request.form.get("kind", "")
         if kind not in KINDS:
             abort(400, "Unknown job.")
+        needed = "sync"
+        if kind != "sync" or request.form.get("system"):
+            needed = "run_tools"
+        if kind == "sync" and request.form.get("force"):
+            needed = "force"
+        if not access.can(g.role, needed):
+            abort(403, "Your role can't start that. Basic users can sync every system; "
+                       "the tools need Advanced, and Force needs Admin.")
         args: list = []
         system = (request.form.get("system") or "").strip()
         if system and kind in ("sync", "dry-run", "validate"):
@@ -358,10 +374,11 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         except RuntimeError as exc:
             notice(str(exc), "error")
             return redirect(url_for("dashboard"))
-        audit("started %s %s", KINDS[kind][0], " ".join(args))
+        audit("started %s%s", KINDS[kind][0], "".join(f" {a}" for a in args))
         return redirect(url_for("job", job_id=job.id))
 
     @app.route("/jobs/<job_id>")
+    @requires("view_basic")
     def job(job_id):
         found = svc().jobs.get(job_id)
         if found is None:
@@ -372,6 +389,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return render_template("job.html", job=found, discovered=discovered)
 
     @app.route("/api/jobs/<job_id>")
+    @requires("view_basic")
     def api_job(job_id):
         found = svc().jobs.get(job_id)
         if found is None:
@@ -385,6 +403,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                 "exit_code": found.exit_code, "stopped_by": found.stopped_by}
 
     @app.route("/jobs/<job_id>/stop", methods=["POST"])
+    @requires("stop_job")
     def job_stop(job_id):
         if svc().jobs.stop(job_id, who=f"web ({request.remote_addr})"):
             notice("Stop requested; the job is finishing what it was doing.")
@@ -395,10 +414,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── run history ──────────────────────────────────────────────────────────
 
     @app.route("/runs")
+    @requires("view_basic")
     def runs():
         return render_template("runs.html", runs=history.list_runs(files().runs_dir, 200))
 
     @app.route("/runs/<run_id>")
+    @requires("view_basic")
     def run(run_id):
         record = history.load_run(files().runs_dir, run_id)
         if record is None:
@@ -406,6 +427,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return render_template("run.html", run=record)
 
     @app.route("/runs/<run_id>/report")
+    @requires("view_basic")
     def run_report(run_id):
         record = history.load_run(files().runs_dir, run_id)
         if record is None:
@@ -420,6 +442,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return response
 
     @app.route("/runs/<run_id>/schedules.csv")
+    @requires("view_basic")
     def run_csv(run_id):
         record = history.load_run(files().runs_dir, run_id)
         if record is None:
@@ -430,6 +453,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── room map ─────────────────────────────────────────────────────────────
 
     @app.route("/map/<kind>")
+    @requires("view_all")
     def map_list(kind):
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         buildings, floors, rooms, version, error = load_map()
@@ -441,6 +465,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
 
     @app.route("/map/<kind>/new")
     @app.route("/map/<kind>/<int:index>/edit")
+    @requires("edit_map")
     def map_form(kind, index=None):
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         buildings, floors, rooms, version, error = load_map()
@@ -468,6 +493,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             choices=form_choices((buildings, floors, rooms), raw))
 
     @app.route("/map/<kind>/save", methods=["POST"])
+    @requires("edit_map")
     def map_save(kind):
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         index = request.form.get("index", "")
@@ -534,6 +560,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("map_list", kind=kind))
 
     @app.route("/map/<kind>/<int:index>/delete", methods=["GET", "POST"])
+    @requires("edit_map")
     def map_delete(kind, index):
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         with ctx()["write_lock"]:
@@ -572,6 +599,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── settings: connection ─────────────────────────────────────────────────
 
     @app.route("/settings/connection")
+    @requires("view_all")
     def connection():
         raw, error = load_config_raw()
         systems = mapedit.config_systems(raw)
@@ -602,6 +630,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             version=version_of(files().config), secrets=secret_status(raw)), status
 
     @app.route("/settings/connection", methods=["POST"])
+    @requires("admin")
     def connection_save():
         system = request.form.get("system", "")
         driver = request.form.get("driver", "")
@@ -657,6 +686,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=system))
 
     @app.route("/settings/systems", methods=["POST"])
+    @requires("admin")
     def system_add():
         name = (request.form.get("name") or "").strip()
         driver = request.form.get("driver") or "bacnet"
@@ -691,6 +721,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=name))
 
     @app.route("/settings/systems/<name>/delete", methods=["POST"])
+    @requires("admin")
     def system_delete(name):
         with ctx()["write_lock"]:
             raw, error = load_config_raw()
@@ -724,6 +755,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── settings: defaults and schedule ──────────────────────────────────────
 
     @app.route("/settings/defaults", methods=["GET", "POST"])
+    @requires("view_all", "admin")
     def defaults():
         values = load_defaults()
         errors: list = []
@@ -756,6 +788,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                fields=mapedit.DEFAULTS_FIELDS, errors=errors)
 
     @app.route("/settings/schedule", methods=["GET", "POST"])
+    @requires("view_all", "admin")
     def schedule():
         service = svc()
         raw, error = load_config_raw()
@@ -809,6 +842,226 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                service=service, upcoming=upcoming,
                                sync_at=os.environ.get("SYNC_AT", ""))
 
+    # ── settings: passwords, alerts, access ──────────────────────────────────
+
+    @app.route("/settings/passwords", methods=["POST"])
+    @requires("admin")
+    def password_set():
+        name = request.form.get("name", "")
+        back = {"alerts": "alerts", "access": "access_page"}.get(
+            request.form.get("back") or "", "connection")
+        if not secretstore.allowed(name):
+            abort(400, "That isn't a password this page can set.")
+        value = "" if request.form.get("clear") else request.form.get("value", "")
+        if not value and not request.form.get("clear"):
+            notice("Type the password, then Set.", "error")
+            return redirect(url_for(back))
+        try:
+            secretstore.write(files().secrets_file, name, value)
+        except OSError as exc:
+            notice(f"Couldn't store it: {exc}", "error")
+            return redirect(url_for(back))
+        audit("%s %s", "cleared" if not value else "set", name)
+        where = " It is also set in the environment, which wins." if os.environ.get(name) else ""
+        notice(f"{'Cleared' if not value else 'Stored'} {name}.{where}")
+        return redirect(url_for(back))
+
+    ALERT_BOOLS = [("alerts", "enabled"), ("alerts", "notify_on_success"),
+                   ("alerts", "email", "enabled"), ("alerts", "email", "attach_csv")]
+    ALERT_TEXT = [("alerts", "email", "smtp_host"), ("alerts", "email", "username"),
+                  ("alerts", "email", "from_addr"), ("alerts", "email", "subject_prefix"),
+                  ("alerts", "webhook_url"), ("monitoring", "ping_url"),
+                  ("monitoring", "ping_fail_url")]
+    ALERT_CHOICES = {("alerts", "email", "security"): ("", "starttls", "ssl", "none"),
+                     ("alerts", "email", "report"): ("full", "summary"),
+                     ("alerts", "webhook_format"): ("slack", "teams", "generic")}
+    ALERT_TRISTATE = [("alerts", "email", "notify_on_success"),
+                      ("alerts", "webhook_notify_on_success")]
+
+    @app.route("/settings/alerts", methods=["GET", "POST"])
+    @requires("view_all", "admin")
+    def alerts():
+        raw, error = load_config_raw()
+        errors: list = []
+        confirm: list = []
+        if request.method == "POST" and not error:
+            new = copy.deepcopy(raw)
+            form = request.form
+            for path_t in ALERT_BOOLS:
+                mapedit._set_path(new, path_t, ".".join(path_t) in form)
+            for path_t in ALERT_TEXT:
+                value = (form.get(".".join(path_t)) or "").strip()
+                if value:
+                    mapedit._set_path(new, path_t, value)
+                else:
+                    mapedit._del_path(new, path_t)
+            for path_t, choices in ALERT_CHOICES.items():
+                value = form.get(".".join(path_t), "")
+                if value not in choices:
+                    errors.append(f"{path_t[-1]}: pick one of the choices.")
+                elif value:
+                    mapedit._set_path(new, path_t, value)
+                else:
+                    mapedit._del_path(new, path_t)
+            for path_t in ALERT_TRISTATE:
+                value = form.get(".".join(path_t), "")
+                if value in ("yes", "no"):
+                    mapedit._set_path(new, path_t, value == "yes")
+                else:
+                    mapedit._del_path(new, path_t)
+            port = (form.get("alerts.email.smtp_port") or "").strip()
+            if port:
+                if port.isdigit() and 1 <= int(port) <= 65535:
+                    mapedit._set_path(new, ("alerts", "email", "smtp_port"), int(port))
+                else:
+                    errors.append("SMTP port must be a number from 1 to 65535.")
+            else:
+                mapedit._del_path(new, ("alerts", "email", "smtp_port"))
+            to_addrs = [a for a in re.split(r"[,;\s]+", form.get("alerts.email.to_addrs", ""))
+                        if a]
+            if to_addrs:
+                mapedit._set_path(new, ("alerts", "email", "to_addrs"), to_addrs)
+            else:
+                mapedit._del_path(new, ("alerts", "email", "to_addrs"))
+            if not errors:
+                confirm = _config_change_problems(raw, new)
+                if not confirm or form.get("confirm"):
+                    if request.form.get("version") != version_of(files().config):
+                        errors.append("config.yaml changed since this page was opened. "
+                                      "Reload it and redo your change.")
+                    else:
+                        try:
+                            with ctx()["write_lock"]:
+                                mapedit.save_config(files().config, new)
+                        except OSError as exc:
+                            errors.append(_write_error(exc))
+                        else:
+                            audit("saved the alert and email settings")
+                            notice("Saved the alert settings. Use Send a test to check them.")
+                            return redirect(url_for("alerts"))
+            raw = new
+        elif error:
+            errors.append(f"config.yaml can't be read: {error}. Fix it under Files first.")
+        email = _dig(raw, ("alerts", "email")) or {}
+        return render_template(
+            "alerts.html", raw=raw, email=email if isinstance(email, dict) else {},
+            alerts=raw.get("alerts") if isinstance(raw.get("alerts"), dict) else {},
+            monitoring=raw.get("monitoring") if isinstance(raw.get("monitoring"), dict) else {},
+            errors=errors, confirm=confirm, version=version_of(files().config),
+            smtp_source=secretstore.source("BAS_SMTP_PASSWORD", files().secrets_file),
+            webhook_env=bool(os.environ.get("BAS_ALERT_WEBHOOK_URL"))), (
+            422 if errors or confirm else 200)
+
+    @app.route("/settings/access", methods=["GET", "POST"])
+    @requires("admin")
+    def access_page():
+        conf = load_access()
+        path = files().web_file
+        _conf, file_error = access.load(path)
+        errors: list = []
+        if request.method == "POST":
+            form = request.form
+            new = copy.deepcopy(conf)
+            new["sso"].update(
+                enabled="enabled" in form,
+                tenant_id=(form.get("tenant_id") or "").strip(),
+                client_id=(form.get("client_id") or "").strip(),
+                public_url=(form.get("public_url") or "").strip().rstrip("/"))
+            host = form.get("authority_host", "")
+            if host in access.AUTHORITY_HOSTS:
+                new["sso"]["authority_host"] = host
+            new["local_password"] = "local_password" in form
+            secret = form.get("client_secret", "")
+            has_secret = bool(secret or secretstore.get(SSO_SECRET_NAME, files().secrets_file))
+            if new["sso"]["public_url"] and not new["sso"]["public_url"].startswith("https://"):
+                errors.append("The public URL must start with https:// — Microsoft only "
+                              "sends sign-ins back to HTTPS addresses.")
+            for field, label in (("tenant_id", "tenant ID"), ("client_id", "client ID")):
+                if new["sso"][field] and not access.is_guid(new["sso"][field]):
+                    errors.append(f"The {label} should look like "
+                                  "00000000-0000-0000-0000-000000000000.")
+            if new["sso"]["enabled"]:
+                errors += access.sso_problems(new, has_secret)
+            problem = access.lockout_problem(
+                new, new["sso"]["enabled"] and not access.sso_problems(new, has_secret))
+            if problem:
+                errors.append(problem)
+            if not os.environ.get("BAS_WEB_PASSWORD") and not new["sso"]["enabled"]:
+                errors.append("Turning single sign-on off would leave no way to sign in: "
+                              "BAS_WEB_PASSWORD isn't set.")
+            if not errors:
+                try:
+                    with ctx()["write_lock"]:
+                        if secret:
+                            secretstore.write(files().secrets_file, SSO_SECRET_NAME, secret)
+                        access.save(path, new)
+                except OSError as exc:
+                    errors.append(_write_error(exc))
+                else:
+                    audit("saved the sign-in settings (SSO %s, local password %s)",
+                          "on" if new["sso"]["enabled"] else "off",
+                          "on" if new["local_password"] else "off")
+                    notice("Saved the sign-in settings.")
+                    return redirect(url_for("access_page"))
+            conf = new
+        secret_source = secretstore.source(SSO_SECRET_NAME, files().secrets_file)
+        return render_template(
+            "access.html", conf=conf, errors=errors, file_error=file_error,
+            roles=access.ROLES, role_labels=access.ROLE_LABELS,
+            hosts=access.AUTHORITY_HOSTS, secret_source=secret_source,
+            problems=access.sso_problems(conf, bool(secret_source)),
+            redirect=redirect_uri(conf), path=path,
+            local_set=bool(os.environ.get("BAS_WEB_PASSWORD")),
+            last_refusal=ctx().get("last_refusal")), 422 if errors else 200
+
+    @app.route("/settings/access/groups", methods=["POST"])
+    @requires("admin")
+    def access_group_add():
+        conf = load_access()
+        group = access.clean_group(request.form.get("group"))
+        role = request.form.get("role", "")
+        if not group or role not in access.ROLES:
+            notice("Give the group's object ID or name, and pick a role.", "error")
+            return redirect(url_for("access_page"))
+        if any(row["group"].lower() == group.lower() for row in conf["groups"]):
+            notice(f"{group} is already listed; remove it first to change its role.", "error")
+            return redirect(url_for("access_page"))
+        conf["groups"].append({"group": group, "role": role,
+                               "note": (request.form.get("note") or "").strip()})
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+            return redirect(url_for("access_page"))
+        audit("gave group %s the %s role", group, role)
+        notice(f"{group} may now sign in as {access.ROLE_LABELS[role]}.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/groups/<int:index>/delete", methods=["POST"])
+    @requires("admin")
+    def access_group_delete(index):
+        conf = load_access()
+        if not 0 <= index < len(conf["groups"]):
+            abort(404)
+        removed = conf["groups"].pop(index)
+        secret = secretstore.get(SSO_SECRET_NAME, files().secrets_file)
+        problem = access.lockout_problem(
+            conf, conf["sso"]["enabled"] and not access.sso_problems(conf, bool(secret)))
+        if problem:
+            notice(problem, "error")
+            return redirect(url_for("access_page"))
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+            return redirect(url_for("access_page"))
+        audit("removed group %s (%s)", removed["group"], removed["role"])
+        notice(f"Removed {removed['group']}. Anyone signed in only through it is "
+               "signed out.")
+        return redirect(url_for("access_page"))
+
     # ── files ────────────────────────────────────────────────────────────────
 
     FILES = {"config": "config.yaml", "defaults": "defaults.yaml",
@@ -819,6 +1072,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return {"config": p.config, "defaults": p.defaults, "map": p.space_map}[name]
 
     @app.route("/files")
+    @requires("view_all")
     def files_list():
         rows = []
         for name, title in FILES.items():
@@ -833,6 +1087,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return render_template("files.html", files=rows, health=health())
 
     @app.route("/files/<name>", methods=["GET", "POST"])
+    @requires("view_all", "admin")
     def file_edit(name):
         if name not in FILES:
             abort(404)
@@ -902,6 +1157,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             return [], [f"Room map: {e}" for e in errs]
 
     @app.route("/files/<name>/download")
+    @requires("view_all")
     def file_download(name):
         if name not in FILES:
             abort(404)
@@ -912,6 +1168,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                          download_name=FILES[name])
 
     @app.route("/files/backup.zip")
+    @requires("view_all")
     def files_backup():
         buf = io.BytesIO()
         with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -932,6 +1189,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return log if which == "sync" else log.parent / "service.log"
 
     @app.route("/logs")
+    @requires("view_all")
     def logs():
         which = request.args.get("which", "sync")
         if which not in ("sync", "service"):
@@ -945,6 +1203,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                path=_log_path(which))
 
     @app.route("/logs/<which>/download")
+    @requires("view_all")
     def log_download(which):
         if which not in ("sync", "service"):
             abort(404)
