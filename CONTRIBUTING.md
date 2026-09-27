@@ -80,5 +80,33 @@ python main.py --dry-run    # talks to 25Live only; contacts no BAS at all
 3. Describe what changed, why, and anything reviewers should verify against a
    live instance.
 
+## Releasing
+
+Releases are published by `.github/workflows/release.yml` when a new version
+reaches `main`; nobody tags or uploads anything by hand.
+
+1. In a pull request, set `__version__` in `bassync/__init__.py` to the new
+   version — `X.Y.Z`, or `X.Y.ZrcN` for a pre-release — and add its section at
+   the top of `CHANGELOG.md`:
+
+   ```markdown
+   ## [1.3.0] — 2026-10-15 — A short title for the release
+   ```
+
+   The title after the date is optional and becomes the release's name. The
+   section's text becomes the release notes. A test fails if the section is
+   missing; `python .github/scripts/release_info.py check` says so directly.
+2. That PR gets a dry run of the release: the wheel and both Docker images are
+   built and the notes are shown in the run summary, but nothing is published.
+3. Merge. The workflow re-runs CI on the merged commit, pushes the image to
+   `ghcr.io/ksu-plantops/25live-bas-sync` as `:X.Y.Z`, `:X.Y` and `:latest`,
+   then creates the `vX.Y.Z` tag and the GitHub release, with the wheel,
+   source archive and checksums attached.
+
+The tag is created last, so a failed run publishes no release: fix the cause,
+then re-run the workflow from the Actions tab. A pre-release is marked as one
+and gets only its own image tag, and a patch for an older line (1.1.1 after
+1.2.0) doesn't move `:latest`.
+
 By contributing, you agree your contributions are licensed under the project's
 GPL-3.0 license.

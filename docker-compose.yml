@@ -13,6 +13,8 @@
 
 services:
   sync:
+    # Builds from this checkout. To run a published release instead, delete
+    # `build: .` and set image: ghcr.io/ksu-plantops/25live-bas-sync:1.2
     build: .
     image: 25live-bas-sync
     container_name: 25live-bas-sync
