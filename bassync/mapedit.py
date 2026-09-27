@@ -33,6 +33,7 @@ FILE_HEADER = """\
 #   buildings:  each building's roll-up schedule, defined once.
 #   floors:     optional per-floor corridor schedules (building + level).
 #   spaces:     the rooms; each names its `building` and optionally its `floor`.
+#   campus:     optional, on a building — a label for people; the sync ignores it.
 #
 # Occupancy rolls up room -> floor -> building: a room being booked runs its own
 # zone, its floor's corridor, and its building's common areas.
@@ -50,7 +51,7 @@ FILE_HEADER = """\
 """
 
 # Field order we emit so the file reads cleanly and diffs stay stable.
-BUILDING_KEY_ORDER = ["id", "name", "system", "target",
+BUILDING_KEY_ORDER = ["id", "name", "campus", "system", "target",
                       "pre_condition_minutes", "post_buffer_minutes",
                       "merge_gap_minutes", "space_id", "note"]
 ROOM_KEY_ORDER = ["space_id", "space_name", "building", "floor", "system", "target",

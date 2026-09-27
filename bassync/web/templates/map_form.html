@@ -28,6 +28,9 @@
         {% else %}
           <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" placeholder="no systems yet — see Connection">
         {% endif %}
+      {% elif ftype == 'campus' %}
+        <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" list="campuses">
+        <datalist id="campuses">{% for c in choices.campuses %}<option value="{{ c }}">{% endfor %}</datalist>
       {% elif ftype == 'level' %}
         <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" inputmode="numeric" list="levels">
         <datalist id="levels">{% for l in choices.levels %}<option value="{{ l }}">{% endfor %}</datalist>

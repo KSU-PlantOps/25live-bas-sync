@@ -213,3 +213,15 @@ spaces:
 """
     sm = with_yaml(text, lambda p: load_space_map(p, base_config()))
     assert sm.destinations() == {dest("B/Rm1"), dest("B/Occ")}, sm.destinations()
+
+
+def test_campus_is_a_label_the_sync_accepts_quietly():
+    from bassync.config import load_config
+    from bassync.spacemap import load_space_map
+    from tests.helpers import with_yaml
+    cfg = load_config("/nonexistent/config.yaml")
+    cfg["systems"] = {"sys": {"driver": "preview"}}
+    sm = with_yaml("buildings:\n  - {id: A, campus: Marietta, target: 'A/Occ'}\n"
+                   "spaces:\n  - {space_id: 1, building: A}\n",
+                   lambda path: load_space_map(path, cfg))
+    assert sm.errors == [] and sm.warnings == []

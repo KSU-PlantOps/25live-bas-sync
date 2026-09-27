@@ -129,6 +129,9 @@ buildings:
   # Room-level controls, so each room gets its own schedule object.
   - id: science_hall
     name: "Science Hall"
+    campus: Main                   # optional label for people; the web UI
+                                   #   groups and filters by it, the sync
+                                   #   ignores it
     system: webctrl
     target: "12100:100"
 
@@ -137,6 +140,7 @@ buildings:
   # finest real control, so rooms here carry a `floor:` and no `target:`.
   - id: liberal_arts
     name: "Liberal Arts"
+    campus: Main
     system: webctrl
     target: "12200:100"
     pre_condition_minutes: 40      # bigger air handler, longer run-up
@@ -145,6 +149,7 @@ buildings:
   # One air handler for the whole building. Rooms drive the building only.
   - id: heritage_hall
     name: "Heritage Hall"
+    campus: North
     system: ebo_campus
     target: "12300:100@10.4.9.20"
     pre_condition_minutes: 60      # old building, slow to come up

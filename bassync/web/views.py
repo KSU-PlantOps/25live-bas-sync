@@ -116,11 +116,24 @@ def health() -> dict:
         "counts": {"rooms": len(rooms), "buildings": len(buildings),
                    "floors": len(floors),
                    "systems": len(mapedit.config_systems(raw))},
+        "by_campus": _rooms_by_campus(buildings, rooms),
         "writable": os.access(p.config.parent if p.config.parent.exists() else ".", os.W_OK),
     }
     _HEALTH_CACHE.clear()
     _HEALTH_CACHE[key] = result
     return result
+
+
+def _rooms_by_campus(buildings: list, rooms: list) -> list:
+    """[(campus, rooms)] when any building has a campus, else []."""
+    where = campus_of(buildings)
+    if not any(where.values()):
+        return []
+    counts: dict = {}
+    for r in rooms:
+        name = where.get(str(r.get("building")), "") or "(no campus)"
+        counts[name] = counts.get(name, 0) + 1
+    return sorted(counts.items(), key=lambda kv: kv[0].lower())
 
 
 def secret_status(raw: dict) -> list:
@@ -178,6 +191,7 @@ ROOM_FIELDS = [
 BUILDING_FIELDS = [
     ("id", "Building ID", "text", "required; rooms and floors refer to it"),
     ("name", "Name", "text", ""),
+    ("campus", "Campus", "campus", "optional; shown and filterable here, ignored by the sync"),
     ("system", "BAS system", "system", "blank = the default system"),
     ("target", "Target", "text", "required; the building's common-area schedule"),
     ("pre_condition_minutes", "Pre-condition minutes (its rooms)", "int", "blank = default"),
@@ -197,7 +211,8 @@ FLOOR_FIELDS = [
 KINDS_OF_ROW: dict[str, dict] = {
     "rooms": {"title": "Rooms", "one": "room", "slot": 2, "fields": ROOM_FIELDS,
               "columns": [("space_id", "Space ID"), ("space_name", "Name"),
-                          ("building", "Building"), ("floor", "Floor"),
+                          ("building", "Building"), ("_campus", "Campus"),
+                          ("floor", "Floor"),
                           ("system", "System"), ("target", "Target"),
                           ("pre_condition_minutes", "Pre"),
                           ("post_buffer_minutes", "Post"),
@@ -205,13 +220,15 @@ KINDS_OF_ROW: dict[str, dict] = {
               "key": "space_id"},
     "buildings": {"title": "Buildings", "one": "building", "slot": 0,
                   "fields": BUILDING_FIELDS,
-                  "columns": [("id", "ID"), ("name", "Name"), ("system", "System"),
+                  "columns": [("id", "ID"), ("name", "Name"), ("campus", "Campus"),
+                              ("system", "System"),
                               ("target", "Target"), ("pre_condition_minutes", "Pre"),
                               ("post_buffer_minutes", "Post"),
                               ("space_id", "Bookable ID")],
                   "key": "id"},
     "floors": {"title": "Floors", "one": "floor", "slot": 1, "fields": FLOOR_FIELDS,
-               "columns": [("building", "Building"), ("level", "Floor"),
+               "columns": [("building", "Building"), ("_campus", "Campus"),
+                           ("level", "Floor"),
                            ("system", "System"), ("target", "Corridor target")],
                "key": "level"},
 }
@@ -259,7 +276,18 @@ def form_choices(lists: tuple, raw: dict) -> dict:
                     key=lambda s: (0, int(s)) if s.lstrip("-").isdigit() else (1, s))
     return {"buildings": [str(b.get("id")) for b in buildings],
             "systems": sorted(mapedit.config_systems(raw)),
-            "levels": levels}
+            "levels": levels,
+            "campuses": campuses(buildings)}
+
+
+def campuses(buildings: list) -> list:
+    return sorted({str(b["campus"]).strip() for b in buildings
+                   if str(b.get("campus") or "").strip()}, key=str.lower)
+
+
+def campus_of(buildings: list) -> dict:
+    """building id -> its campus, for the rooms and floors that name it."""
+    return {str(b.get("id")): str(b.get("campus") or "").strip() for b in buildings}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -408,7 +436,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         rows = (buildings, floors, rooms)[spec["slot"]]
         return render_template("map_list.html", kind=kind, spec=spec, rows=rows,
                                version=version, error=error, health=health(),
-                               kinds=KINDS_OF_ROW)
+                               kinds=KINDS_OF_ROW, campus_of=campus_of(buildings),
+                               campuses=campuses(buildings))
 
     @app.route("/map/<kind>/new")
     @app.route("/map/<kind>/<int:index>/edit")

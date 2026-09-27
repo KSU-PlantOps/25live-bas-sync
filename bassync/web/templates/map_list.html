@@ -24,6 +24,12 @@
 <div class="toolbar">
   <a class="button primary" href="{{ url_for('map_form', kind=kind) }}">Add {{ spec.one }}</a>
   <input type="search" placeholder="Filter" data-filter="rows" class="filter" aria-label="Filter">
+  {% if campuses %}
+    <select data-campus-filter="rows" aria-label="Campus">
+      <option value="">All campuses</option>
+      {% for c in campuses %}<option>{{ c }}</option>{% endfor %}
+    </select>
+  {% endif %}
 </div>
 <table class="list wide" id="rows">
   <thead><tr>
@@ -32,9 +38,11 @@
   </tr></thead>
   <tbody>
   {% for row in rows %}
-    <tr>
+    {% set campus = row.get('campus') if kind == 'buildings' else campus_of.get(row.get('building') | string, '') %}
+    <tr data-campus="{{ campus or '' }}">
       {% for key, label in spec.columns %}
-        <td>{% if key == 'target' and row.get(key) %}<code>{{ row.get(key) }}</code>
+        <td>{% if key == '_campus' %}{{ campus or '' }}
+            {% elif key == 'target' and row.get(key) %}<code>{{ row.get(key) }}</code>
             {% elif key == 'system' and not row.get(key) %}<span class="hint">{{ 'default' if kind == 'buildings' else 'inherit' }}</span>
             {% else %}{{ row.get(key, '') if row.get(key) is not none else '' }}{% endif %}</td>
       {% endfor %}

@@ -445,3 +445,15 @@ def test_a_fresh_install_renders_and_is_set_up_from_the_browser(tmp_path):
     assert yaml.safe_load(files.space_map.read_text())["buildings"][0]["id"] == "SCI"
     service.tick()
     assert service.schedule.times == ["02:00"] and service.next_due is not None
+
+
+def test_campus_is_kept_shown_and_filterable(client, site):
+    v = version(client, "/map/buildings/0/edit")
+    post(client, "/map/buildings/save", {"version": v, "index": "0", "id": "SCI",
+                                         "name": "Science", "campus": "Kennesaw",
+                                         "target": "12001:5"})
+    assert the_map(site)["buildings"][0]["campus"] == "Kennesaw"
+    rooms = client.get("/map/rooms").text
+    assert 'data-campus="Kennesaw"' in rooms and "All campuses" in rooms
+    assert '<option value="Kennesaw">' in client.get("/map/buildings/new").text
+    assert "Kennesaw: 2 rooms" in client.get("/").text

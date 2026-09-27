@@ -759,6 +759,7 @@ def run_gui(map_path: Path) -> int:
                 self._new_tab("Buildings"), "buildings",
                 columns=[("id", "ID", 150),
                          ("name", "Name", 200),
+                         ("campus", "Campus", 110),
                          ("system", "System", 120),
                          ("target", "Target", 210),
                          ("pre_condition_minutes", "Pre", 50),
@@ -1161,6 +1162,7 @@ def run_gui(map_path: Path) -> int:
             shown = self._render_rows(
                 self.bld_tree, self.buildings,
                 lambda b: (b.get("id", ""), b.get("name", ""),
+                           b.get("campus", ""),
                            b.get("system", "(default)"),
                            b.get("target", ""),
                            b.get("pre_condition_minutes", ""),
@@ -1174,6 +1176,11 @@ def run_gui(map_path: Path) -> int:
         def _selected_index(tree):
             sel = tree.selection()
             return int(sel[0]) if sel else None
+
+        def _campus_choices(self) -> list[str]:
+            """Campuses already used, for the building form's editable dropdown."""
+            return sorted({str(b["campus"]) for b in self.buildings
+                           if str(b.get("campus") or "").strip()}, key=str.lower)
 
         def _building_choices(self) -> list[str]:
             return [NONE_LABEL] + [str(b.get("id")) for b in self.buildings]
@@ -1303,6 +1310,7 @@ def run_gui(map_path: Path) -> int:
             return [
                 ("id", "Building ID *", "text", None),
                 ("name", "Name", "text", None),
+                ("campus", "Campus (label only)", "text", self._campus_choices()),
                 self._system_field(DEFAULT_LABEL),
                 ("target", "Target *", "text", None),
                 ("pre_condition_minutes", "Pre-condition minutes (rooms)", "int", None),

@@ -14,16 +14,23 @@
     if (msg && !window.confirm(msg)) { ev.preventDefault(); }
   });
 
-  // Filter a table's rows as you type.
+  // Filter a table's rows as you type, and by campus where there is a picker.
   document.querySelectorAll("input[data-filter]").forEach(function (box) {
-    var table = document.getElementById(box.getAttribute("data-filter"));
+    var id = box.getAttribute("data-filter");
+    var table = document.getElementById(id);
     if (!table) return;
-    box.addEventListener("input", function () {
+    var campus = document.querySelector('select[data-campus-filter="' + id + '"]');
+    var apply = function () {
       var q = box.value.trim().toLowerCase();
+      var c = campus ? campus.value : "";
       table.querySelectorAll("tbody tr").forEach(function (tr) {
-        tr.hidden = q && tr.textContent.toLowerCase().indexOf(q) === -1;
+        var text = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
+        var place = !c || tr.getAttribute("data-campus") === c;
+        tr.hidden = !(text && place);
       });
-    });
+    };
+    box.addEventListener("input", apply);
+    if (campus) campus.addEventListener("change", apply);
   });
 
   // Sort by a column: numbers numerically, everything else as text.
