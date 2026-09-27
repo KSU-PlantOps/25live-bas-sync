@@ -15,6 +15,7 @@ import logging
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
 from typing import Optional
+from urllib.parse import urlencode
 from zoneinfo import ZoneInfo
 
 import requests
@@ -26,8 +27,8 @@ from .model import RawEvent
 # Events returned per API page.
 PAGE_SIZE = 100
 
-# Safety cap on pages per batch, in case an instance that ignores paging would
-# otherwise loop forever. 1000 pages * PAGE_SIZE = 100k events.
+# Safety cap on pages per batch. The no-progress check below is what actually
+# stops a server that ignores paging; this only bounds a pathological one.
 MAX_PAGES = 1000
 
 # How many space IDs to request per call, to keep the query string under
@@ -39,6 +40,10 @@ HTTP_TIMEOUT_HEALTH = 15
 
 R25_NS = {"r25": "http://www.collegenet.com/r25"}
 
+STATE_PARAM_STYLES = ("plus", "space", "comma", "repeat", "none")
+
+CANCELLED_RESERVATION_STATES = (99,)
+
 
 class CollegeNetError(RuntimeError):
     """25Live returned something the sync cannot use."""
@@ -48,7 +53,13 @@ class CollegeNetClient:
     def __init__(self, cfg: dict, tz: ZoneInfo, retry: Optional[dict] = None):
         self.base_url = (cfg.get("base_url") or "").rstrip("/")
         self.lookahead_days = int(cfg.get("lookahead_days", 7))
-        self.include_states = set(cfg.get("include_states") or [])
+        self.include_states = {int(s) for s in (cfg.get("include_states") or [])}
+        # 99 is Series25's cancelled-reservation state. An explicit empty
+        # list turns the filter off; leaving the key out keeps it on.
+        excluded = cfg.get("exclude_reservation_states")
+        self.exclude_reservation_states = {
+            int(s) for s in (CANCELLED_RESERVATION_STATES if excluded is None
+                             else excluded)}
         self.state_param_style = (cfg.get("state_param_style") or "plus").lower()
         self.tz = tz
         self.session = requests.Session()
@@ -61,32 +72,40 @@ class CollegeNetClient:
 
     # ── query construction ───────────────────────────────────────────────────
 
-    def _state_params(self) -> dict:
+    def _state_params(self, style: Optional[str] = None) -> dict:
         """
         The `state` filter, encoded the way this instance expects.
 
         Series25 deployments genuinely differ here, and getting it wrong is
         quiet: the API answers 200 with zero events and the sync would clear
-        every schedule. Hence both the configurable style and the mass-clear
-        rail in bassync/safety.py.
+        every schedule. Hence both the configurable style, the probe in
+        `--validate`, and the mass-clear rail in bassync/safety.py.
 
-          plus    state=2+4   (requests percent-encodes the '+', so the server
-                              sees a literal plus, not a space)
+          plus    state=2%2B4   a literal '+' reaches the server
+          space   state=2+4     space-joined, which is how `space_id` lists
+                                are sent; the server decodes it as "2 4"
           comma   state=2,4
           repeat  state=2&state=4
           none    omit the parameter and filter client-side on the returned
                   <state> element
-        """
-        if not self.include_states or self.state_param_style == "none":
-            return {}
-        states = sorted(self.include_states)
-        if self.state_param_style == "comma":
-            return {"state": ",".join(str(s) for s in states)}
-        if self.state_param_style == "repeat":
-            return {"state": [str(s) for s in states]}
-        return {"state": "+".join(str(s) for s in states)}
 
-    def _window_params(self, start: datetime, end: datetime) -> dict:
+        With a single state (the default, confirmed only) every style but
+        `none` produces the same request.
+        """
+        style = (style or self.state_param_style).lower()
+        if not self.include_states or style == "none":
+            return {}
+        states = [str(s) for s in sorted(self.include_states)]
+        if style == "comma":
+            return {"state": ",".join(states)}
+        if style == "repeat":
+            return {"state": states}
+        if style == "space":
+            return {"state": " ".join(states)}
+        return {"state": "+".join(states)}
+
+    @staticmethod
+    def _window_params(start: datetime, end: datetime) -> dict:
         return {
             "start_dt": start.strftime("%Y-%m-%dT00:00:00"),
             "end_dt": end.strftime("%Y-%m-%dT23:59:59"),
@@ -135,6 +154,10 @@ class CollegeNetClient:
                 f"25Live returned data that is not valid XML while {context}: "
                 f"{exc}. First 200 characters: {snippet!r}") from exc
 
+    def _today(self, now: Optional[datetime] = None) -> datetime:
+        now = now or datetime.now(self.tz)
+        return now.replace(hour=0, minute=0, second=0, microsecond=0)
+
     # ── connection check ─────────────────────────────────────────────────────
 
     def check_connection(self) -> tuple[bool, str]:
@@ -174,6 +197,34 @@ class CollegeNetClient:
                            f"SSO) or a proxy error page. First 150 chars: {snippet!r}")
         return True, f"HTTP {r.status_code} from {self.base_url}/events.xml"
 
+    def probe_state_styles(self, space_map) -> dict:
+        """
+        {style: assignments returned} for every `state` encoding, for
+        --validate to suggest a working one when the configured style returns
+        nothing. Errors are reported as strings in place of a count.
+        """
+        results: dict = {}
+        original = self.state_param_style
+        sent: dict = {}
+        try:
+            for style in STATE_PARAM_STYLES:
+                # With a single state most encodings are the same request;
+                # fetch each distinct one once. Compared as the encoded query
+                # string, which is what the server actually receives.
+                key = urlencode(sorted(self._state_params(style).items()), doseq=True)
+                if key in sent:
+                    results[style] = results[sent[key]]
+                    continue
+                sent[key] = style
+                self.state_param_style = style
+                try:
+                    results[style] = len(self.fetch_events(space_map))
+                except (requests.RequestException, CollegeNetError) as exc:
+                    results[style] = f"error: {exc}"
+        finally:
+            self.state_param_style = original
+        return results
+
     # ── discovery ────────────────────────────────────────────────────────────
 
     def discover_spaces(self, days: int) -> list:
@@ -185,29 +236,10 @@ class CollegeNetClient:
         with no upcoming events won't appear; widen `days` to surface more.
         """
         now = datetime.now(self.tz)
-        end = now + timedelta(days=days)
         seen: dict = {}
-        offset = 0
-        for _page in range(MAX_PAGES):
-            params = {
-                **self._window_params(now, end),
-                **self._state_params(),
-                "scope": "extended",
-                "page_size": PAGE_SIZE,
-                "page_offset": offset,
-            }
-            r = self.session.get(f"{self.base_url}/events.xml", params=params,
-                                 timeout=HTTP_TIMEOUT_FETCH)
-            r.raise_for_status()
-            root = self._parse_xml(r.text, "discovering spaces")
-            events = root.findall("r25:event", R25_NS)
+        for root in self._pages({}, now, now + timedelta(days=days),
+                                "discovering spaces"):
             self._collect_spaces_from(root, seen)
-            if len(events) < PAGE_SIZE:
-                break
-            offset += PAGE_SIZE
-        else:
-            logging.warning("Reached MAX_PAGES (%d) during discovery; the list "
-                            "may be incomplete.", MAX_PAGES)
         return [{"space_id": sid, "space_name": name}
                 for sid, name in sorted(seen.items(), key=lambda kv: kv[1].lower())]
 
@@ -221,33 +253,30 @@ class CollegeNetClient:
                         or self._child_text(elem, "formal_name") or sid)
                 into.setdefault(sid, name)
 
-    # ── the fetch ────────────────────────────────────────────────────────────
+    # ── paging ───────────────────────────────────────────────────────────────
 
-    def fetch_events(self, space_map) -> list:
+    def _pages(self, extra_params: dict, start: datetime, end: datetime,
+               context: str):
         """
-        All configured-state events for mapped spaces over the lookahead
-        window, as RawEvents with per-space buffers already applied.
+        Yield each page's XML root for one query, stopping safely whatever
+        the server does with the paging parameters.
+
+        Three behaviours are handled:
+          * paging honored — stop on the first short page;
+          * page_size ignored, everything returned at once (a page longer
+            than asked for) — stop, we already have it all;
+          * page_size honored but the offset ignored, so the same first page
+            comes back again — the results would be silently truncated, which
+            would leave most of the campus unscheduled. That is an error, not
+            something to paper over.
+        Without these checks the second case re-fetched the same page up to
+        MAX_PAGES times: 1,000 requests and 1,000 copies of every event.
         """
-        spaces = getattr(space_map, "spaces", space_map)
-        now = datetime.now(self.tz)
-        end = now + timedelta(days=self.lookahead_days)
-
-        raw_events: list = []
-        for batch in self._chunk(list(spaces.keys()), SPACE_IDS_PER_REQUEST):
-            raw_events.extend(self._fetch_batch(batch, now, end, spaces))
-
-        logging.info("Fetched %d space-assignment(s) from 25Live across %d space(s)",
-                     len(raw_events), len(spaces))
-        return raw_events
-
-    def _fetch_batch(self, space_ids: list, start: datetime, end: datetime,
-                     spaces: dict) -> list:
-        raw_events: list = []
         offset = 0
-
+        seen_ids: set = set()
         for _page in range(MAX_PAGES):
             params = {
-                "space_id": " ".join(space_ids),      # space-separated IDs
+                **extra_params,
                 **self._window_params(start, end),
                 **self._state_params(),
                 "scope": "extended",                  # include setup/pre-event times
@@ -257,29 +286,79 @@ class CollegeNetClient:
             resp = self.session.get(f"{self.base_url}/events.xml", params=params,
                                     timeout=HTTP_TIMEOUT_FETCH)
             resp.raise_for_status()
-
-            root = self._parse_xml(resp.text, "fetching events")
+            root = self._parse_xml(resp.text, context)
             events = root.findall("r25:event", R25_NS)
+            ids = {ev.findtext("r25:event_id", "", R25_NS) or f"#{i}"
+                   for i, ev in enumerate(events)}
+            if offset and events and not (ids - seen_ids):
+                raise CollegeNetError(
+                    f"25Live returned the same {len(events)} event(s) for page "
+                    f"offset {offset} as for an earlier page while {context} — "
+                    "it is ignoring the page_offset parameter, so everything "
+                    f"after the first {PAGE_SIZE} events would be silently "
+                    "dropped. Check the paging parameters your Series25 "
+                    "version expects before running live.")
+            seen_ids |= ids
+            yield root
+            # Stop on the final (short) page. We deliberately do NOT rely on a
+            # total-count element: if a response omits it, or names it
+            # differently across API versions, stopping early would silently
+            # drop every event past the first page.
+            if len(events) != PAGE_SIZE:
+                if len(events) > PAGE_SIZE:
+                    logging.debug("25Live ignored page_size (%d events in one "
+                                  "page); treating it as the full result.",
+                                  len(events))
+                return
+            offset += PAGE_SIZE
+        logging.warning("Reached MAX_PAGES (%d) while %s; results may be "
+                        "truncated.", MAX_PAGES, context)
 
-            for ev in events:
+    # ── the fetch ────────────────────────────────────────────────────────────
+
+    def fetch_events(self, space_map, now: Optional[datetime] = None) -> list:
+        """
+        All configured-state events for mapped spaces over the lookahead
+        window, as RawEvents with per-space buffers already applied.
+
+        The query starts at YESTERDAY's midnight: an overnight booking that
+        began last night is still running when the nightly job fires, and if
+        the API matches on start time a today-only query would miss it — and
+        the rewrite would drop the rest of it mid-event. Windows are then
+        clipped to start no earlier than today's midnight, so nothing is
+        written for dates already past.
+        """
+        spaces = getattr(space_map, "spaces", space_map)
+        today = self._today(now)
+        end = (now or datetime.now(self.tz)) + timedelta(days=self.lookahead_days)
+
+        unique: dict = {}
+        for batch in self._chunk(list(spaces.keys()), SPACE_IDS_PER_REQUEST):
+            for ev in self._fetch_batch(batch, today - timedelta(days=1), end, spaces):
+                if ev.end <= today:
+                    continue
+                if ev.start < today:
+                    ev = RawEvent(ev.event_id, ev.title, ev.space_id, today, ev.end)
+                # An event booked in rooms from two different 50-id batches
+                # comes back in both; a repeated reservation id does too.
+                unique.setdefault((ev.event_id, ev.space_id, ev.start, ev.end), ev)
+
+        raw_events = list(unique.values())
+        logging.info("Fetched %d space-assignment(s) from 25Live across %d space(s)",
+                     len(raw_events), len(spaces))
+        return raw_events
+
+    def _fetch_batch(self, space_ids: list, start: datetime, end: datetime,
+                     spaces: dict) -> list:
+        raw_events: list = []
+        params = {"space_id": " ".join(space_ids)}          # space-separated IDs
+        for root in self._pages(params, start, end, "fetching events"):
+            for ev in root.findall("r25:event", R25_NS):
                 try:
                     raw_events.extend(self._parse_event(ev, spaces))
                 except Exception as exc:              # noqa: BLE001
                     eid = ev.findtext("r25:event_id", "?", R25_NS)
                     logging.warning("Skipping malformed event %s: %s", eid, exc)
-
-            # Stop on the final (short) page. We deliberately do NOT rely on a
-            # total-count element: if a response omits it, or names it
-            # differently across API versions, stopping early would silently
-            # drop every event past the first page.
-            if len(events) < PAGE_SIZE:
-                break
-            offset += PAGE_SIZE
-        else:
-            logging.warning(
-                "Reached MAX_PAGES (%d) while paging 25Live events for a batch; "
-                "results may be truncated.", MAX_PAGES)
-
         return raw_events
 
     def _find_space_ids(self, reservation: ET.Element) -> list:
@@ -298,6 +377,23 @@ class CollegeNetClient:
                 if sid and sid not in ids:
                     ids.append(sid)
         return ids
+
+    def _reservation_cancelled(self, res: ET.Element) -> bool:
+        """
+        True when this occurrence is cancelled even though the event isn't.
+
+        Cancelling one meeting of a recurring class leaves the event
+        confirmed; only that reservation's state changes (99 = cancelled).
+        Filtering on the event's state alone would keep conditioning the room
+        for a meeting that isn't happening.
+        """
+        text = res.findtext("r25:reservation_state", namespaces=R25_NS)
+        if not text or not self.exclude_reservation_states:
+            return False
+        try:
+            return int(text) in self.exclude_reservation_states
+        except ValueError:
+            return False
 
     def _parse_event(self, ev: ET.Element, spaces: dict) -> list:
         """One <r25:event> into RawEvents — one per mapped space it touches."""
@@ -321,6 +417,8 @@ class CollegeNetClient:
 
         results: list = []
         for res in reservations.findall("r25:reservation", R25_NS):
+            if self._reservation_cancelled(res):
+                continue
             start_txt = res.findtext("r25:event_start_dt", namespaces=R25_NS)
             end_txt = res.findtext("r25:event_end_dt", namespaces=R25_NS)
             if not (start_txt and end_txt):

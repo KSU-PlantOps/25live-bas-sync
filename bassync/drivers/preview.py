@@ -26,6 +26,7 @@ class PreviewScheduleWriter(ScheduleWriter):
 
     name = "preview"
     description = "Writes nothing — logs, and can export a CSV of the intent."
+    config_keys = ("csv_file",)
 
     def __init__(self, system_name: str, cfg: dict, tz, retry=None):
         super().__init__(system_name, cfg, tz, retry)

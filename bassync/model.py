@@ -26,13 +26,15 @@ class Destination:
 
     system:  key into the `systems:` block of config.yaml — picks the driver
              and its connection settings.
-    target:  driver-specific address of the schedule. Its syntax is defined by
-             the driver and documented in that driver's module:
-               niagara   "SocialSciences/Rm1021_Occ"   (ORD under schedule_base_path)
-             A room may have no target at all; see SpaceConfig.
+    target:  driver-specific address of the schedule, in the driver's
+             canonical form (see ScheduleWriter.normalize_targets). Its syntax
+             is documented in that driver's module:
                bacnet    "12001:5"                     (device instance : schedule instance)
-               webctrl   "#bldg_a/rm101/occ_sched"     (WebCTRL reference path)
-               ebo       "/Server 1/Bldg A/Rm101/Occ"  (EBO object path)
+               niagara   "SocialSciences/Rm1021_Occ"   (ORD under schedule_base_path)
+               rest      whatever the site's path template expects
+               preview   anything; nothing is contacted
+
+    A room may have no destination of its own at all; see SpaceConfig.
 
     Frozen so it can key the schedule dict and dedupe cleanly.
     """

@@ -51,8 +51,9 @@ Configuration
 
 Placeholders available in paths and payloads
 --------------------------------------------
-    {target}        the space's target string (URL-encoded in paths)
-    {target_raw}    the target, not encoded
+    {target}        the space's target string — URL-encoded in paths, as-is
+                    in payloads
+    {target_raw}    the target, never encoded
     {username}      the system's username
     {password}      the system's password (login payload only)
     {token}         the bearer token from the login step
@@ -60,8 +61,12 @@ Placeholders available in paths and payloads
     {start_local} {end_local}   ISO-8601 without offset (naive local time)
     {date}          the window's local start date, YYYY-MM-DD
     {start_time} {end_time}     local HH:MM:SS
-    {value}         "true"
+    {value}         true
     {index} {count} 0-based window index and total, for APIs that want them
+
+Placeholders render as text inside a longer string. A payload value that is
+exactly "{value}", "{index}" or "{count}" renders as a real JSON boolean or
+number, for APIs that type-check their input.
 
 If `write.batch_payload` is set instead of `payload`, ONE request is sent with
 `{windows}` replaced by a JSON array of all windows — for APIs that replace a
@@ -76,8 +81,8 @@ from urllib.parse import quote
 
 import requests
 
-from .base import DriverError, ScheduleWriter
 from ..httputil import mount_retries
+from .base import DriverError, ScheduleWriter
 
 HTTP_TIMEOUT = 30
 
@@ -88,6 +93,27 @@ class RestScheduleWriter(ScheduleWriter):
     name = "rest"
     description = ("Generic REST driver — you supply the endpoints and payloads "
                    "in config.yaml (WebCTRL, EcoStruxure, in-house middleware).")
+    config_keys = ("base_url", "username", "verify_tls", "auth", "health",
+                   "exists", "clear", "write")
+
+    @classmethod
+    def check_config(cls, sys_cfg: dict) -> list:
+        problems = []
+        if not (sys_cfg.get("base_url") or "").strip():
+            problems.append("base_url is required for the rest driver.")
+        write = sys_cfg.get("write")
+        if not isinstance(write, dict) or not write.get("path"):
+            problems.append("write.path is required for the rest driver — see "
+                            "bassync/drivers/rest.py for the template reference.")
+        for section in ("auth", "health", "exists", "clear", "write"):
+            if sys_cfg.get(section) is not None and not isinstance(sys_cfg[section], dict):
+                problems.append(f"{section} must be a mapping.")
+        auth = sys_cfg.get("auth") or {}
+        if isinstance(auth, dict) and auth.get("mode") not in (None, "basic", "bearer", "none"):
+            problems.append("auth.mode must be basic, bearer or none.")
+        if isinstance(auth, dict) and auth.get("mode") == "bearer" and not auth.get("login_path"):
+            problems.append("auth.mode is bearer but auth.login_path is not set.")
+        return problems
 
     def __init__(self, system_name: str, cfg: dict, tz, retry=None):
         super().__init__(system_name, cfg, tz, retry)
@@ -158,11 +184,16 @@ class RestScheduleWriter(ScheduleWriter):
     # ── requests ─────────────────────────────────────────────────────────────
 
     def _request(self, spec: dict, ctx: dict, body=None):
+        """Send one request. `body`, when given, is already rendered;
+        otherwise the spec's payload template is filled here."""
         method = (spec.get("method") or "GET").upper()
         url = self.base_url + _fill_str(spec["path"], ctx)
-        payload = body if body is not None else spec.get("payload")
-        if payload is not None:
-            payload = _fill(payload, ctx)
+        payload = body
+        if payload is None and spec.get("payload") is not None:
+            # In a JSON body the target is data, not a URL path segment, so it
+            # goes in as written rather than percent-encoded.
+            payload = _fill(spec["payload"],
+                            {**ctx, "target": ctx.get("target_raw", "")})
         return self.session.request(method, url, json=payload,
                                     timeout=spec.get("timeout", HTTP_TIMEOUT))
 
@@ -231,7 +262,8 @@ class RestScheduleWriter(ScheduleWriter):
         # {windows} is substituted as raw JSON, so it must not be quoted in the
         # template the way scalar placeholders are.
         rendered = rendered.replace('"{windows}"', json.dumps(items))
-        body = _fill(json.loads(rendered), self._context(target))
+        ctx = self._context(target)
+        body = _fill(json.loads(rendered), {**ctx, "target": ctx["target_raw"]})
         r = self._request(self.write_cfg, self._context(target), body=body)
         if r.status_code >= 400:
             raise DriverError(
@@ -247,10 +279,14 @@ def _window_context(win, index: int, count: int) -> dict:
         "date": win.start.date().isoformat(),
         "start_time": win.start.strftime("%H:%M:%S"),
         "end_time": win.end.strftime("%H:%M:%S"),
-        "value": "true",
+        "value": True,
         "index": index,
         "count": count,
     }
+
+
+# Placeholders that, standing alone as a whole value, keep their JSON type.
+_TYPED_PLACEHOLDERS = ("value", "index", "count")
 
 
 def _fill_str(text: str, ctx: dict) -> str:
@@ -258,13 +294,17 @@ def _fill_str(text: str, ctx: dict) -> str:
     raising — a stray brace in a vendor path should not kill the run."""
     out = text
     for key, value in ctx.items():
-        out = out.replace("{" + key + "}", str(value))
+        rendered = ("true" if value else "false") if isinstance(value, bool) else str(value)
+        out = out.replace("{" + key + "}", rendered)
     return out
 
 
 def _fill(obj, ctx: dict):
     """Recursively substitute placeholders through a JSON-ish structure."""
     if isinstance(obj, str):
+        for key in _TYPED_PLACEHOLDERS:
+            if obj == "{" + key + "}" and key in ctx:
+                return ctx[key]
         return _fill_str(obj, ctx)
     if isinstance(obj, dict):
         return {k: _fill(v, ctx) for k, v in obj.items()}

@@ -49,6 +49,15 @@
 #   its bookings would drive nothing at all.
 #
 #
+# EVERY TARGET IS A SCHEDULE THE SYNC OWNS
+#
+#   Each run replaces the target's whole exception list with this week's
+#   bookings. Point targets at schedules dedicated to bookings (weekly
+#   schedule empty or Unoccupied), OR'd into the zone's normal occupancy in
+#   the controller — never at the schedule operators put holidays on.
+#   `--validate` warns about entries on a target that a live run would erase.
+#
+#
 # INHERITANCE
 #   `system`, `pre_condition_minutes` and `post_buffer_minutes` all resolve the
 #   same way:   room override  >  building override  >  global default
@@ -93,13 +102,21 @@
 #                                     Merges ACROSS rooms (the roll-ups) use
 #                                     the global default.
 #   note                  (optional)  free text; the sync ignores it, and the
-#                                     editor preserves it across saves
+#                                     editor preserves it across saves (also
+#                                     allowed on buildings and floors)
+#
+# A key the sync doesn't recognise is reported as a warning with a suggestion
+# ("unknown key `tagret` — did you mean `target`?"): since `target:` is
+# optional, a misspelt one would otherwise silently make a roll-up-only room.
 #
 # ── target syntax, by driver ──
 #   bacnet    "12001:5"              device instance : Schedule object instance
 #             "12001:5@10.4.2.30"    pin the address, skipping Who-Is
-#   niagara   "Bldg/Rm101_Occ"       ORD relative to schedule_base_path
-#             "slot:/Other/Sched"    an absolute ORD is used as-is
+#             "12001:5@2001:0x21"    a routed MS/TP device (network 2001, MAC 0x21)
+#             A pin applies to the whole device: pin it once and every target
+#             on that device uses it; two different pins are an error.
+#             "2001:1"               a Niagara station's BACnet-exported schedule
+#   niagara   "Bldg/Rm101_Occ"       (deprecated driver) ORD under schedule_base_path
 #   rest      whatever your configured path template expects
 #
 # Pre-1.0 maps used `niagara_path:` instead of `target:`. That still works —
@@ -133,11 +150,13 @@ buildings:
     pre_condition_minutes: 60      # old building, slow to come up
     post_buffer_minutes: 30
 
-  # A building still on the Niagara supervisor, not yet cut over to BACnet.
+  # ── A Tridium Niagara station ──
+  # Driven through the station's BACnet schedule export: the target is the
+  # station's device instance and the exported schedule's instance.
   - id: student_center
     name: "Student Center"
-    system: supervisor
-    target: "StudentCenter/Building_Occ"
+    system: niagara_station
+    target: "2001:1"
     space_id: 9001                 # the atrium is itself bookable in 25Live
 
 
@@ -204,11 +223,11 @@ spaces:
     building: heritage_hall
     note: "Ballroom — check whether AHU-1 can be split before adding a target"
 
-  # ── A room on the Niagara supervisor, addressed by ORD. ──
+  # ── A room on the Niagara station: another exported booking schedule. ──
   - space_id: 9010
     space_name: "Student Center Ballroom"
     building: student_center
-    target: "StudentCenter/Ballroom_Occ"
+    target: "2001:2"
 
   # ── Commissioning: same map, pointed at the `preview` system so it only
   #    logs until you are ready to cut it over. ──

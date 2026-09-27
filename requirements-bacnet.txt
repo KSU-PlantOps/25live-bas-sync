@@ -5,4 +5,5 @@
 # driver builds its Schedule / SpecialEvent / CalendarEntry objects with.
 # Imported lazily, so this is only needed if a system in config.yaml actually
 # uses driver: bacnet.
-bacpypes3>=0.0.98
+# 0.0.x is pre-1.0 and its API still moves; stay below 0.1 until tested.
+bacpypes3>=0.0.98,<0.1

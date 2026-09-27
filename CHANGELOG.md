@@ -4,6 +4,125 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [1.2.0] — 2026-09-26
+
+A hardening release from a full review of the code, deployment and docs, plus
+**email run reports**. Several fixes change what gets written to a BAS; read
+*Upgrading from 1.1* in the README before the first run.
+
+### Added
+- **Email run reports.** Every live run builds a report — outcome, safety
+  verdict, each system's status, every warning and error, and every schedule
+  with the exact windows written to it, grouped by day. Email gets it as text
+  and HTML with a CSV of every window attached; on failure always, and every
+  night with `alerts.email.notify_on_success`. Failure alerts now say what
+  failed instead of "see the log". `--test-alert` sends a sample report.
+- **Dead-man's switch.** `monitoring.ping_url` / `ping_fail_url` are fetched
+  after each live run, so healthchecks.io, Uptime Kuma or Cronitor can alarm
+  when the job stops running at all.
+- **BACnet heartbeat** (`heartbeat_object`), matching the Niagara one.
+- **Teams Workflows and generic JSON webhooks** (`alerts.webhook_format`), and
+  a per-channel `notify_on_success`. `BAS_ALERT_WEBHOOK_URL` can hold the URL.
+- **`--validate` checks that 25Live actually returns bookings** for the mapped
+  rooms, and when it returns none, tries each `state_param_style` and names
+  any that work. It also reports each BACnet schedule's value type, warns
+  about exceptions a live run would replace, and checks the safety state is
+  writable.
+- **`--dry-run` shows the safety verdict** a live run would get.
+- **One run at a time**: a second live sync exits `8` without writing.
+- **Config validation.** Types, ranges, IANA timezones (including per
+  system), known drivers and per-driver settings are checked at startup, with
+  one clear message per problem; unknown keys (usually typos) are warned
+  about. The room map warns about unknown keys too, with a suggestion — a
+  misspelt `tagret:` used to turn a room silently into a roll-up-only room.
+- `state_param_style: space`, and `collegenet.exclude_reservation_states`.
+- `pip install .` gives `bas-sync` and `bas-sync-editor` commands;
+  `constraints.txt` pins every dependency; the test suite moved to pytest
+  (`python Test.py` still works); CI adds ruff, mypy, shellcheck, pip-audit, a
+  package install and a Docker build; Dependabot keeps it all current.
+- BACnet driver tests against **simulated controllers** over real BACnet/IP.
+
+### Fixed
+- **BACnet errors crashed the whole run.** BACpypes3 raises Error/Reject/Abort
+  replies as `BaseException`, which slipped past every `except Exception` — so
+  one offline controller or an access-denied write ended the run with a
+  traceback, left the other systems unwritten, and sent no alert. They are now
+  ordinary per-schedule failures.
+- **BACnet values were always BOOLEAN.** Schedules driving binary points are
+  usually ENUMERATED, and ASHRAE 135 requires exception values to match the
+  schedule's type. The driver now reads `Schedule_Default` and writes the
+  matching type; multistate schedules take `occupied_value` /
+  `unoccupied_value`; `unoccupied_value: null` relinquishes instead.
+- **A stale pinned address could write another controller's schedule.** The
+  device at a pinned address is now read back and must be the device named in
+  the target.
+- **Two spellings of one BACnet schedule overwrote each other** (`12001:5` and
+  `12001:5@10.4.2.30`). Targets are canonicalised per driver — including
+  routed MS/TP pins, `2001:0x21` = `2001:33` — a pin applies to the whole
+  device, and conflicting pins are an error.
+- **The BACnet connect timeout didn't cover the socket bind** (BACpypes3 binds
+  in the background), so a busy port failed every write one by one.
+- **25Live paging could loop 1,000 times.** An instance ignoring the paging
+  parameters returned the same page repeatedly — 150 events became 150,000 and
+  defeated the `min_events` check. The fetch now stops on a complete response,
+  fails loudly on a truncating one, and de-duplicates (which also fixes
+  multi-room events counted once per 50-room batch).
+- **Cancelled occurrences of recurring events still drove HVAC.**
+- **Overnight events could be cut off at 2 AM** — the fetch now starts
+  yesterday and clips to today.
+- **The safety baseline silently disappeared in Docker** (a root-owned bind
+  mount, or no mount at all). It now lives in `state/` with a named volume,
+  is written atomically with a `.prev` backup, is read from the 1.x location
+  once, and a run without one warns every time.
+- **One broken room-map row stopped the whole campus.** Bad rows are now left
+  out and the rest syncs (exit `2`); the floor and building schedules a broken
+  row rolls up into are left as they are rather than rewritten without its
+  bookings, a room with a malformed target of its own still feeds its
+  roll-ups, and the safety baseline is merged so nothing left alone loses its
+  history. `safety.on_map_errors: abort` restores the old behaviour.
+- **One system's bad setting could abort every system** — only `DriverError`
+  was contained. Any exception from a system now fails only that system.
+- `send_alert` could raise on a malformed setting despite promising not to.
+- **The Docker scheduler crash-looped on the spring-forward date** — 02:00
+  doesn't exist, GNU `date` failed, the entrypoint exited. It is now
+  `bassync.scheduler`, which runs a nonexistent time as the clock jumps and a
+  repeated time once; `SYNC_AT` like `29:00` is rejected.
+- **Editor:** Save silently picked a default system when several were defined —
+  the exact guess the loader refuses to make. Deleting a building left its
+  floors behind and could orphan rooms, stopping the next run. Editing a row
+  dropped fields the form doesn't show. A `config.yaml` it couldn't parse was
+  overwritten with just the form's fields. Every Save rewrote `config.yaml`
+  and stripped its comments. The window froze during Preview and the
+  connection tests.
+- `--discover` printed invalid YAML for names with quotes or backslashes.
+- An empty section in `config.yaml` (`alerts:` with nothing under it) crashed
+  the run.
+
+### Changed
+- **Ownership model, documented.** The sync owns each target's exception list
+  and replaces it every run — which is how the BACnet and Niagara drivers
+  always worked, although the docs said hand-entered exceptions would survive.
+  Give the sync dedicated booking schedules, combined with the normal
+  schedule in the controller.
+- **Niagara stations are driven through their BACnet schedule export** with
+  the `bacnet` driver: the station applies the writes as native special
+  events, visible in Workbench, with nothing extra on the station. The README
+  has a step-by-step setup and a migration guide, and the examples show a
+  station this way.
+- **The `niagara` driver is deprecated.** It needs a REST service stock
+  Niagara 4 doesn't ship (and oBIX, the standard web API, has no stock way to
+  create special events). It keeps working for existing deployments, logs a
+  deprecation warning, and now verifies TLS by default.
+- `rest` driver: `{target}` is no longer percent-encoded inside JSON payloads,
+  and a payload value that is exactly `"{value}"`, `"{index}"` or
+  `"{count}"` is sent as a JSON boolean/number.
+- Logs rotate (`log_max_mb`, `log_backups`).
+- Removed `BAS_WEBCTRL_PASSWORD` / `BAS_EBO_PASSWORD`, "legacy" names for
+  drivers that never existed. `BAS_NIAGARA_PASSWORD` is still honored.
+- The CLI and editor moved into the package (`bassync/cli.py`,
+  `bassync/editor.py`); `main.py`, `editor.py` and `Edit-Rooms.bat` are
+  unchanged to run. Exit code `1` now also covers invalid configuration.
+
 ## [1.1] — 2026-09-08
 
 An audit-and-cleanup release. Five bugs fixed, per-room/per-floor/per-building

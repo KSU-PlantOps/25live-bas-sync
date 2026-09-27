@@ -5,13 +5,17 @@
 #   cp config.example.yaml config.yaml
 #
 # config.yaml is gitignored, so your site's settings stay out of version
-# control. Anything you omit falls back to the built-in defaults.
+# control. Anything you omit falls back to the built-in defaults. Every value
+# is checked when the sync starts: a wrong type or a misspelt timezone stops
+# the run with a message naming the key, and a key the sync doesn't recognise
+# (usually a typo) is logged as a warning.
 #
 # SECRETS ARE NOT STORED HERE. Set them as environment variables:
 #   BAS_25LIVE_PASSWORD              the 25Live service-account password
-#   BAS_SYS_<SYSTEM>_PASSWORD        each BAS system's password, e.g.
-#                                    BAS_SYS_SUPERVISOR_PASSWORD
+#   BAS_SYS_<SYSTEM>_PASSWORD        the password of a system that logs in
+#                                    (rest), e.g. BAS_SYS_EBO_WEST_PASSWORD
 #   BAS_SMTP_PASSWORD                alert email, if you enable it
+#   BAS_ALERT_WEBHOOK_URL            optional; overrides alerts.webhook_url
 # ─────────────────────────────────────────────────────────────────────────────
 
 collegenet:
@@ -28,13 +32,19 @@ collegenet:
 
   # How the `state` filter is encoded in the query string. Instances differ,
   # and getting it wrong returns HTTP 200 with ZERO events — which would look
-  # like an empty campus. `--validate` and the safety rail below both guard
-  # against that, but set this correctly rather than relying on them.
-  #   plus    state=2+4     (default)
+  # like an empty campus. `--validate` counts the bookings that come back and,
+  # if there are none, tries the other styles and names any that work. With a
+  # single state (the default) every style but `none` sends the same request.
+  #   plus    state=2%2B4   (default; a literal + reaches the server)
+  #   space   state=2+4     (space-separated, like the space_id list)
   #   comma   state=2,4
   #   repeat  state=2&state=4
   #   none    omit it; filter client-side on the returned <state> element
   state_param_style: "plus"
+
+  # Cancelling one meeting of a recurring event leaves the event confirmed;
+  # only that occurrence's reservation state changes. 99 = cancelled.
+  exclude_reservation_states: [99]
 
   # Scheduling defaults (run-up / run-down / merge-gap / lookahead) live in
   # defaults.yaml — see defaults.example.yaml.
@@ -46,6 +56,13 @@ collegenet:
 # mixed campus. Rooms inherit their building's system; buildings fall back to
 # `default_system`. With exactly one system defined you can omit both.
 #
+# OWNERSHIP: the sync owns what it writes. Point each target at a schedule
+# dedicated to bookings — its weekly schedule empty/Unoccupied — and combine
+# it with the zone's normal schedule in the controller's logic. Every run
+# replaces that schedule's whole exception list, so holidays and shutdowns
+# belong on the NORMAL schedule, where the sync never touches them.
+# `--validate` warns about any entries a live run would replace.
+#
 # Run `python main.py --list-drivers` for the current list.
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -55,9 +72,9 @@ systems:
   # Standard ASHRAE 135 Schedule objects. Automated Logic WebCTRL, Schneider
   # EcoStruxure Building Operation, Tridium Niagara and any other BTL-listed
   # controller are all required to expose them, so this one driver covers the
-  # whole campus. It writes ONLY the Exception_Schedule property — your weekly
-  # schedule, schedule default and Priority_For_Writing are left exactly as the
-  # controls engineer set them.
+  # whole campus. It writes ONLY the Exception_Schedule property — the weekly
+  # schedule, schedule default and Priority_For_Writing are left exactly as
+  # the controls engineer set them.
   #
   # Define one system per BAS network or per vendor, whichever matches how your
   # campus is segmented. The names are yours; rooms and buildings reference
@@ -68,7 +85,8 @@ systems:
     driver: bacnet
 
     # REQUIRED. This host's own NIC address and prefix length. Not a guess —
-    # the stack binds to it.
+    # the stack binds to it. If a BAS server on this same machine already owns
+    # UDP 47808, give the sync its own port: "10.4.1.55/24:47809".
     local_address: "10.4.1.55/24"
 
     # This sync's BACnet device identity on THIS network. Pick an instance
@@ -83,16 +101,29 @@ systems:
     bbmd_address: ""              # e.g. "10.4.2.1" or "10.4.2.1:47808"
     bbmd_ttl_seconds: 900
 
-    # BACnetSpecialEvent priority, 1-16, LOWER wins. 16 (the default) means any
-    # exception an operator adds by hand — a holiday, a shutdown — overrides
-    # the booking overlay. Raise the precedence only if you want bookings to
-    # beat hand entries, which is rarely what you want.
+    # BACnetSpecialEvent priority, 1-16, LOWER wins when two exceptions on the
+    # same schedule cover the same moment. On a dedicated booking schedule the
+    # sync's entries are the only ones, so the default 16 is fine.
     event_priority: 16
+
+    # Value type of ON/OFF. "auto" (the default) reads each schedule's
+    # Schedule_Default and matches it — binary schedules are usually
+    # ENUMERATED (active/inactive), and a controller rejects values of the
+    # wrong type. For a multistate occupancy schedule (UNSIGNED), set which
+    # state numbers mean occupied and unoccupied, e.g. 1 and 2.
+    value_type: auto              # auto | boolean | enumerated | unsigned | real
+    # occupied_value: 1
+    # unoccupied_value: 2         # or null: relinquish to the weekly schedule
+    #                               at each window end (135-2012+ controllers)
 
     # Read Exception_Schedule back after each write and confirm it took. Some
     # controllers accept a write and silently ignore it; without this the sync
     # would report success while the building never changes.
     verify_writes: true
+
+    # For a target with a pinned @address, confirm the device answering there
+    # really is the device named in the target before writing to it.
+    verify_device: true
 
     # Cap on special events per schedule. One entry per booked DAY, so the
     # natural maximum is your lookahead_days. 0 = no cap. Set it to your
@@ -100,6 +131,13 @@ systems:
     max_special_events: 0
 
     who_is_timeout: 5
+    # operation_timeout: 60      # ceiling on any one read/write, in seconds
+
+    # Optional: an object this sync stamps after every run, so the BAS itself
+    # can alarm when the job stops (alarm on "unchanged for a day"). An
+    # analog-value gets hours since 1970; characterstring-value an ISO
+    # timestamp; datetime-value the date and time.
+    # heartbeat_object: "599100:analog-value,1"
 
   # A second BACnet system — a different vendor, VLAN, or BBMD domain. Same
   # driver, its own network identity.
@@ -112,23 +150,41 @@ systems:
     event_priority: 16
     verify_writes: true
 
-  # ── niagara: native N4 REST ────────────────────────────────────────────────
-  # Use when a station's schedules are not exported to BACnet, or when you want
-  # bookings to appear as real Niagara special events in Workbench.
-  # Password: BAS_SYS_SUPERVISOR_PASSWORD
-  supervisor:
-    driver: niagara
-    host: "niagara.example.edu"   # localhost if this runs on the station server
-    port: 443                     # confirm — often 443 or 8443
-    https: true
-    username: "svc-scheduler"
-    verify_tls: false             # false for a self-signed cert; else a CA-bundle path
-    schedule_base_path: "slot:/Schedules"
-    heartbeat_path: "slot:/Schedules/_LastSync"   # "" to disable
-    # Confirm these against your station's REST service if writes 404:
-    # rest_base: "/rest/v1"
-    # special_event_type: "baja:BooleanSchedule$SpecialEvent"
+  # ── A Tridium Niagara station — also BACnet ────────────────────────────────
+  # Niagara stations are driven through their BACnet schedule export: add the
+  # booking BooleanSchedule to the station's BacnetNetwork > Local Device >
+  # Export Table, and target "<station device instance>:<exported schedule
+  # instance>". The station applies the writes as native special events,
+  # visible in Workbench. See README, "Tridium Niagara".
+  #
+  # A station on the same network as other controllers can share their
+  # system; this one sits behind its own BBMD, so it gets its own.
+  niagara_station:
+    driver: bacnet
+    local_address: "10.4.1.55/24"
+    device_id: 599003
+    device_name: "25Live-BAS-Sync-Niagara"
+    bbmd_address: "10.4.5.1"
     event_priority: 16
+    verify_writes: true
+    # An exported NumericWritable the sync stamps after every run:
+    # heartbeat_object: "2001:analog-value,10"
+
+  # ── niagara (DEPRECATED): a station REST service ──────────────────────────
+  # Kept only so existing deployments keep running; it needs a REST service
+  # stock Niagara 4 doesn't ship, and logs a deprecation warning. New
+  # stations: use the BACnet export above. README, "Moving off the niagara
+  # driver", has the steps. Password: BAS_SYS_SUPERVISOR_PASSWORD.
+  #
+  # supervisor:
+  #   driver: niagara
+  #   host: "niagara.example.edu"
+  #   port: 443
+  #   https: true
+  #   username: "svc-scheduler"
+  #   verify_tls: "/etc/ssl/station-ca.pem"   # or false for a self-signed cert
+  #   schedule_base_path: "slot:/Schedules"
+  #   heartbeat_path: "slot:/Schedules/_LastSync"
 
   # ── preview: writes nothing ────────────────────────────────────────────────
   # Point buildings here while you commission them. They log what they would
@@ -163,7 +219,7 @@ systems:
   #   write:
   #     method: POST
   #     path: "/api/rest/v1/schedules/{target}/exceptions"
-  #     payload: {"start": "{start_local}", "end": "{end_local}", "value": true}
+  #     payload: {"start": "{start_local}", "end": "{end_local}", "value": "{value}"}
 
 # Which system a building/room gets when it doesn't name one. Optional when
 # exactly one system is defined.
@@ -196,23 +252,40 @@ safety:
   min_events: 1                 # abort if 25Live returned fewer assignments
   max_cleared_fraction: 0.34    # abort above this share of previously-occupied
                                 #   schedules going empty in one run
-  state_file: ""                # blank -> logs/last_run.json
+
+  # The previous run's baseline lives here. Keep it on persistent, writable
+  # storage (in Docker: the `state` volume) — without it, only min_events
+  # protects the run, and every run logs a warning saying so.
+  state_file: ""                # blank -> state/last_run.json
+
+  # A broken row in space_mapping.yaml:
+  #   skip   report it, leave that row's schedule — and the floor/building
+  #          schedules it rolls up into — untouched, sync the rest of the
+  #          campus, and exit 2 so the alert fires (the default)
+  #   abort  write nothing anywhere until the map is fixed
+  on_map_errors: skip
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Alerting
+# Alerts and run reports
 # ─────────────────────────────────────────────────────────────────────────────
-# Notify on a failed (or optionally successful) run. Off by default.
+# Every live run builds a report: the outcome, the safety verdict, each BAS
+# system's status, every warning and error, and every schedule with the exact
+# booking windows written to it. It goes out on failure — and, per channel,
+# on success too if you want a morning "here's what the buildings will do"
+# email.
 #
 # Prove it works BEFORE you rely on it:
 #     python main.py --test-alert
-# That sends through every configured channel and reports each one, and it
-# works even while `enabled` is still false.
+# That sends through every configured channel (email gets a sample report)
+# and reports each one, and it works even while `enabled` is still false.
 alerts:
   enabled: false
-  notify_on_success: false
+  notify_on_success: false      # default for every channel; override below
 
-  # Slack/Teams/generic incoming webhook. Receives {"text": "..."}.
-  webhook_url: ""
+  # Slack/Teams/generic incoming webhook: a short summary.
+  webhook_url: ""               # or $BAS_ALERT_WEBHOOK_URL (it's a credential)
+  webhook_format: slack         # slack | teams (Workflows) | generic (JSON)
+  # webhook_notify_on_success: false
 
   email:
     enabled: false
@@ -237,6 +310,26 @@ alerts:
       - "facilities@example.edu"
       - "controls-oncall@example.edu"
 
+    # The daily report: true sends every successful run's report too.
+    notify_on_success: true
+    report: full                # full = every schedule and its windows; summary
+    attach_csv: true            # every window as a spreadsheet attachment
+    subject_prefix: "[25Live sync]"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dead-man's switch
+# ─────────────────────────────────────────────────────────────────────────────
+# Alerts only fire when the job runs. If it stops running altogether — an
+# expired service password, a disabled scheduled task, a rebuilt host —
+# nothing can alert. These URLs are fetched by the job itself, so a monitor
+# (healthchecks.io, Uptime Kuma "push" monitors, Cronitor, …) can alarm when
+# the pings STOP arriving.
+monitoring:
+  ping_url: ""                  # after every successful live run
+  ping_fail_url: ""             # after a failed one (e.g. <ping_url>/fail)
+
 # Optional overrides (sensible defaults are used if omitted):
 # space_map_file: "space_mapping.yaml"
 # log_file: "logs/25live_sync.log"
+# log_max_mb: 10                # rotate the log at this size (0 = never)
+# log_backups: 10               # old logs to keep

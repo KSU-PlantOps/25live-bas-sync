@@ -1,0 +1,14 @@
+# Exact versions the test suite and the Docker image are built against.
+# Used as a constraints file, so it pins without adding anything:
+#   pip install -r requirements.txt -r requirements-bacnet.txt -c constraints.txt
+# Dependabot keeps it current; CI runs the suite against these pins.
+bacpypes3==0.0.110
+certifi==2026.7.22
+charset-normalizer==3.5.1
+idna==3.20
+python-dateutil==2.9.0.post0
+PyYAML==6.0.3
+requests==2.34.2
+six==1.17.0
+tzdata==2026.4
+urllib3==2.8.0

@@ -12,13 +12,25 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+
+# IDE settings are per-developer
+.idea/
+.vscode/
 
 # Editor backups written by editor.py on save
 *.bak
 
-# Logs, and the safety rail's previous-run state
+# Logs, and the safety rail's previous-run state + run lock
 *.log
 logs/
+state/
 
 # OS
 .DS_Store
