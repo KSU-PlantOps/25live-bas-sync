@@ -1,0 +1,27 @@
+name: Feature request
+description: A new BAS platform, a 25Live configuration, or something the web UI should do.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem, in terms of your campus and your systems, rather than a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would help
+      description: How you'd like it to work, if you have an idea.
+  - type: input
+    id: systems
+    attributes:
+      label: Systems involved
+      placeholder: e.g. EBO 2024 through its REST API, a self-hosted Series25
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Contributing
+      options:
+        - label: I could help build or test this against a real system.

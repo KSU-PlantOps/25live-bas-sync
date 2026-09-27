@@ -8,7 +8,7 @@
 {% if can('view_all') %}
 {% if not health.writable %}
   <div class="flash error">The settings folder <code>{{ paths.config.parent }}</code> isn't writable
-    by the service, so changes made here can't be saved. In Docker, see "Config folder" in the README.</div>
+    by the service, so changes made here can't be saved. In Docker, see <a href="https://github.com/KSU-PlantOps/25live-bas-sync/blob/main/docs/docker.md#the-config-folder">The config folder</a>.</div>
 {% endif %}
 {% if health.config_error %}
   <div class="flash error"><strong>The sync would refuse to start:</strong> {{ health.config_error }}

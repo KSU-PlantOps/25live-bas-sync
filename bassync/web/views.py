@@ -172,8 +172,8 @@ def new_problems(before: list, after: list) -> list:
 def _write_error(exc: OSError) -> str:
     folder = files().config.parent
     return (f"Couldn't write the file: {exc}. The folder {folder} must be "
-            "writable by the service — in Docker, see \"Config folder\" in the "
-            "README.")
+            "writable by the service — in Docker, see \"The config folder\" in "
+            "docs/docker.md.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

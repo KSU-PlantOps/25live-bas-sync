@@ -4,11 +4,26 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Changed
+- **Documentation**: the README is now a short landing page with screenshots,
+  and the full documentation lives in `docs/` — running with Docker, the web
+  UI, configuration, BAS setup by vendor, networking, 25Live, reports and
+  alerts, the safety rails, the command line, and upgrading. The README's
+  content is all there, checked against the code, with an environment-variable
+  reference added. Release notes link to the docs of their own version.
+- A security policy (`SECURITY.md`), and issue and pull request templates.
+
+### Fixed
+- Web UI: a contact email address or phone number no longer breaks across two
+  lines on the sign-in page and in the footer.
+
 ## [1.3.0rc1] — 2026-09-27 — Web UI, and Docker as the way to run it
 
 A release candidate: the container now runs a long-lived service with a web
 UI, and Docker becomes the recommended way to run the sync. The sync itself is
-unchanged. Read *Upgrading → From 1.2* in the README before switching.
+unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
 
 ### Added
 - **Web UI**, served by the container: status (last sync, next run, room-map

@@ -169,6 +169,10 @@ def test_release_notes_add_install_lines():
     assert f"docker pull {IMAGE}:1.3.0" in notes
     assert 'pip install "./25live_bas_sync-1.3.0-py3-none-any.whl[bacnet]"' in notes
     assert f"{url}/blob/v1.3.0/CHANGELOG.md" in notes
+    # The docs they point at are the ones for this release, and they exist.
+    for page in ("docker.md", "upgrading.md"):
+        assert f"{url}/blob/v1.3.0/docs/{page})" in notes
+        assert (release_info.ROOT / "docs" / page).is_file()
     assert "pip install" not in release_info.release_notes(
         section, "v1.3.0", "1.3.0", IMAGE, url)
 

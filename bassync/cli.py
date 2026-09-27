@@ -27,7 +27,7 @@ The BAS side is pluggable. One run can drive a mixed campus:
     preview   writes nothing; logs and optionally exports CSV
 
 Runs ONCE per invocation — schedule it nightly (e.g. 2 AM) via Windows Task
-Scheduler or cron. See README.md for deployment details.
+Scheduler or cron. See docs/ for deployment details.
 
 Entry points: `python main.py` from a checkout, or `bas-sync` once installed
 with `pip install .`.
@@ -174,7 +174,7 @@ def print_drivers() -> int:
     for name in driver_names():
         cls = load_driver_class(name)
         print(f"  {name:<10} {cls.description}")
-    print("\nFull setup notes for each are in README.md and in the driver's "
+    print("\nFull setup notes for each are in docs/bas-setup.md and in the driver's "
           "own module docstring under bassync/drivers/.")
     return EXIT_OK
 

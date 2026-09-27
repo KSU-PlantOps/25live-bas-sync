@@ -6,7 +6,7 @@ DEPRECATED — Tridium Niagara (N4) driver that writes BooleanSchedule
 SpecialEvents through a REST service on the station.
 
 Use the `bacnet` driver against the station's BACnet schedule export instead
-(README, "Tridium Niagara"). The station applies those writes to the
+(docs/bas-setup.md, "Tridium Niagara"). The station applies those writes to the
 BooleanSchedule as native special events, visible and editable in Workbench,
 using only what a stock Niagara 4 station with the BACnet driver provides.
 
@@ -69,7 +69,7 @@ class NiagaraScheduleWriter(ScheduleWriter):
     deprecated = ("it needs a REST service stock Niagara 4 doesn't ship. Use the "
                   "bacnet driver against the station's BACnet schedule export: "
                   "the bookings still appear as native special events in "
-                  "Workbench. See README, 'Tridium Niagara'.")
+                  "Workbench. See docs/bas-setup.md, 'Tridium Niagara'.")
     config_keys = ("host", "port", "https", "username", "verify_tls",
                    "schedule_base_path", "heartbeat_path", "rest_base",
                    "special_event_type", "event_priority", "ord_style")

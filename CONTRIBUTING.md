@@ -18,7 +18,8 @@ cleanly for any 25Live site, on any building automation system.
 - **Bug reports** — include your Python version, OS, which driver you're using,
   a redacted snippet of the relevant 25Live XML or BAS response, and the log
   output from a `--verbose` run.
-- **Docs** — clarify setup for a configuration you got working.
+- **Docs** — clarify setup for a configuration you got working. The
+  documentation is in `docs/`; the README is the landing page.
 
 Please **do not** include real credentials, hostnames, or full data dumps in
 issues or PRs.
@@ -64,6 +65,50 @@ python main.py --validate   # config, auth, bookings, reachability, targets
 python main.py --dry-run    # talks to 25Live only; contacts no BAS at all
 ```
 
+## Tests
+
+The suite runs under pytest, offline — no 25Live, no BAS, no internet. It
+covers:
+
+- the merge/roll-up logic, and the loader and its inheritance rules
+- config validation, the safety rail and its state file
+- the 25Live client's paging, cancellation and fetch-window handling
+- the email/webhook reports, the service's scheduler (DST included), its job
+  runner and run history
+- the web UI: sign-in and lockout, Entra sign-in and roles, CSRF, every editing
+  page, concurrent-edit and confirmation handling, branding, and the sandboxed
+  report view
+- the editors' shared save logic
+- the release helper (`.github/scripts/release_info.py`)
+
+With BACpypes3 installed it also runs the **BACnet driver against simulated
+controllers** over real BACnet/IP on loopback. Those tests cover value types,
+stale-pin refusal, error handling, offline devices, foreign exceptions and the
+heartbeat. CI runs everything on Python 3.13 and 3.14, with and without
+BACpypes3, and also runs ruff, mypy, shellcheck, pip-audit, a package install
+and a Docker build that starts the service and checks its web UI and health
+check.
+
+## Project layout
+
+| Path | Purpose |
+|---|---|
+| `main.py` | CLI entry point from a checkout (the CLI itself is `bassync/cli.py`). |
+| `bassync/` | The sync engine (importable, unit-tested). |
+| `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
+| `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI), its job runner, and the run history. |
+| `bassync/web/` | The web UI (Flask): pages, templates and static files; `access.py` (roles and branding) and `entra.py` (Microsoft sign-in). |
+| `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
+| `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
+| `bassync/editor.py` · `editor.py` · `Edit-Rooms.bat` | The desktop editor (Tkinter), its launcher, and a double-click launcher for Windows. |
+| `*.example.yaml` | The settings templates: `config`, `defaults` and `space_mapping`. |
+| `requirements*.txt` · `constraints.txt` | Dependencies (core, BACnet, web UI, dev), and the exact versions CI tested. |
+| `pyproject.toml` | Package metadata (`pip install .`) and tool settings. |
+| `tests/` · `Test.py` | The pytest suite, and a `python Test.py` shortcut to it. |
+| `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` · `.env.example` | The container image, the compose service, its entrypoint (`serve` or one-shot `sync`), and the secrets template. |
+| `docs/` | The documentation. `docs/images/` holds the screenshots, taken from a demo site, and `social-preview.png`, the repository's social preview (Settings → General). |
+| `.github/` | CI and release workflows, the release helper script, Dependabot, and the issue and pull request templates. |
+
 ## Guidelines
 
 - **Keep the core generic.** Anything institution-specific belongs in
@@ -101,7 +146,8 @@ reaches `main`; nobody tags or uploads anything by hand.
    ## [1.3.0] — 2026-10-15 — A short title for the release
    ```
 
-   The title after the date is optional and becomes the release's name. The
+   If the changelog has an `## [Unreleased]` section, that becomes it. The
+   title after the date is optional and becomes the release's name. The
    section's text becomes the release notes. A test fails if the section is
    missing; `python .github/scripts/release_info.py check` says so directly.
 2. That PR gets a dry run of the release: the wheel and both Docker images are

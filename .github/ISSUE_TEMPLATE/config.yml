@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Documentation
+    url: https://github.com/KSU-PlantOps/25live-bas-sync/blob/main/docs/README.md
+    about: Setup for Docker, the web UI, each BAS vendor, 25Live and networking.
+  - name: Report a security vulnerability
+    url: https://github.com/KSU-PlantOps/25live-bas-sync/security/advisories/new
+    about: Privately, please — not as a public issue.
