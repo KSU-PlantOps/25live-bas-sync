@@ -1,49 +1,81 @@
-# 25Live -> BAS sync.
+# 25Live -> BAS sync: the service (the sync on its schedule) and its web UI.
 #
-#   docker compose up -d           # self-scheduling nightly sync (SYNC_AT below)
-#   docker compose logs -f         # watch it
-#   docker compose run --rm -e SYNC_AT= sync --validate   # one-shot pre-flight
-#   docker compose run --rm -e SYNC_AT= sync --dry-run    # one-shot, no writes
+#   cp .env.example .env     # set BAS_WEB_PASSWORD and the other passwords
+#   mkdir -p config          # your settings live here; the web UI edits them
+#   docker compose up -d     # then browse to http://<this host>:8080
 #
-# Put your config.yaml, defaults.yaml, and space_mapping.yaml in ./config
-# (copy the .example files). Put secrets in a gitignored .env file beside this
-# one — every variable in it is passed through, which is how per-system
+#   docker compose logs -f                           # watch it
+#   docker compose run --rm sync sync --validate     # one-shot pre-flight
+#   docker compose run --rm sync sync --dry-run      # one-shot, writes nothing
+#
+# The schedule is set in the web UI (Schedule), or `schedule:` in
+# config/config.yaml. Passwords go in .env, never in the settings files: every
+# variable in it is passed through, which is how per-system
 # BAS_SYS_<NAME>_PASSWORD variables reach the container without being listed
 # here by name.
 
 services:
   sync:
-    # Builds from this checkout. To run a published release instead, delete
-    # `build: .` and set image: ghcr.io/ksu-plantops/25live-bas-sync:1.2
     build: .
+    # To run a published release instead of building, delete `build: .` and
+    # set: image: ghcr.io/ksu-plantops/25live-bas-sync:1.3
     image: 25live-bas-sync
     container_name: 25live-bas-sync
+    command: ["serve"]
 
     # Required by the bacnet driver: it binds a real NIC address and needs
     # broadcast for Who-Is, neither of which works on the default bridge.
-    # Comment this out if every system you use is rest.
+    # With host networking the web UI is on the host's port 8080 directly —
+    # firewall it to the people who should reach it. If every system you use
+    # is rest, you can drop this and publish the port instead:
+    #   ports: ["8080:8080"]
     network_mode: host
 
-    # Passes through every variable in .env — including per-system
-    # BAS_SYS_<NAME>_PASSWORD names that can't be enumerated ahead of time.
     env_file:
       - .env
-
     environment:
       TZ: ${TZ:-America/New_York}
-      # Built-in daily scheduler. Clear it (-e SYNC_AT=) for a one-shot run.
-      SYNC_AT: ${SYNC_AT:-02:00}
-      SYNC_ON_START: ${SYNC_ON_START:-0}
 
     volumes:
-      - ./config:/config:ro      # config.yaml, defaults.yaml, space_mapping.yaml
-      # Named volumes, not host folders: Docker creates a missing host folder
-      # owned by root, which the container's non-root user can't write — and
-      # an unwritable state directory silently disables the safety baseline.
-      # Read the logs with `docker compose logs`, or copy the files out with
-      # `docker compose cp sync:/app/logs ./logs`.
-      - state:/app/state         # safety baseline + run lock — keep this
+      # Your settings: config.yaml, defaults.yaml, space_mapping.yaml. Read-
+      # write, so the web UI can save them. The container runs as whoever
+      # owns this folder on the host (or PUID/PGID from .env), so the files
+      # stay yours.
+      - ./config:/config
+      # Named volumes, not host folders: the safety baseline, run history and
+      # run lock — keep this one.
+      - state:/app/state
       - logs:/app/logs
+
+    # tini as PID 1: forwards `docker stop` to the service and reaps children.
+    init: true
+    # Hardening. The root filesystem is read-only (settings, state and logs are
+    # the volumes above; scratch space is /tmp). The entrypoint needs root's
+    # CHOWN/SETUID/SETGID for a moment to hand the folders over and drop to
+    # the folder's owner; the service itself runs with no capabilities.
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, SETUID, SETGID]
+    security_opt:
+      - no-new-privileges:true
+    # Docker's default log driver never rotates; the service's own log files
+    # are in the logs volume anyway.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # A sync already writing when the container is stopped gets to finish
+    # (BAS_STOP_GRACE, 90 s by default) before it is interrupted.
+    stop_grace_period: 2m
+    healthcheck:
+      test: ["CMD", "python", "-m", "bassync.service", "--health"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 
 volumes:

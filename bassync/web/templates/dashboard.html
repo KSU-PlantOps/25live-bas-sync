@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block title %}Status{% endblock %}
+{% block body %}
+<div data-status-url="{{ url_for('api_status') }}" data-job="{{ current_job.id if current_job else '' }}"></div>
+<h1>Status</h1>
+
+{# ── things that need attention ── #}
+{% if not health.writable %}
+  <div class="flash error">The settings folder <code>{{ paths.config.parent }}</code> isn't writable
+    by the service, so changes made here can't be saved. In Docker, see "Config folder" in the README.</div>
+{% endif %}
+{% if health.config_error %}
+  <div class="flash error"><strong>The sync would refuse to start:</strong> {{ health.config_error }}
+    <a href="{{ url_for('connection') }}">Connection</a> · <a href="{{ url_for('file_edit', name='config') }}">Edit config.yaml</a></div>
+{% endif %}
+{% set missing = secrets | rejectattr(2) | list %}
+{% if missing %}
+  <div class="flash warn">Not set in the service's environment:
+    {% for var, purpose, _ in missing %}<code>{{ var }}</code> ({{ purpose }}){{ ", " if not loop.last }}{% endfor %}.
+    Passwords are never stored in the settings files — put them in <code>.env</code> and restart the container.</div>
+{% endif %}
+{% if health.map_errors %}
+  <div class="flash warn"><strong>{{ health.map_errors | length }} room map problem(s).</strong>
+    The sync leaves those rows — and the floor and building schedules they feed — untouched, and alerts.
+    <ul class="compact">{% for e in health.map_errors[:5] %}<li>{{ e }}</li>{% endfor %}</ul>
+    {% if health.map_errors | length > 5 %}<a href="{{ url_for('map_list', kind='rooms') }}">All of them</a>{% endif %}
+  </div>
+{% endif %}
+
+{% if not health.config_exists or not health.counts.systems or not health.counts.rooms %}
+<section class="card">
+  <h2>Getting started</h2>
+  <ol class="steps">
+    <li class="{{ 'done' if health.config_exists and not health.config_error }}">
+      <a href="{{ url_for('connection') }}">Connection</a>: your 25Live instance and account, and the timezone.</li>
+    <li class="{{ 'done' if health.counts.systems }}">
+      <a href="{{ url_for('connection') }}">Add a BAS system</a> — usually <code>bacnet</code>.</li>
+    <li class="{{ 'done' if not missing }}">Put the passwords in <code>.env</code> (see the warning above) and restart the container.</li>
+    <li class="{{ 'done' if health.counts.buildings }}"><a href="{{ url_for('map_list', kind='buildings') }}">Add buildings</a>,
+      then <a href="{{ url_for('map_list', kind='rooms') }}">rooms</a> — <em>Discover spaces</em> below lists the 25Live rooms with bookings.</li>
+    <li>Run <em>Validate</em>, then a <em>Dry run</em>, before the first live sync.</li>
+  </ol>
+</section>
+{% endif %}
+
+{# ── at a glance ── #}
+<div class="grid">
+  <section class="card">
+    <h2>Last sync</h2>
+    {% if last_run %}
+      <p class="big {{ 'ok' if last_run.ok else 'bad' }}">{{ 'OK' if last_run.ok else 'FAILED' }}</p>
+      <p><a href="{{ url_for('run', run_id=last_run.id) }}">{{ last_run.subject }}</a></p>
+      <p class="hint">{{ local_time(last_run.started) }} · {{ relative(last_run.started) }}</p>
+    {% else %}
+      <p class="hint">No live sync has run yet.</p>
+    {% endif %}
+  </section>
+  <section class="card">
+    <h2>Next sync</h2>
+    {% if service.next_due %}
+      <p class="big">{{ local_time(service.next_due, '%a %H:%M') }}</p>
+      <p class="hint">{{ relative(service.next_due) }} · {{ service.describe() }}</p>
+    {% else %}
+      <p class="big">—</p>
+      <p class="hint">{{ service.describe() }}</p>
+    {% endif %}
+    {% if service.pending_since %}<p class="hint">A sync is due and will start when the running job finishes.</p>{% endif %}
+    {% if service.schedule.error %}<p class="bad">{{ service.schedule.error }}</p>{% endif %}
+    <p><a href="{{ url_for('schedule') }}">Change the schedule</a></p>
+  </section>
+  <section class="card">
+    <h2>Room map</h2>
+    <p class="big">{{ health.counts.rooms }} <span class="unit">rooms</span></p>
+    <p class="hint">{{ health.counts.buildings }} building{{ '' if health.counts.buildings == 1 else 's' }} · {{ health.counts.floors }} floor{{ '' if health.counts.floors == 1 else 's' }} ·
+      {{ health.counts.systems }} BAS system{{ '' if health.counts.systems == 1 else 's' }}</p>
+    <p>{% if health.map_errors %}<span class="bad">{{ health.map_errors | length }} problem(s)</span>
+       {% elif health.map_warnings %}<span class="warn">{{ health.map_warnings | length }} warning(s)</span>
+       {% else %}<span class="ok">No problems</span>{% endif %}</p>
+  </section>
+</div>
+
+{# ── run something ── #}
+<section class="card">
+  <h2>Run</h2>
+  {% if current_job %}
+    <p><a href="{{ url_for('job', job_id=current_job.id) }}">{{ current_job.label }}</a> is running — one job at a time.</p>
+  {% endif %}
+  <div class="actions">
+    <form method="post" action="{{ url_for('jobs') }}" class="inline" data-confirm="Sync now? This writes schedules to the BAS.">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="kind" value="sync">
+      {% if systems | length > 1 %}
+        <select name="system" aria-label="Limit to one system">
+          <option value="">All systems</option>
+          {% for s in systems %}<option>{{ s }}</option>{% endfor %}
+        </select>
+      {% endif %}
+      <label class="check" title="Override the mass-clear safety check — for a semester break, when a big drop in bookings is real">
+        <input type="checkbox" name="force" value="1" data-confirm-checked="Force overrides the mass-clear safety check. Only do this when a big drop in bookings is expected (a break). Continue?"> Force</label>
+      <button class="primary" {{ 'disabled' if current_job }}>Sync now</button>
+    </form>
+    {% for kind, label, hint in [('dry-run', 'Dry run', 'fetch and build; writes nothing'),
+                                ('validate', 'Validate', 'checks config, 25Live, every BAS and target; writes nothing'),
+                                ('test-alert', 'Test alert', 'sends a sample report to every alert channel')] %}
+      <form method="post" action="{{ url_for('jobs') }}" class="inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <input type="hidden" name="kind" value="{{ kind }}">
+        <button title="{{ hint }}" {{ 'disabled' if current_job }}>{{ label }}</button>
+      </form>
+    {% endfor %}
+    <form method="post" action="{{ url_for('jobs') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="kind" value="discover">
+      <button title="lists 25Live spaces with bookings, to add as rooms" {{ 'disabled' if current_job }}>Discover spaces</button>
+      <label class="check">next <input type="number" name="days" value="30" min="1" max="366" class="tiny"> days</label>
+    </form>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2>Recent syncs <a class="more" href="{{ url_for('runs') }}">all</a></h2>
+    {% if runs %}
+      <table class="list">
+        {% for r in runs %}
+          <tr><td><span class="dot {{ 'ok' if r.ok else 'bad' }}"></span></td>
+              <td><a href="{{ url_for('run', run_id=r.id) }}">{{ local_time(r.started) }}</a></td>
+              <td>{{ r.counts.written }} written{% if r.counts.failed %}, <span class="bad">{{ r.counts.failed }} failed</span>{% endif %}</td></tr>
+        {% endfor %}
+      </table>
+    {% else %}<p class="hint">None yet.</p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>Recent jobs <a class="more" href="{{ url_for('jobs') }}">all</a></h2>
+    {% if jobs %}
+      <table class="list">
+        {% for j in jobs %}
+          <tr><td><span class="dot {{ 'run' if j.running else ('ok' if j.exit_code == 0 else 'bad') }}"></span></td>
+              <td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.label }}</a></td>
+              <td>{{ local_time(j.started) }}</td><td class="hint">{{ j.trigger }}</td></tr>
+        {% endfor %}
+      </table>
+    {% else %}<p class="hint">None yet.</p>{% endif %}
+  </section>
+</div>
+
+{% if health.config_warnings or health.map_warnings %}
+<details class="card">
+  <summary>{{ (health.config_warnings | length) + (health.map_warnings | length) }} warning(s) worth a look</summary>
+  <ul>{% for w in health.config_warnings + health.map_warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+</details>
+{% endif %}
+{% endblock %}

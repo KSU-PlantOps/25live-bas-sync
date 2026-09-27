@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · 25Live → BAS sync</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ app_version }}">
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+</head>
+<body class="login">
+  <form method="post" class="card narrow">
+    <h1>25Live <span aria-hidden="true">→</span> BAS sync</h1>
+    {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
+    <label>Password
+      <input type="password" name="password" autocomplete="current-password" autofocus required>
+    </label>
+    <input type="hidden" name="next" value="{{ next }}">
+    <button class="primary">Sign in</button>
+    <p class="hint">The password is <code>BAS_WEB_PASSWORD</code> in the service's environment.</p>
+  </form>
+</body>
+</html>

@@ -11,9 +11,11 @@ Niagara**, and any other BTL-listed controller all expose the same Schedule
 objects. One nightly run drives all of them at once on a mixed campus — and
 schedules each building as finely as that building actually supports.
 
-It's a single-run job meant to be scheduled nightly. It is read-only against
-25Live, only ever writes occupancy schedules, and can email you a report of
-exactly what it scheduled.
+It runs as a **Docker container with a web UI**: status and history, "Sync
+now", and editing the room map and settings in the browser, with the sync
+running on its own schedule. It can also run as a plain nightly command from
+cron or Task Scheduler. It is read-only against 25Live, only ever writes
+occupancy schedules, and can email you a report of exactly what it scheduled.
 
 ## Contents
 
@@ -21,11 +23,13 @@ exactly what it scheduled.
 - [How finely can you schedule?](#how-finely-can-you-schedule)
 - [Features](#features)
 - [How it works](#how-it-works)
-- [Install](#install)
+- [Quick start (Docker)](#quick-start-docker)
+- [The web UI](#the-web-ui)
+- [Run with Docker](#run-with-docker)
+- [Install without Docker](#install-without-docker)
 - [Configure](#configure)
 - [Running](#running)
 - [Reports and alerts](#reports-and-alerts)
-- [Run with Docker](#run-with-docker)
 - [Safety rails](#safety-rails)
 - [BAS setup, by vendor](#bas-setup-by-vendor)
 - [25Live setup](#25live-setup)
@@ -130,9 +134,13 @@ rather than swallowing them.
   [Reports and alerts](#reports-and-alerts).
 - **Staged commissioning** — point a building at the `preview` driver and it
   logs (and CSV-exports) what it would do while the rest write for real.
-- A **Tkinter GUI** (`editor.py`) so non-developers can manage the room map,
-  with built-in *Test connections* and *Preview*, and the sync's own validation
-  on every Save.
+- A **web UI** served by the container: status, sync history with each night's
+  report, *Sync now*, *Validate*, *Dry run* and *Discover* with live output,
+  and editing of rooms, buildings, floors, connections, defaults and the
+  schedule — checked by the sync's own validation before anything is saved.
+  See [The web UI](#the-web-ui).
+- A **desktop editor** (`editor.py`, Tkinter) with the same editing, for sites
+  that run the sync without Docker.
 - `--dry-run`, `--validate`, `--discover` modes; typo-catching config
   validation; a dead-man's-switch ping; a BAS heartbeat; automatic retries;
   a one-run-at-a-time lock.
@@ -148,7 +156,155 @@ rather than swallowing them.
 The Python stays generic. Everything site-specific lives in three YAML files you
 create from the provided examples.
 
-## Install
+## Quick start (Docker)
+
+Docker is the recommended way to run it: one container runs the sync on its
+schedule and serves the web UI. You need a Linux host or VM that can reach
+25Live over HTTPS and your BAS over BACnet/IP (UDP 47808) — see
+[Running in a datacenter or the cloud](#running-in-a-datacenter-or-the-cloud)
+if it isn't on the controls network — with Docker and the compose plugin.
+
+```bash
+git clone https://github.com/KSU-PlantOps/25live-bas-sync.git
+cd 25live-bas-sync
+cp .env.example .env        # set BAS_WEB_PASSWORD and BAS_25LIVE_PASSWORD
+mkdir -p config             # your settings will live here
+docker compose up -d
+```
+
+Then browse to **`http://<host>:8080`**, sign in with `BAS_WEB_PASSWORD`, and
+follow *Getting started* on the status page:
+
+1. **Connection** — your 25Live instance and account, the timezone, and a BAS
+   system (usually `bacnet`, with this host's `local_address`).
+2. **Buildings**, then **Rooms** — *Discover spaces* lists the 25Live rooms
+   with bookings, each with an *Add as a room* link.
+3. **Validate**, then **Dry run**. Neither writes anything.
+4. **Schedule** — nightly at 02:00 by default; add a midday time to pick up
+   same-day bookings sooner.
+
+Passwords stay in `.env` (the web UI shows which ones are missing); after
+changing it, `docker compose up -d` restarts the container with the new
+values. The settings you make in the web UI are ordinary YAML files in
+`./config`, so you can back them up, diff them, or keep them in git.
+
+To run a published release rather than build locally, delete `build: .` from
+`docker-compose.yml` and set `image: ghcr.io/ksu-plantops/25live-bas-sync:1.3`
+(the 1.3 line, which follows its patch releases; a release candidate has only
+its exact tag, e.g. `:1.3.0rc1`).
+
+## The web UI
+
+| Page | What it does |
+|---|---|
+| **Status** | Last sync and its result, the next scheduled run, room-map problems, missing passwords, and buttons for *Sync now* (optionally one system, optionally *Force*), *Dry run*, *Validate*, *Test alert* and *Discover spaces*. |
+| **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
+| **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
+| **Rooms · Buildings · Floors** | The room map, with search and sortable columns; add, edit, copy and delete. Renaming a building repoints its rooms and floors; deleting one takes its floors and won't leave rooms driving nothing. |
+| **Connection** | 25Live, BAS systems (add, remove, change driver), timezone and default system; which passwords are set. *Validate* per system. |
+| **Defaults · Schedule** | The run-up/run-down/merge-gap/lookahead defaults, and when the sync runs. |
+| **Files** | The three YAML files as text, for anything the forms don't cover (alerts, email, safety limits); a zip of all three. |
+| **Logs** | The sync's and the service's logs. |
+
+Every sync and tool runs as the ordinary `bas-sync` command in a process of its
+own, one at a time, so the web UI can't do anything the command line couldn't —
+the run lock, the safety rail and the device checks all apply. Saving runs the
+same checks the nightly sync does and asks before saving anything it would
+reject; each save is atomic, keeps a `.bak`, and is refused if someone else
+changed the file since you opened the form.
+
+**Security.** It can start a sync that writes to building controllers, so:
+
+- **One password**, `BAS_WEB_PASSWORD`. Without it the web UI stays off and only
+  the schedule runs. Five wrong tries lock the address out for five minutes;
+  changing the password signs everyone out. Sessions last 12 hours.
+- **HTTPS**: set `BAS_WEB_TLS_CERT` and `BAS_WEB_TLS_KEY`, or put it behind a
+  reverse proxy that terminates TLS and set `BAS_WEB_BEHIND_PROXY=1`. Only
+  behind a proxy that does its own sign-in, `BAS_WEB_AUTH=none` turns the
+  password off.
+- **Where it listens**: with host networking (needed for BACnet) the web UI is
+  on the host's port 8080 on every interface. Set `BAS_WEB_HOST` to one address,
+  and firewall the port to the people who use it.
+- Forms carry CSRF tokens; a strict Content-Security-Policy allows no inline
+  script and nothing from other sites, so it also works with no internet at all.
+- Every change and every job is logged with the address that made it, in the
+  service log (**Logs → Service**).
+
+Outside Docker, `pip install ".[bacnet,web]"` and run `bas-sync-service` (with
+`BAS_WEB_PASSWORD` set) for the same service and web UI.
+
+## Run with Docker
+
+The image runs in one of two ways (see `docker-entrypoint.sh`):
+
+- **`serve`** — the service: the sync on its schedule plus the web UI. This is
+  what `docker-compose.yml` runs.
+- **`sync [args]`** — one run of the command line, then exit with its code:
+  `sync --validate`, `sync --dry-run`, or plain `sync` for a live run. Use it
+  for host cron or a **Kubernetes CronJob**, or for a one-off next to the
+  service:
+
+  ```bash
+  docker compose run --rm sync sync --validate
+  docker compose run --rm sync sync --dry-run
+  ```
+
+  1.x-style flags straight after the image name (`--validate`) still work, and
+  with no arguments the image does one live sync — or runs the service if
+  `SYNC_AT` is set — as 1.x did.
+
+> **BACnet needs host networking.** The BACnet driver binds a real NIC address
+> and relies on broadcast, neither of which survives Docker's default bridge.
+> Run it with `network_mode: host` (already set in the compose file) and set
+> `local_address` to the *host's* address. On Docker Desktop for Mac/Windows,
+> host networking is limited — run it on a Linux host or VM. The `rest` driver
+> is ordinary HTTP and works under bridge networking: drop `network_mode` and
+> publish the port (`ports: ["8080:8080"]`).
+
+### Config folder
+
+`./config` is mounted read-write at `/config`: the web UI saves `config.yaml`,
+`defaults.yaml` and `space_mapping.yaml` there. The container starts as root
+only long enough to sort out file ownership, then runs as **whoever owns that
+folder on the host**, so the files stay yours and you can still edit them
+there. Set `PUID`/`PGID` in `.env` to run as someone else. A folder Docker
+created itself (root-owned and empty) is handed to the image's own user,
+10001. If the web UI says it can't save, the folder isn't writable by the user
+it runs as: `sudo chown -R "$(id -u):$(id -g)" config` fixes it. A read-only
+mount (`:ro`) also works — the web UI then shows the settings but can't change
+them.
+
+### State, logs and the schedule
+
+> **Keep the `state` volume.** It holds the previous run's baseline that the
+> mass-clear safety check compares against, the run history, the job output
+> and the run lock. Compose mounts a named volume for it; with `docker run` or
+> a CronJob, mount a named volume or PVC at `/app/state` yourself. Without it
+> every run starts with no history — the sync warns about that on every run,
+> and the entrypoint warns if `/app/state` isn't writable.
+
+- **Schedule**: `schedule:` in `config.yaml` — the web UI's Schedule page. Times
+  are in `timezone:` from the config. The service handles daylight-saving
+  changes: on the spring-forward date a time that doesn't exist runs as the
+  clock jumps, and a repeated one in the fall-back hour runs once. `SYNC_AT`
+  and `SYNC_ON_START` in the environment still override it, as in 1.x.
+- **Logs**: `docker compose logs` for the service; the sync's and the
+  service's log files are in the `logs` volume, and on the web UI's Logs page.
+- **Health**: the compose file's health check runs
+  `python -m bassync.service --health`, which checks the scheduler's heartbeat.
+- **Stopping**: `docker stop` lets a sync that is already writing finish (up to
+  `BAS_STOP_GRACE`, 90 s) before interrupting it; the compose file allows two
+  minutes.
+- **Hardening**: the compose file runs the container with a read-only root
+  filesystem, all capabilities dropped except the few the entrypoint needs to
+  hand the folders over, and `no-new-privileges`. The service itself runs as
+  an ordinary user with no capabilities.
+
+Passwords come from the environment only and are never baked into the image.
+The container points at `/config/*.yaml` via the `BAS_CONFIG` /
+`BAS_DEFAULTS` / `BAS_SPACE_MAP` env vars.
+
+## Install without Docker
 
 **Requirements:** **Python 3.13 or newer — 3.14 recommended.** Older versions
 are past end of life and no longer receive security fixes, which matters for a
@@ -157,7 +313,8 @@ start on them. A **local 25Live account** (not SSO) with read access and
 Series25 WebServices enabled. Whatever your BAS side needs — see
 [BAS setup](#bas-setup-by-vendor).
 
-Use a virtual environment, and point the scheduled task at *its* Python — then
+For a one-shot nightly job from Windows Task Scheduler or cron, with the
+desktop editor. Use a virtual environment, and point the scheduled task at *its* Python — then
 "the dependencies are installed for a different Python than the job runs" can't
 happen:
 
@@ -280,9 +437,11 @@ without its bookings. A room whose own target is malformed still feeds its
 floor and building. Set `safety.on_map_errors: abort` to write nothing until
 the map is fixed instead.
 
-### Editing rooms with the GUI
+### Editing rooms with the desktop editor
 
-Run `python editor.py` (Windows users can double-click `Edit-Rooms.bat`):
+With Docker, the [web UI](#the-web-ui) does all of this in the browser. Without
+it, run `python editor.py` (Windows users can double-click `Edit-Rooms.bat`) —
+both use the same checks:
 
 - **Rooms** tab — Add/Edit/Delete rooms. **Building**, **Floor** and **System**
   are dropdowns, so joining a roll-up or moving a room to another BAS is a pick
@@ -358,7 +517,9 @@ already running · `130` interrupted.
 
 ### Scheduling
 
-Run it once per night, from anywhere that can reach both 25Live and your BAS.
+In Docker, the service runs the sync on its schedule — set it on the web UI's
+Schedule page. Without Docker, run it once per night, from anywhere that can
+reach both 25Live and your BAS.
 Only one live sync runs at a time: a second one exits `8` without touching
 anything.
 
@@ -421,81 +582,6 @@ run, so the monitor alarms when the pings stop: an expired service password, a
 disabled task, a rebuilt host. `ping_fail_url` is fetched after a failed run.
 Pair it with a BAS-side heartbeat (`heartbeat_object` for BACnet,
 `heartbeat_path` for Niagara) and the BAS can alarm on its own.
-
-## Run with Docker
-
-A `Dockerfile` and `docker-compose.yml` are included for running the **sync**
-headlessly in a container. (The Tkinter editor isn't containerized — edit your
-YAML on a workstation, then mount it in.)
-
-**Prebuilt image.** Each release is also published for amd64 and arm64 as
-`ghcr.io/ksu-plantops/25live-bas-sync`, tagged with its version (`1.2.0`), its
-minor line (`1.2`, which follows patch releases) and `latest`. To use it rather
-than build locally, delete `build: .` from `docker-compose.yml` and set
-`image: ghcr.io/ksu-plantops/25live-bas-sync:1.2`; `docker compose pull` then
-fetches patch releases. With `docker run`, use that name in place of
-`25live-bas-sync`.
-
-> **BACnet needs host networking.** The BACnet driver binds a real NIC address
-> and relies on broadcast, neither of which survives Docker's default bridge.
-> Run it with `network_mode: host` (already set in the compose file) and set
-> `local_address` to the *host's* address. On Docker Desktop for Mac/Windows,
-> host networking is limited — run the BACnet path directly on a Linux host or
-> a VM on the controls network. The `rest` driver is ordinary HTTP and works
-> fine under bridge networking.
-
-**1. Put your config where the container can mount it.** Create a `config/`
-folder holding `config.yaml`, `defaults.yaml`, and `space_mapping.yaml` (copy the
-`.example` files). **2. Put secrets in `.env`** (copy `.env.example`) — it's
-gitignored and loaded automatically by compose:
-
-```bash
-mkdir -p config && cp config.example.yaml config/config.yaml   # + defaults / space_mapping
-cp .env.example .env                                            # then fill in passwords
-```
-
-```bash
-docker compose run --rm -e SYNC_AT= sync --validate   # one-shot pre-flight (no writes)
-docker compose run --rm -e SYNC_AT= sync --dry-run    # one-shot, fetch + build only
-docker compose up -d                                  # self-scheduling nightly sync
-docker compose logs -f                                # watch it
-```
-
-Two ways to run it:
-
-- **Self-scheduling (default).** `docker compose up -d` keeps the container up and
-  runs the sync once a day at `SYNC_AT` (default `02:00`, in `TZ`). No host cron
-  needed. Set `SYNC_ON_START=1` to also run once on startup. The scheduler
-  handles daylight-saving changes: on the spring-forward date, when 02:00
-  doesn't exist, it runs as the clock jumps to 03:00, and in the repeated
-  fall-back hour it runs once.
-- **One-shot.** Clearing `SYNC_AT` makes the container run once and exit with the
-  sync's exit code — ideal for host cron, CI, or a **Kubernetes CronJob**:
-
-  ```bash
-  docker run --rm --network host \
-    -e BAS_25LIVE_PASSWORD=... \
-    -e TZ=America/New_York \
-    -v "$(pwd)/config:/config:ro" \
-    -v bas-sync-state:/app/state \
-    25live-bas-sync --validate
-  ```
-
-> **Keep the `state` volume.** It holds the previous run's baseline that the
-> mass-clear safety check compares against, and the run lock. Compose mounts a
-> named volume for it; with `docker run` or a CronJob, mount a named volume or
-> PVC at `/app/state` yourself. Without it every run starts with no history,
-> and only the `min_events` check protects you — the sync warns about that on
-> every run, and the entrypoint warns if `/app/state` isn't writable. Don't
-> bind-mount a host folder there: Docker creates it root-owned, and the
-> container runs as a non-root user.
-
-Anything after the image name is passed straight to `main.py` (`--validate`,
-`--dry-run`, `--discover`, `--test-alert`, …). Passwords come from the
-environment only and are never baked into the image. Logs go to
-`docker compose logs`; the log files live in the `logs` volume. The container
-points at `/config/*.yaml` via the `BAS_CONFIG` / `BAS_DEFAULTS` /
-`BAS_SPACE_MAP` env vars.
 
 ## Safety rails
 
@@ -668,6 +754,45 @@ default) catches it by reading the array back.
 - A multistate occupancy schedule (UNSIGNED values) needs `occupied_value` and
   `unoccupied_value` on its system, because state numbers are site-specific.
 
+### Running in a datacenter or the cloud
+
+The sync talks to **the devices that hold the schedules you map, and nothing
+else** — not every controller on campus. Where you put the booking schedules
+decides what it needs to reach:
+
+- **On servers** — a Niagara Supervisor or station exporting its booking
+  schedules over BACnet, an EBO server through the `rest` driver — and the
+  sync only needs UDP 47808 (or HTTPS) to those few addresses. The server
+  passes the bookings on to its own controllers. This is the easiest layout
+  for a VM on its own subnet.
+- **In the field controllers** — WebCTRL keeps schedules in the controllers —
+  and the sync needs to reach each controller that holds a mapped schedule,
+  including through each building's BACnet router for MS/TP.
+
+Validate lists every device and schedule it will use, reading each one back.
+
+It does **not** need to be a BBMD. On a subnet of its own:
+
+- **Pin addresses** in targets (`2001:1@10.20.0.15`). A pinned IP device is
+  plain unicast: no broadcast, no BBMD.
+- **Set `bbmd_address`** to any one existing campus BBMD for anything that
+  needs broadcast — unpinned targets, and routed MS/TP devices (the
+  `12001:5@2001:0x21` form), whose router is found by broadcast. The sync
+  registers with it as a foreign device, and that BBMD relays to every subnet
+  it peers with. That BBMD must accept foreign-device registrations; Validate
+  says whether it did. Making the sync a BBMD itself would need every
+  building's BBMD to list it as a peer, which foreign-device registration
+  avoids.
+
+And on the network side:
+
+- **A routed private connection** to campus (site-to-site VPN, private link)
+  with **no NAT** between the VM and the BAS: BACnet/IP carries IP addresses
+  inside its packets, and NAT breaks them.
+- **UDP 47808 both ways** between the VM and the devices (and the BBMD).
+- **Never expose UDP 47808 to the internet** — BACnet/IP has no
+  authentication. The same goes for the web UI's port without HTTPS.
+
 ## 25Live setup
 
 - Create a **local** service account (not SSO) with read access to the relevant
@@ -690,6 +815,24 @@ default) catches it by reading the array back.
   `--discover`.
 
 ## Upgrading
+
+### From 1.2
+
+The sync itself is unchanged; what's new is how the container runs.
+
+1. **The compose file runs the service** (`command: ["serve"]`): the sync on
+   its schedule plus the web UI. Take the new `docker-compose.yml` and
+   `.env.example`, and set `BAS_WEB_PASSWORD` in `.env`.
+2. **The schedule moves into `config.yaml`** (`schedule:`, or the web UI's
+   Schedule page). `SYNC_AT`/`SYNC_ON_START` still work and override it; remove
+   them from `.env` to manage the schedule in the web UI. The default is the
+   same nightly 02:00.
+3. **`./config` is mounted read-write**, and the container runs as the folder's
+   owner. If your 1.2 folder is root-owned, `sudo chown -R "$(id -u)" config`,
+   or set `PUID`/`PGID`.
+4. One-shot runs are `docker compose run --rm sync sync --validate` now that
+   the service is the default command; the 1.x forms still work with
+   `docker run`.
 
 ### From 1.1
 
@@ -769,15 +912,18 @@ It covers:
 - the merge/roll-up logic, and the loader and its inheritance rules
 - config validation, the safety rail and its state file
 - the 25Live client's paging, cancellation and fetch-window handling
-- the email/webhook reports, the Docker scheduler's DST handling, and the
-  editor's save logic
+- the email/webhook reports, the service's scheduler (DST included), its job
+  runner and run history
+- the web UI: sign-in and lockout, CSRF, every editing page, concurrent-edit
+  and confirmation handling, and the sandboxed report view
+- the editors' shared save logic
 
 With BACpypes3 installed it also runs the **BACnet driver against simulated
 controllers** over real BACnet/IP on loopback. Those tests cover value types,
 stale-pin refusal, error handling, offline devices, foreign exceptions and the
 heartbeat. CI runs everything on Python 3.13 and 3.14, with and without
 BACpypes3, and also runs ruff, mypy, shellcheck, pip-audit, a package install
-and a Docker build.
+and a Docker build that starts the service and checks its web UI and health check.
 
 ## Contributing
 
@@ -805,17 +951,20 @@ for validating behavior against your own 25Live instance and your own BAS.
 | `main.py` | CLI entry point from a checkout (the CLI itself is `bassync/cli.py`). |
 | `bassync/` | The sync engine (importable, unit-tested). |
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
-| `bassync/editor.py` · `editor.py` | GUI to add/edit rooms, floors, buildings and connections (Tkinter), and its launcher. |
+| `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI), its job runner, and the run history. |
+| `bassync/web/` | The web UI (Flask): pages, templates and static files. |
+| `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
+| `bassync/editor.py` · `editor.py` | The desktop editor (Tkinter), and its launcher. |
 | `Edit-Rooms.bat` | Double-click launcher for the editor (Windows). |
 | `config.example.yaml` | Connection/system template → copy to `config.yaml`. |
 | `defaults.example.yaml` | Scheduling defaults → copy to `defaults.yaml`. |
 | `space_mapping.example.yaml` | Room map template → copy to `space_mapping.yaml`. |
-| `requirements.txt` · `requirements-bacnet.txt` | Core dependencies · the BACnet driver's. |
+| `requirements.txt` · `requirements-bacnet.txt` · `requirements-web.txt` | Core dependencies · the BACnet driver's · the web UI's. |
 | `constraints.txt` | Exact tested versions of every dependency. |
 | `requirements-dev.txt` | Test and lint tools. |
 | `pyproject.toml` | Package metadata (`pip install .`) and tool settings. |
 | `tests/` · `Test.py` | The pytest suite · a `python Test.py` shortcut to it. |
-| `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` | Container image, compose service, and entrypoint (one-shot or daily). |
+| `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` | Container image, compose service, and entrypoint (`serve` or one-shot `sync`). |
 | `.env.example` | Docker secrets template → copy to `.env`. |
 | `CONTRIBUTING.md` · `CHANGELOG.md` · `LICENSE` | |
 | `.github/` | CI and release workflows, the release helper script, and Dependabot configuration. |

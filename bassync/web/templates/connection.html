@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Connection{% endblock %}
+{% macro field(path_t, label, ftype, hint) %}
+  {% set fid = path_t | join('.') %}
+  {% set value = form.get(fid, '') %}
+  {% set options = choices(path_t) %}
+  <label for="c-{{ fid }}">{{ label }}</label>
+  <div class="field">
+    {% if fid == 'collegenet.include_states' %}
+      <div class="checks">
+        {% for state, text in state_labels %}
+          <label class="check"><input type="checkbox" name="state" value="{{ state }}" {{ 'checked' if state in states }}> {{ text }} ({{ state }})</label>
+        {% endfor %}
+        {% for state in extra_states %}<input type="hidden" name="state" value="{{ state }}">{% endfor %}
+      </div>
+      {% if extra_states %}<small>Also kept: {{ extra_states | join(', ') }} (set in the file)</small>{% endif %}
+    {% elif ftype == 'bool' %}
+      <label class="check"><input type="checkbox" id="c-{{ fid }}" name="{{ fid }}" value="1" {{ 'checked' if value }}> {{ hint }}</label>
+    {% elif options and fid != 'timezone' and path_t[-1] != 'verify_tls' %}
+      <select id="c-{{ fid }}" name="{{ fid }}">
+        <option value="">(default)</option>
+        {% for o in options %}<option {{ 'selected' if o == value }}>{{ o }}</option>{% endfor %}
+      </select>
+    {% else %}
+      <input id="c-{{ fid }}" name="{{ fid }}" value="{{ value }}"{% if options %} list="dl-{{ fid }}"{% endif %}
+             {% if ftype == 'int' %}inputmode="numeric"{% endif %} spellcheck="false">
+      {% if options %}<datalist id="dl-{{ fid }}">{% for o in options %}<option value="{{ o }}">{% endfor %}</datalist>{% endif %}
+    {% endif %}
+    {% if hint and ftype != 'bool' %}<small>{{ hint }}</small>{% endif %}
+  </div>
+{% endmacro %}
+{% block body %}
+<h1>Connection</h1>
+<p class="hint">config.yaml: where the bookings come from and where the schedules go. Passwords are not here —
+they come from the service's environment (<code>.env</code>). Settings this page doesn't show (alerts, safety,
+retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', name='config') }}">Files</a>.</p>
+
+{% if error %}
+  <div class="flash error">config.yaml can't be read, so this page can't save over it without losing the
+    settings it doesn't show: {{ error }} — <a href="{{ url_for('file_edit', name='config') }}">fix it here</a>.</div>
+{% endif %}
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+
+<section class="card">
+  <h2>BAS systems</h2>
+  {% if systems %}
+    <div class="tabs">
+      {% for name, drv in systems | dictsort %}
+        <a href="{{ url_for('connection', system=name) }}" {% if name == selected %}aria-current="page"{% endif %}>{{ name }} <span class="hint">{{ drv or '?' }}</span></a>
+      {% endfor %}
+    </div>
+  {% else %}
+    <p class="hint">No BAS systems yet. Add one — most campuses need one <code>bacnet</code> system.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('system_add') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input name="name" placeholder="new system name, e.g. campus" pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" required aria-label="New system name">
+    <select name="driver" aria-label="Driver">{% for d in drivers %}<option {{ 'selected' if d == 'bacnet' }}>{{ d }}</option>{% endfor %}</select>
+    <button {{ 'disabled' if error }}>Add system</button>
+  </form>
+</section>
+
+<form method="post" class="card form" action="{{ url_for('connection_save') }}">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="version" value="{{ version }}">
+  <input type="hidden" name="system" value="{{ selected }}">
+  {% for title, fields in sections %}
+    <h2 class="full">{{ title }}</h2>
+    {% if selected and title.startswith('BAS system') %}
+      <label for="c-driver">Driver</label>
+      <div class="field">
+        <select id="c-driver" name="driver" data-driver-switch="{{ url_for('connection', system=selected) }}">
+          {% for d in drivers %}<option {{ 'selected' if d == driver }}>{{ d }}</option>{% endfor %}
+        </select>
+        <small>changing it shows that driver's settings; nothing is saved until you press Save</small>
+      </div>
+    {% endif %}
+    {% for path_t, label, ftype, hint in fields %}{{ field(path_t, label, ftype, hint) }}{% endfor %}
+  {% endfor %}
+  {% if not selected %}<input type="hidden" name="driver" value="">{% endif %}
+  {% if systems | length > 1 %}
+    <label for="c-default">Default system</label>
+    <div class="field">
+      <select id="c-default" name="default_system">
+        <option value="">(none — every building names its own)</option>
+        {% for name in systems | sort %}<option {{ 'selected' if name == default_system }}>{{ name }}</option>{% endfor %}
+      </select>
+      <small>used by buildings that don't name a system</small>
+    </div>
+  {% else %}
+    <input type="hidden" name="default_system" value="{{ default_system }}">
+  {% endif %}
+  {% if confirm %}
+    <div class="flash warn full"><strong>Saving this causes:</strong>
+      <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
+      <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label></div>
+  {% endif %}
+  <div class="buttons full">
+    <button class="primary" {{ 'disabled' if error }}>Save</button>
+    <a class="button" href="{{ url_for('connection', system=selected) }}">Discard changes</a>
+  </div>
+</form>
+
+{% if selected %}
+<section class="card">
+  <h2>Test</h2>
+  <form method="post" action="{{ url_for('jobs') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="kind" value="validate">
+    <input type="hidden" name="system" value="{{ selected }}">
+    <button {{ 'disabled' if current_job }}>Validate {{ selected }}</button>
+    <span class="hint">checks 25Live and this system — its reachability and every target — using the saved settings; writes nothing</span>
+  </form>
+  <form method="post" action="{{ url_for('system_delete', name=selected) }}" class="inline"
+        data-confirm="Remove the system '{{ selected }}' from config.yaml?">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="danger">Remove {{ selected }}</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Passwords</h2>
+  <table class="list">
+    {% for var, purpose, is_set in secrets %}
+      <tr><td><code>{{ var }}</code></td><td>{{ purpose }}</td>
+          <td>{% if is_set %}<span class="ok">set</span>{% else %}<span class="bad">not set</span>{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="hint">Set them in <code>.env</code> next to docker-compose.yml, then <code>docker compose up -d</code> to restart
+  with them. They are never shown or stored here.</p>
+</section>
+{% endblock %}

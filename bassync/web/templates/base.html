@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · 25Live → BAS sync</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ app_version }}">
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ app_version }}" defer></script>
+</head>
+<body>
+{% set nav = [
+  ('dashboard', 'Status'), ('runs', 'History'), ('jobs', 'Jobs'),
+  ('map_list:rooms', 'Rooms'), ('map_list:buildings', 'Buildings'), ('map_list:floors', 'Floors'),
+  ('connection', 'Connection'), ('defaults', 'Defaults'), ('schedule', 'Schedule'),
+  ('files_list', 'Files'), ('logs', 'Logs')] %}
+<header class="top">
+  <a class="brand" href="{{ url_for('dashboard') }}">25Live <span aria-hidden="true">→</span> BAS sync</a>
+  <nav>
+    {% for key, label in nav %}
+      {% set endpoint, _, kind = key.partition(':') %}
+      {% set href = url_for(endpoint, kind=kind) if kind else url_for(endpoint) %}
+      {% set args = request.view_args or {} %}
+      {% set active = (request.endpoint == endpoint and (not kind or args.get('kind') == kind))
+                      or (kind and request.endpoint in ('map_form', 'map_delete') and args.get('kind') == kind)
+                      or (endpoint, request.endpoint) in [('jobs', 'job'), ('runs', 'run'), ('files_list', 'file_edit')] %}
+      <a href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="who">
+    {% if current_job %}
+      <a class="pill running" href="{{ url_for('job', job_id=current_job.id) }}">{{ current_job.label }} running…</a>
+    {% endif %}
+    {% if auth_required %}
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button class="link">Sign out</button>
+      </form>
+    {% endif %}
+  </div>
+</header>
+<main>
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for kind, message in messages %}
+      <div class="flash {{ kind }}" role="status">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+<footer>25live-bas-sync {{ app_version }}</footer>
+</body>
+</html>

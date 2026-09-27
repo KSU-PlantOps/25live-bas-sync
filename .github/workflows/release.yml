@@ -27,7 +27,10 @@ on:
       - bassync/__init__.py
       - CHANGELOG.md
       - Dockerfile
+      - docker-entrypoint.sh
       - pyproject.toml
+      - constraints.txt
+      - requirements*.txt
       - .github/workflows/release.yml
       - .github/scripts/release_info.py
   workflow_dispatch:

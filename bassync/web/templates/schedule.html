@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Schedule{% endblock %}
+{% block body %}
+<h1>Schedule</h1>
+<p class="hint">When the service runs the sync by itself: <code>schedule:</code> in config.yaml, in the campus
+timezone ({{ service.schedule.timezone }}).</p>
+{% if sync_at %}
+  <div class="flash warn"><code>SYNC_AT={{ sync_at }}</code> is set in the container's environment and overrides the
+    times below. Remove it from <code>.env</code> / docker-compose.yml to manage the schedule here.</div>
+{% endif %}
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label for="s-enabled">Scheduled syncs</label>
+  <div class="field"><label class="check"><input type="checkbox" id="s-enabled" name="enabled" value="1" {{ 'checked' if form.enabled }}> on</label>
+    <small>off = only when someone presses Sync now</small></div>
+  <label for="s-times">Times</label>
+  <div class="field"><input id="s-times" name="times" value="{{ form.times }}" placeholder="02:00, 12:00">
+    <small>24-hour, comma-separated. A second, midday run picks up same-day bookings sooner.</small></div>
+  <label for="s-start">On start</label>
+  <div class="field"><label class="check"><input type="checkbox" id="s-start" name="run_on_start" value="1" {{ 'checked' if form.run_on_start }}> also sync when the service starts</label></div>
+  <div class="buttons full"><button class="primary">Save</button></div>
+</form>
+<section class="card">
+  <h2>Coming up</h2>
+  {% if upcoming %}
+    <ul>{% for when in upcoming %}<li>{{ when.strftime('%a %d %b %H:%M %Z') }} <span class="hint">{{ relative(when) }}</span></li>{% endfor %}</ul>
+  {% else %}<p class="hint">{{ service.describe() }}</p>{% endif %}
+  <p class="hint">Daylight-saving changes are handled: on the spring-forward date a time that doesn't exist runs
+  when the clock jumps, and a repeated one in the fall-back hour runs once.</p>
+</section>
+{% endblock %}

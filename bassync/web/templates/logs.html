@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block body %}
+<h1>Logs</h1>
+<div class="toolbar">
+  <div class="tabs">
+    <a href="{{ url_for('logs', which='sync') }}" {% if which == 'sync' %}aria-current="page"{% endif %}>Sync</a>
+    <a href="{{ url_for('logs', which='service') }}" {% if which == 'service' %}aria-current="page"{% endif %}>Service</a>
+  </div>
+  <span class="hint">last {{ lines }} lines of <code>{{ path }}</code></span>
+  <a href="{{ url_for('logs', which=which, lines=2000) }}">more</a>
+  <a href="{{ url_for('log_download', which=which) }}">download</a>
+</div>
+<pre class="output tall" data-scroll-end>{{ text or '(empty)' }}</pre>
+{% endblock %}

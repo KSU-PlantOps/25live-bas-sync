@@ -4,6 +4,55 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [1.3.0rc1] — 2026-09-27 — Web UI, and Docker as the way to run it
+
+A release candidate: the container now runs a long-lived service with a web
+UI, and Docker becomes the recommended way to run the sync. The sync itself is
+unchanged. Read *Upgrading → From 1.2* in the README before switching.
+
+### Added
+- **Web UI**, served by the container: status (last sync, next run, room-map
+  problems, missing passwords); sync history with each run's report and a CSV
+  of every window; *Sync now* (optionally one system, optionally forced),
+  *Dry run*, *Validate*, *Test alert* and *Discover spaces* with live output,
+  and a way to stop a running job; editing of rooms, buildings, floors,
+  connections and BAS systems, defaults and the schedule, with the same checks
+  as the desktop editor and the sync; the settings files as text; the logs.
+  Discovered 25Live spaces can be added as rooms in one click.
+- Web UI security: one password (`BAS_WEB_PASSWORD`) with lockout after five
+  wrong tries, signed sessions that end when the password changes, CSRF
+  tokens, a strict Content-Security-Policy, optional HTTPS
+  (`BAS_WEB_TLS_CERT`/`_KEY`) or a trusted reverse proxy, and every change
+  logged with the address that made it. Edits made at the same time by two
+  people are caught rather than one silently undoing the other.
+- **The service** (`bas-sync-service`, the image's `serve`): runs the sync on
+  its schedule and serves the web UI. Every sync and tool is the ordinary
+  command in a process of its own, one at a time.
+- **`schedule:` in config.yaml** — several times a day if you like, on or off,
+  run on start — editable in the web UI. `SYNC_AT` still overrides it.
+- **Run history**: every live sync saves its report in `state/runs/`.
+- Docker: a health check (`bas-sync-service --health`), a graceful stop that
+  lets a running sync finish, `PUID`/`PGID`, and a hardened compose file
+  (read-only root filesystem, capabilities dropped, `no-new-privileges`, log
+  rotation).
+- README: *Running in a datacenter or the cloud* — which devices the sync
+  talks to, and why it needs a foreign-device registration rather than being
+  a BBMD.
+
+### Changed
+- **`docker-compose.yml` runs `serve`**, mounts `./config` read-write, and no
+  longer sets `SYNC_AT`. The container runs as the owner of the config folder
+  (or `PUID`/`PGID`), dropping root before anything else runs.
+- Image: one-shot runs are `sync [args]`; 1.x-style flags, and no arguments at
+  all, still behave as they did.
+- The desktop editor and the web UI share one module for reading, checking and
+  writing the settings files (`bassync/mapedit.py`).
+
+### Fixed
+- Saving a file from the desktop editor left it readable only by its owner
+  (mode 0600), so a sync running as another user could no longer read it.
+  Saves now keep the file's permissions.
+
 ## [1.2.0] — 2026-09-27 — Hardening, email run reports, Niagara over BACnet
 
 A hardening release from a full review of the code, deployment and docs, plus

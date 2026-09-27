@@ -292,3 +292,30 @@ def test_double_schedules_are_not_mistaken_for_real():
     from bassync.drivers.bacnet import encode_value, value_kind
     assert value_kind(Double(0.0)) == "double"
     assert type(encode_value("double", True)) is Double
+
+
+@pytest.mark.parametrize("value, expected", [
+    ("02:00", "02:00"), ("2:00", "02:00"), (" 23:59 ", "23:59"),
+    (120, "02:00"),          # YAML 1.1 reads an unquoted 02:00 as base-60 120
+    (0, "00:00"),
+])
+def test_schedule_times_are_normalised(value, expected):
+    from bassync.config import parse_hhmm
+    assert parse_hhmm(value) == expected
+
+
+@pytest.mark.parametrize("value", ["24:00", "2:5", "noon", 1440, -1, True, None])
+def test_bad_schedule_times_are_refused(value):
+    from bassync.config import parse_hhmm
+    with pytest.raises(ValueError):
+        parse_hhmm(value)
+
+
+def test_schedule_section_is_validated():
+    cfg = with_yaml("schedule:\n  times: [14:30, 02:00, '02:00']\n  enabled: true\n",
+                    load_config)
+    assert cfg["schedule"]["times"] == ["02:00", "14:30"]
+    with pytest.raises(ConfigError, match="schedule.times"):
+        with_yaml("schedule:\n  times: ['25:00']\n", load_config)
+    with pytest.raises(ConfigError, match="schedule.enabled"):
+        with_yaml("schedule:\n  enabled: sometimes\n", load_config)

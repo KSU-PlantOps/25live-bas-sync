@@ -1,19 +1,25 @@
 # 25Live -> BAS schedule sync — container image.
 #
-# This packages the headless sync. The Tkinter editor is not run in a container;
-# edit space_mapping.yaml / config.yaml on a workstation, then mount them in
-# (see README "Run with Docker").
+# The image runs the service: the sync on its schedule, plus the web UI for
+# status, "Sync now" and editing the room map and settings. docker compose is
+# the way to run it (see docker-compose.yml and README "Run with Docker"):
 #
-# Build:  docker build -t 25live-bas-sync .
-# Run:    docker run --rm --network host \
-#           -e BAS_25LIVE_PASSWORD=... \
-#           -v "$(pwd)/config:/config:ro" \
-#           -v bas-sync-state:/app/state \
-#           25live-bas-sync --validate
+#   docker compose up -d            # then browse to http://<host>:8080
 #
-# The state volume is not optional for live runs: it holds the previous run's
-# baseline that the mass-clear safety check compares against. Without it every
-# run starts with no history and only the min_events check protects you.
+# Or by hand:
+#
+#   docker run -d --network host --init \
+#     --env-file .env \
+#     -v "$(pwd)/config:/config" \
+#     -v bas-sync-state:/app/state \
+#     ghcr.io/ksu-plantops/25live-bas-sync:1.3 serve
+#
+# `sync --validate`, `sync --dry-run` or plain `sync` instead of `serve` runs
+# once and exits (host cron, a Kubernetes CronJob). See docker-entrypoint.sh.
+#
+# The state volume is not optional: it holds the previous run's baseline that
+# the mass-clear safety check compares against, the run history and the run
+# lock. Without it every run starts with no history.
 #
 # NOTE ON BACNET: the bacnet driver binds a real NIC address and relies on
 # broadcast for Who-Is, neither of which survives Docker's default bridge
@@ -36,33 +42,40 @@ RUN apt-get update \
 WORKDIR /app
 
 # BACpypes3 is included because bacnet is the recommended driver for a mixed
-# campus. It is a pure-Python package, so it costs little for sites that only
-# use the HTTP drivers. constraints.txt pins every version, so a rebuild
-# installs exactly what was tested rather than whatever is newest that day.
-COPY requirements.txt requirements-bacnet.txt constraints.txt ./
-RUN pip install -r requirements.txt -r requirements-bacnet.txt -c constraints.txt
+# campus; Flask and cheroot are the web UI. All pure Python. constraints.txt
+# pins every version, so a rebuild installs exactly what was tested rather
+# than whatever is newest that day.
+COPY requirements.txt requirements-bacnet.txt requirements-web.txt constraints.txt ./
+RUN pip install -r requirements.txt -r requirements-bacnet.txt \
+        -r requirements-web.txt -c constraints.txt
 
 COPY main.py docker-entrypoint.sh ./
 COPY bassync/ ./bassync/
 RUN chmod +x docker-entrypoint.sh \
  && useradd --create-home --uid 10001 appuser \
  && mkdir -p /config /app/logs /app/state \
- && chown -R appuser:appuser /app /config
+ && chown -R appuser:appuser /app/logs /app/state /config
 
-USER appuser
-
-# Default config locations inside the image — mount your files at /config, or
+# Default config locations inside the image — mount your folder at /config, or
 # override these to point elsewhere.
 ENV BAS_CONFIG=/config/config.yaml \
     BAS_DEFAULTS=/config/defaults.yaml \
     BAS_SPACE_MAP=/config/space_mapping.yaml
 
-# The safety baseline and the run lock. A named volume here starts out owned
-# by appuser (Docker copies the image's ownership into a new named volume); a
-# host bind mount would be root-owned and unwritable.
+# The safety baseline, run history and run lock. A named volume here starts
+# out owned by appuser; the entrypoint hands it to whichever user it runs as.
 VOLUME ["/app/state"]
 
-# Args after the image name are passed straight to main.py (e.g. --validate,
-# --dry-run, --discover, --test-alert). With no args, it does a live sync.
+# The web UI (BAS_WEB_PORT). With host networking, it is the host's port.
+EXPOSE 8080
+
+LABEL org.opencontainers.image.title="25live-bas-sync" \
+      org.opencontainers.image.description="Drive building automation occupancy schedules from 25Live room bookings" \
+      org.opencontainers.image.source="https://github.com/KSU-PlantOps/25live-bas-sync" \
+      org.opencontainers.image.licenses="GPL-3.0-or-later"
+
+# No USER line on purpose: the entrypoint starts as root only to give the
+# mounted /config folder and the volumes to the right user, then drops to that
+# user (setpriv) before running anything. See docker-entrypoint.sh.
 ENTRYPOINT ["./docker-entrypoint.sh"]
 CMD []

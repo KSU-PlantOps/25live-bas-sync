@@ -328,6 +328,19 @@ monitoring:
   ping_url: ""                  # after every successful live run
   ping_fail_url: ""             # after a failed one (e.g. <ping_url>/fail)
 
+# ─────────────────────────────────────────────────────────────────────────────
+# When to run — for the service (the Docker container / bas-sync-service),
+# which runs the sync on this schedule and serves the web UI. Local times in
+# `timezone` above, 24-hour, quoted. A one-shot `python main.py` ignores this:
+# schedule that with cron or Task Scheduler. Editable on the web UI's
+# Schedule page; SYNC_AT in the container's environment overrides `times`.
+# ─────────────────────────────────────────────────────────────────────────────
+schedule:
+  enabled: true
+  times: ["02:00"]              # add more to pick up same-day bookings sooner,
+                                #   e.g. ["02:00", "12:00"]
+  run_on_start: false           # also run once when the service starts
+
 # Optional overrides (sensible defaults are used if omitted):
 # space_map_file: "space_mapping.yaml"
 # log_file: "logs/25live_sync.log"

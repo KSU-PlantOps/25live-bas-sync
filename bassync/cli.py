@@ -51,6 +51,7 @@ from bassync.config import (
     resolve_default_system,
 )
 from bassync.drivers import driver_names, load_driver_class
+from bassync.history import runs_dir, save_report
 from bassync.model import OccupancyWindow
 from bassync.notify import ping_monitor, send_alert, send_run_report
 from bassync.report import ReportLogHandler, RunReport
@@ -349,6 +350,7 @@ def live_sync(cfg: dict, force: bool, only_system) -> int:
 
     for line in report.summary_lines():
         logging.info("%s", line)
+    save_report(report, runs_dir(cfg))
     send_run_report(cfg, report)
     ping_monitor(cfg.get("monitoring") or {}, report.ok)
     return _finish(code)
