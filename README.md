@@ -174,8 +174,12 @@ line pulls in [BACpypes3](https://github.com/JoelBender/BACpypes3); it's
 imported lazily, so a Niagara- or REST-only site can skip it.
 
 Alternatively `pip install ".[bacnet]"` installs the package with two commands,
-`bas-sync` (the sync) and `bas-sync-editor` (the GUI). Installed that way, the
-config files are looked for in the current directory, or in `$BAS_HOME`.
+`bas-sync` (the sync) and `bas-sync-editor` (the GUI). Each
+[release](https://github.com/KSU-PlantOps/25live-bas-sync/releases) attaches the
+wheel too, so a machine without git can run
+`pip install "./25live_bas_sync-X.Y.Z-py3-none-any.whl[bacnet]"`. Installed
+either way, the config files are looked for in the current directory, or in
+`$BAS_HOME`.
 
 CI tests 3.13 and 3.14, each with and without BACpypes3.
 
@@ -423,6 +427,14 @@ Pair it with a BAS-side heartbeat (`heartbeat_object` for BACnet,
 A `Dockerfile` and `docker-compose.yml` are included for running the **sync**
 headlessly in a container. (The Tkinter editor isn't containerized — edit your
 YAML on a workstation, then mount it in.)
+
+**Prebuilt image.** Each release is also published for amd64 and arm64 as
+`ghcr.io/ksu-plantops/25live-bas-sync`, tagged with its version (`1.2.0`), its
+minor line (`1.2`, which follows patch releases) and `latest`. To use it rather
+than build locally, delete `build: .` from `docker-compose.yml` and set
+`image: ghcr.io/ksu-plantops/25live-bas-sync:1.2`; `docker compose pull` then
+fetches patch releases. With `docker run`, use that name in place of
+`25live-bas-sync`.
 
 > **BACnet needs host networking.** The BACnet driver binds a real NIC address
 > and relies on broadcast, neither of which survives Docker's default bridge.
@@ -806,4 +818,4 @@ for validating behavior against your own 25Live instance and your own BAS.
 | `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` | Container image, compose service, and entrypoint (one-shot or daily). |
 | `.env.example` | Docker secrets template → copy to `.env`. |
 | `CONTRIBUTING.md` · `CHANGELOG.md` · `LICENSE` | |
-| `.github/` | CI workflow and Dependabot configuration. |
+| `.github/` | CI and release workflows, the release helper script, and Dependabot configuration. |

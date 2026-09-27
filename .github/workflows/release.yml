@@ -1,0 +1,200 @@
+name: Release
+
+# Publishes a release whenever main carries a version that hasn't been released.
+#
+# To cut one, bump __version__ in bassync/__init__.py, give that version a
+# "## [X.Y.Z] — date — title" section in CHANGELOG.md, and merge to main (see
+# CONTRIBUTING.md). This workflow then:
+#   1. re-runs the whole CI on the merged commit;
+#   2. builds the wheel and source archive, and checks the wheel installs;
+#   3. builds the Docker image for amd64 and arm64 and pushes it to GHCR as
+#      :X.Y.Z, :X.Y and :latest;
+#   4. creates the vX.Y.Z tag and the GitHub release, with the changelog
+#      section as its notes and the wheel, archive and checksums attached.
+# The tag is created last, so a failed run publishes no release, and the next
+# push or a manual run tries again. A push that doesn't change the version
+# finds its tag already there and does nothing.
+#
+# Pull requests that touch the release inputs, and manual runs of an already-
+# released version, get a dry run: everything is built and the notes are
+# previewed in the run summary, but nothing is pushed or published.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    paths:
+      - bassync/__init__.py
+      - CHANGELOG.md
+      - Dockerfile
+      - pyproject.toml
+      - .github/workflows/release.yml
+      - .github/scripts/release_info.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One release at a time; a push that lands mid-release waits its turn.
+  group: release-${{ github.event_name == 'pull_request' && github.ref || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Explicit, so pipelines fail on any stage (-o pipefail).
+    shell: bash
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+      new: ${{ steps.plan.outputs.new }}
+      title: ${{ steps.plan.outputs.title }}
+      prerelease: ${{ steps.plan.outputs.prerelease }}
+      latest: ${{ steps.plan.outputs.latest }}
+      docker_tags: ${{ steps.plan.outputs.docker_tags }}
+      publish: ${{ steps.plan.outputs.publish }}
+      build: ${{ steps.plan.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Work out the release
+        id: plan
+        run: python .github/scripts/release_info.py plan | tee -a "$GITHUB_OUTPUT"
+
+  ci:
+    needs: plan
+    if: needs.plan.outputs.publish == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  dist:
+    name: wheel + sdist
+    needs: [ plan, ci ]
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+      - name: Check the wheel installs and reports this version
+        env:
+          VERSION: ${{ needs.plan.outputs.version }}
+        run: |
+          wheel=$(ls dist/*.whl)
+          pip install "./${wheel}[bacnet]" -c constraints.txt
+          cd "$RUNNER_TEMP"
+          test "$(bas-sync --version)" = "25live-bas-sync $VERSION"
+          bas-sync --list-drivers > /dev/null
+      - name: Checksums
+        working-directory: dist
+        # Written outside dist/ first, so the glob can't pick up the sums file.
+        run: |
+          sha256sum -- * > "$RUNNER_TEMP/SHA256SUMS"
+          mv "$RUNNER_TEMP/SHA256SUMS" .
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  image:
+    name: docker image
+    needs: [ plan, ci ]
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        if: needs.plan.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build${{ needs.plan.outputs.publish == 'true' && ' and push' || ' (dry run)' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: ${{ needs.plan.outputs.publish == 'true' }}
+          tags: ${{ needs.plan.outputs.docker_tags }}
+          # The source label links the GHCR package to this repository.
+          labels: |
+            org.opencontainers.image.title=25live-bas-sync
+            org.opencontainers.image.description=Drive building automation occupancy schedules from 25Live room bookings
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.plan.outputs.version }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=GPL-3.0-or-later
+
+  release:
+    name: ${{ needs.plan.outputs.publish == 'true' && 'publish' || 'preview' }}
+    needs: [ plan, dist, image ]
+    if: ${{ !cancelled() && !failure() && needs.plan.outputs.build == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ needs.plan.outputs.tag }}
+      TITLE: ${{ needs.plan.outputs.title }}
+      PUBLISH: ${{ needs.plan.outputs.publish }}
+      NEW: ${{ needs.plan.outputs.new }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Release notes
+        run: |
+          wheel=$(basename dist/*.whl)
+          python .github/scripts/release_info.py notes --wheel "$wheel" --out "$RUNNER_TEMP/notes.md"
+          {
+            if [ "$PUBLISH" = true ]; then
+              echo "# Publishing $TITLE"
+            else
+              echo "# Dry run: $TITLE"
+              echo
+              if [ "$NEW" = true ]; then
+                echo "Nothing was pushed or published. $TAG isn't released yet, so it publishes when this reaches main."
+              else
+                echo "Nothing was pushed or published. $TAG is already released, so reaching main publishes nothing."
+              fi
+            fi
+            echo
+            echo "Files: $(cd dist && echo *)"
+            echo
+            cat "$RUNNER_TEMP/notes.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Create the tag and the GitHub release
+        if: needs.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.plan.outputs.prerelease }}
+          LATEST: ${{ needs.plan.outputs.latest }}
+        run: |
+          flags=(--latest="$LATEST")
+          if [ "$PRERELEASE" = true ]; then
+            flags+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/* --target "$GITHUB_SHA" --title "$TITLE" \
+            --notes-file "$RUNNER_TEMP/notes.md" "${flags[@]}"

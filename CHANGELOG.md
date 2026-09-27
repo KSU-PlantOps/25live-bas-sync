@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [1.2.0] — 2026-09-26
+## [1.2.0] — 2026-09-27 — Hardening, email run reports, Niagara over BACnet
 
 A hardening release from a full review of the code, deployment and docs, plus
 **email run reports**. Several fixes change what gets written to a BAS; read
@@ -41,6 +41,9 @@ A hardening release from a full review of the code, deployment and docs, plus
   (`python Test.py` still works); CI adds ruff, mypy, shellcheck, pip-audit, a
   package install and a Docker build; Dependabot keeps it all current.
 - BACnet driver tests against **simulated controllers** over real BACnet/IP.
+- **Automated releases.** Merging a version bump to `main` publishes the
+  GitHub release, with the wheel and source archive attached, and a Docker
+  image for amd64 and arm64 at `ghcr.io/ksu-plantops/25live-bas-sync`.
 
 ### Fixed
 - **BACnet errors crashed the whole run.** BACpypes3 raises Error/Reject/Abort
