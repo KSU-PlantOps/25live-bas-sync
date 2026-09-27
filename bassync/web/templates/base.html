@@ -3,30 +3,31 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{% endblock %} · 25Live → BAS sync</title>
+  <title>{% block title %}{% endblock %} · {{ brand.name }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ app_version }}">
+  {% if brand.accent %}<link rel="stylesheet" href="{{ url_for('branding_css') }}?c={{ brand.accent[1:] }}">{% endif %}
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
   <script src="{{ url_for('static', filename='app.js') }}?v={{ app_version }}" defer></script>
 </head>
 <body>
-{% set nav = [
-  ('dashboard', 'Status', 'view_basic'), ('runs', 'History', 'view_basic'), ('jobs', 'Jobs', 'view_all'),
-  ('map_list:rooms', 'Rooms', 'view_all'), ('map_list:buildings', 'Buildings', 'view_all'),
-  ('map_list:floors', 'Floors', 'view_all'), ('connection', 'Connection', 'view_all'),
-  ('alerts', 'Alerts', 'view_all'), ('defaults', 'Defaults', 'view_all'),
-  ('schedule', 'Schedule', 'view_all'), ('files_list', 'Files', 'view_all'),
-  ('logs', 'Logs', 'view_all'), ('access_page', 'Access', 'admin')] %}
+{# Top-level sections; each lists the pages (endpoints) that belong to it. #}
+{% set nav_sections = [
+  ('Status', url_for('dashboard'), 'view_basic', ['dashboard']),
+  ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
+  ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
+  ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
+  ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults',
+                                                    'files_list', 'file_edit', 'access_page', 'appearance']),
+  ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
+{% set args = request.view_args or {} %}
 <header class="top">
-  <a class="brand" href="{{ url_for('dashboard') }}">25Live <span aria-hidden="true">→</span> BAS sync</a>
-  <nav>
-    {% for key, label, capability in nav if can(capability) %}
-      {% set endpoint, _, kind = key.partition(':') %}
-      {% set href = url_for(endpoint, kind=kind) if kind else url_for(endpoint) %}
-      {% set args = request.view_args or {} %}
-      {% set active = (request.endpoint == endpoint and (not kind or args.get('kind') == kind))
-                      or (kind and request.endpoint in ('map_form', 'map_delete') and args.get('kind') == kind)
-                      or (endpoint, request.endpoint) in [('jobs', 'job'), ('runs', 'run'), ('files_list', 'file_edit')] %}
-      <a href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ label }}</a>
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    {% if brand.logo %}<img src="{{ url_for('branding_logo') }}?f={{ brand.logo }}" alt="">{% endif %}
+    <span>{{ brand.name }}</span>
+  </a>
+  <nav aria-label="Sections">
+    {% for label, href, capability, endpoints in nav_sections if can(capability) %}
+      <a href="{{ href }}"{% if request.endpoint in endpoints %} aria-current="page"{% endif %}>{{ label }}</a>
     {% endfor %}
   </nav>
   <div class="who">
@@ -42,7 +43,28 @@
     {% endif %}
   </div>
 </header>
+{% set nav_sub = [] %}
+{% if request.endpoint in ['map_list', 'map_form', 'map_delete'] %}
+  {% set nav_sub = [('Rooms', url_for('map_list', kind='rooms'), 'view_all', args.get('kind') == 'rooms'),
+                   ('Buildings', url_for('map_list', kind='buildings'), 'view_all', args.get('kind') == 'buildings'),
+                   ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors')] %}
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'files_list', 'file_edit', 'access_page', 'appearance'] %}
+  {% set nav_sub = [('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
+                   ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
+                   ('Schedule', url_for('schedule'), 'view_all', request.endpoint == 'schedule'),
+                   ('Defaults', url_for('defaults'), 'view_all', request.endpoint == 'defaults'),
+                   ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
+                   ('Access', url_for('access_page'), 'admin', request.endpoint == 'access_page'),
+                   ('Appearance', url_for('appearance'), 'admin', request.endpoint == 'appearance')] %}
+{% endif %}
 <main>
+  {% if nav_sub %}
+    <nav class="subnav tabs" aria-label="Pages">
+      {% for label, href, capability, here in nav_sub if can(capability) %}
+        <a href="{{ href }}"{% if here %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for kind, message in messages %}
       <div class="flash {{ kind }}" role="status">{{ message }}</div>
@@ -50,6 +72,9 @@
   {% endwith %}
   {% block body %}{% endblock %}
 </main>
-<footer>25live-bas-sync {{ app_version }}</footer>
+<footer>
+  {% include "_contact.html" %}
+  <span>25live-bas-sync {{ app_version }}</span>
+</footer>
 </body>
 </html>

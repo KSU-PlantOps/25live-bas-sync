@@ -2,7 +2,7 @@
    controls network with no internet. Light and dark follow the OS. */
 :root {
   --bg: #f6f7f9; --surface: #ffffff; --text: #1b1f24; --muted: #5f6b7a;
-  --border: #d9dee5; --accent: #1f5fd6; --accent-text: #ffffff;
+  --border: #d9dee5; --accent: #1f5fd6; --accent-text: #ffffff; --link: #1f5fd6;
   --ok: #1a7f37; --bad: #c62828; --warn: #9a6700; --run: #1f5fd6;
   --ok-bg: #e8f5ec; --bad-bg: #fdecec; --warn-bg: #fff6e0; --code-bg: #f0f2f5;
   --radius: 8px; --gap: 16px;
@@ -11,7 +11,7 @@
 @media (prefers-color-scheme: dark) {
   :root {
     --bg: #15171a; --surface: #1e2125; --text: #e6e8eb; --muted: #9aa3ad;
-    --border: #353a41; --accent: #5b8def; --accent-text: #0b1220;
+    --border: #353a41; --accent: #5b8def; --accent-text: #0b1220; --link: #5b8def;
     --ok: #4cc26b; --bad: #ff6b6b; --warn: #e3b341; --run: #5b8def;
     --ok-bg: #16301f; --bad-bg: #3a1c1c; --warn-bg: #3a3015; --code-bg: #262a30;
   }
@@ -20,7 +20,7 @@
 html { font-size: 15px; }
 body { margin: 0; background: var(--bg); color: var(--text);
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; line-height: 1.45; }
-a { color: var(--accent); }
+a { color: var(--link); }
 code, pre, textarea.code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .92em; }
 code { background: var(--code-bg); padding: 0 .3em; border-radius: 4px; }
 h1 { font-size: 1.5rem; margin: 0 0 .5rem; }
@@ -70,7 +70,7 @@ button:hover, .button:hover { border-color: var(--accent); }
 button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 button.danger, a.danger { color: var(--bad); }
 button:disabled { opacity: .5; cursor: not-allowed; }
-button.link { border: 0; background: none; color: var(--accent); padding: 0; }
+button.link { border: 0; background: none; color: var(--link); padding: 0; }
 input, select, textarea { font: inherit; padding: .38rem .5rem; border: 1px solid var(--border);
   border-radius: 6px; background: var(--surface); color: var(--text); max-width: 100%; }
 input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 0; }
@@ -146,3 +146,22 @@ fieldset.full-form { display: contents; }
 .button.wide { display: block; text-align: center; margin: .8rem 0; }
 details.local { margin-top: .8rem; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; word-break: break-all; }
+
+/* branding and grouped navigation */
+.brand { display: inline-flex; align-items: center; gap: .5rem; }
+.brand img { max-height: 32px; max-width: 160px; }
+.login-logo { display: block; max-height: 72px; max-width: 100%; margin: 0 auto .6rem; }
+.logo-preview { display: block; max-height: 48px; max-width: 240px; margin-bottom: .4rem;
+  background: var(--code-bg); padding: 4px; border-radius: 6px; }
+input.swatch { width: 4rem; height: 2.2rem; padding: 2px; }
+.subnav { margin: -.2rem 0 1rem; }
+footer { display: flex; flex-direction: column; gap: .2rem; align-items: center; }
+footer .contact, body.login .contact { margin: 0; }
+body.login .notice { white-space: pre-line; color: var(--muted); border-top: 1px solid var(--border);
+  padding-top: .8rem; margin-top: 1rem; }
+body.login .contact { color: var(--muted); font-size: .9rem; margin-top: .6rem; }
+.nowrap { white-space: nowrap; }
+@media (prefers-color-scheme: dark) {
+  /* Most logos are drawn for a light background; give them one. */
+  .brand img, .login-logo, .logo-preview { background: #f4f5f7; padding: 3px 6px; border-radius: 6px; }
+}

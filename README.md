@@ -207,6 +207,8 @@ its exact tag, e.g. `:1.3.0rc1`).
 | **Files** | The three YAML files as text, for anything the forms don't cover (alerts, email, safety limits); a zip of all three. |
 | **Logs** | The sync's and the service's logs. |
 | **Access** | Signing in with Microsoft Entra ID, and which Entra groups may sign in with which role. |
+| **Appearance** | Your site name, logo and accent colour, and a notice and contact details (e.g. `plantopsbas@kennesaw.edu`) on the sign-in page and at the foot of every page. |
+| **Logs → Activity** | Who did what: sign-ins, refused sign-ins, every change and every job (Admin). |
 
 Every sync and tool runs as the ordinary `bas-sync` command in a process of its
 own, one at a time, so the web UI can't do anything the command line couldn't —

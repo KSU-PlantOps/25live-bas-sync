@@ -63,7 +63,67 @@ def empty() -> dict:
     return {"sso": {"enabled": False, "tenant_id": "", "client_id": "",
                     "authority_host": "login.microsoftonline.com",
                     "public_url": ""},
-            "groups": [], "local_password": True}
+            "groups": [], "local_password": True, "branding": empty_branding()}
+
+
+# ── branding (the Appearance page) ───────────────────────────────────────────
+
+DEFAULT_SITE_NAME = "25Live → BAS sync"
+LOGO_MAX_BYTES = 512 * 1024
+_ACCENT = re.compile(r"^#[0-9a-fA-F]{6}$")
+_LOGO_FILE = re.compile(r"^web-logo\.(png|jpg|webp)$")
+LOGO_TYPES = {"png": "image/png", "jpg": "image/jpeg", "webp": "image/webp"}
+
+
+def empty_branding() -> dict:
+    return {"site_name": "", "accent": "", "logo": "", "notice": "",
+            "contact": {"name": "", "email": "", "phone": ""}}
+
+
+def branding_from(data) -> dict:
+    """The branding settings, cleaned: every value text of a sane length,
+    the accent a #rrggbb colour, the logo a file name this module writes."""
+    out = empty_branding()
+    if not isinstance(data, dict):
+        return out
+    out["site_name"] = str(data.get("site_name") or "").strip()[:80]
+    out["notice"] = str(data.get("notice") or "").strip()[:1000]
+    accent = str(data.get("accent") or "").strip()
+    out["accent"] = accent.lower() if _ACCENT.match(accent) else ""
+    logo = str(data.get("logo") or "").strip()
+    out["logo"] = logo if _LOGO_FILE.match(logo) else ""
+    contact: dict = data["contact"] if isinstance(data.get("contact"), dict) else {}
+    for key, limit in (("name", 120), ("email", 200), ("phone", 60)):
+        out["contact"][key] = str(contact.get(key) or "").strip()[:limit]
+    return out
+
+
+def sniff_image(data: bytes) -> Optional[str]:
+    """png / jpg / webp from the file's own first bytes, or None. The name
+    and the browser's content type are not trusted; SVG is refused on purpose
+    (it can carry script)."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
+def accent_css(accent: str) -> str:
+    """CSS custom properties for a brand colour, with black or white text on
+    it — whichever reads better (WCAG relative luminance)."""
+    if not _ACCENT.match(accent or ""):
+        return ""
+    r, g, b = (int(accent[i:i + 2], 16) / 255 for i in (1, 3, 5))
+
+    def channel(c):
+        return c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4
+    luminance = 0.2126 * channel(r) + 0.7152 * channel(g) + 0.0722 * channel(b)
+    text = "#111111" if luminance > 0.179 else "#ffffff"
+    return (f":root {{ --accent: {accent}; --accent-hi: {accent}; "
+            f"--accent-text: {text}; }}\n")
 
 
 def load(path: Path) -> tuple:
@@ -90,6 +150,7 @@ def load(path: Path) -> tuple:
         out["sso"]["authority_host"] = host
     out["sso"]["enabled"] = sso.get("enabled") is True
     out["local_password"] = data.get("local_password", True) is not False
+    out["branding"] = branding_from(data.get("branding"))
     for row in data.get("groups") or []:
         if not isinstance(row, dict) or row.get("role") not in ROLES:
             continue

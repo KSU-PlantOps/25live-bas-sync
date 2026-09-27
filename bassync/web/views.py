@@ -1014,6 +1014,65 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             local_set=bool(os.environ.get("BAS_WEB_PASSWORD")),
             last_refusal=ctx().get("last_refusal")), 422 if errors else 200
 
+    @app.route("/settings/appearance", methods=["GET", "POST"])
+    @requires("admin")
+    def appearance():
+        conf = load_access()
+        brand = conf["branding"]
+        errors: list = []
+        if request.method == "POST":
+            form = request.form
+            accent = (form.get("accent") or "").strip()
+            if form.get("accent_default"):
+                accent = ""
+            new = access.branding_from({
+                "site_name": form.get("site_name"), "notice": form.get("notice"),
+                "accent": accent, "logo": brand["logo"],
+                "contact": {"name": form.get("contact_name"),
+                            "email": form.get("contact_email"),
+                            "phone": form.get("contact_phone")}})
+            if accent and new["accent"] != accent.lower():
+                errors.append("The colour must look like #fdbb30.")
+            email = new["contact"]["email"]
+            if email and not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+                errors.append("That contact email doesn't look like an address.")
+            folder = files().web_file.parent
+            upload = request.files.get("logo")
+            data = None
+            if form.get("remove_logo"):
+                new["logo"] = ""
+            elif upload and upload.filename:
+                raw = upload.read(access.LOGO_MAX_BYTES + 1)
+                kind = access.sniff_image(raw)
+                if len(raw) > access.LOGO_MAX_BYTES:
+                    errors.append("The logo must be under 512 KB.")
+                elif kind is None:
+                    errors.append("The logo must be a PNG, JPEG or WebP image "
+                                  "(SVG isn't accepted: it can carry script).")
+                else:
+                    new["logo"], data = f"web-logo.{kind}", raw
+            if not errors:
+                conf["branding"] = new
+                try:
+                    with ctx()["write_lock"]:
+                        if data is not None:
+                            mapedit_write_bytes(folder / new["logo"], data)
+                        for kind in access.LOGO_TYPES:
+                            old = folder / f"web-logo.{kind}"
+                            if old.name != new["logo"] and old.exists():
+                                old.unlink()
+                        access.save(files().web_file, conf)
+                except OSError as exc:
+                    errors.append(_write_error(exc))
+                else:
+                    audit("changed the appearance settings")
+                    notice("Saved the appearance settings.")
+                    return redirect(url_for("appearance"))
+            brand = new
+        return render_template("appearance.html", brand_form=brand, errors=errors,
+                               default_name=access.DEFAULT_SITE_NAME), (
+            422 if errors else 200)
+
     @app.route("/settings/access/groups", methods=["POST"])
     @requires("admin")
     def access_group_add():
@@ -1192,8 +1251,14 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     @requires("view_all")
     def logs():
         which = request.args.get("which", "sync")
-        if which not in ("sync", "service"):
+        if which not in ("sync", "service", "activity"):
             abort(404)
+        if which == "activity":
+            if not access.can(g.role, "admin"):
+                abort(403, "The activity log needs the Admin role.")
+            return render_template("logs.html", which=which, lines=0,
+                                   activity=_activity(_log_path("service")),
+                                   text="", path=_log_path("service"))
         try:
             lines = max(50, min(int(request.args.get("lines") or 400), 5000))
         except ValueError:
@@ -1256,6 +1321,22 @@ def _times_text(times) -> list:
     return out
 
 
+_ACTIVITY = re.compile(r"^(\S+ \S+)\s+\w+\s+\[web\] (.*)$")
+
+
+def _activity(path: Path, limit: int = 500) -> list:
+    """Who did what, newest first: the web UI's audit lines from the service
+    log (sign-ins, refusals, saves, jobs started)."""
+    out = []
+    for line in reversed(_tail(path, 20000).splitlines()):
+        m = _ACTIVITY.match(line)
+        if m:
+            out.append((m.group(1), m.group(2)))
+            if len(out) >= limit:
+                break
+    return out
+
+
 def _tail(path: Path, lines: int) -> str:
     try:
         with open(path, "rb") as fh:
@@ -1291,3 +1372,16 @@ def _discovered_spaces(lines: list) -> Optional[list]:
              "mapped": str(s.get("space_id")) in mapped}
             for s in spaces if isinstance(s, dict)]
 
+
+
+def mapedit_write_bytes(path: Path, data: bytes) -> None:
+    """Write a small binary file atomically, readable by others (a logo)."""
+    fd, tmp = tempfile.mkstemp(prefix=path.name + ".", suffix=".tmp", dir=path.parent)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)

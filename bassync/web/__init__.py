@@ -52,7 +52,8 @@ from . import access, entra
 SESSION_HOURS = 12
 LOGIN_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300
-_OPEN_ENDPOINTS = {"login", "static", "healthz", "auth_login", "auth_callback"}
+_OPEN_ENDPOINTS = {"login", "static", "healthz", "auth_login", "auth_callback",
+                   "branding_css", "branding_logo"}
 SSO_SECRET = "BAS_WEB_SSO_CLIENT_SECRET"
 SSO_PENDING_SECONDS = 600
 
@@ -308,6 +309,28 @@ def create_app(service, settings: dict) -> Flask:
     def healthz():
         return {"ok": True}
 
+    # ── branding (public: the sign-in page uses it) ──────────────────────────
+
+    @app.route("/branding.css")
+    def branding_css():
+        from flask import Response
+        response = Response(access.accent_css(load_access()["branding"]["accent"]),
+                            mimetype="text/css")
+        response.headers["Cache-Control"] = "max-age=60"
+        return response
+
+    @app.route("/branding/logo")
+    def branding_logo():
+        from flask import send_file
+        name = load_access()["branding"]["logo"]
+        path = service.paths.web_file.parent / name if name else None
+        if path is None or not path.is_file():
+            abort(404)
+        response = send_file(path, mimetype=access.LOGO_TYPES[name.rsplit(".", 1)[1]],
+                             max_age=300)
+        response.headers["Content-Security-Policy"] = "default-src 'none'"
+        return response
+
     # ── template helpers ─────────────────────────────────────────────────────
 
     @app.context_processor
@@ -317,6 +340,7 @@ def create_app(service, settings: dict) -> Flask:
             "csrf_token": session.get("csrf", ""),
             "auth_required": auth_required,
             "user": g.get("user") or {},
+            "brand": _brand(),
             "role": g.get("role"),
             "role_label": access.ROLE_LABELS.get(g.get("role") or "", ""),
             "can": lambda capability: access.can(g.get("role"), capability),
@@ -340,6 +364,13 @@ def create_app(service, settings: dict) -> Flask:
     from . import views
     views.register(app)
     return app
+
+
+def _brand() -> dict:
+    """The branding settings plus the name to show, for every template."""
+    brand = dict(load_access()["branding"])
+    brand["name"] = brand["site_name"] or access.DEFAULT_SITE_NAME
+    return brand
 
 
 def ctx() -> dict:

@@ -364,7 +364,8 @@ def test_secret_store_names_and_permissions(tmp_path):
 
 def test_every_route_checks_the_role(site):
     app = app_for(site)
-    open_endpoints = {"static", "login", "logout", "healthz", "auth_login", "auth_callback"}
+    open_endpoints = {"static", "login", "logout", "healthz", "auth_login", "auth_callback",
+                      "branding_css", "branding_logo"}
     for endpoint, fn in app.view_functions.items():
         if endpoint not in open_endpoints:
             assert hasattr(fn, "required"), f"{endpoint} has no @requires"

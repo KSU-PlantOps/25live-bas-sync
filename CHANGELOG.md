@@ -39,6 +39,10 @@ unchanged. Read *Upgrading → From 1.2* in the README before switching.
   can be set on the web UI and are kept in `state/secrets.json`, readable only
   by the service. The environment still wins, and every way of running the
   sync reads the stored ones.
+- **Appearance**: a site name, logo (PNG, JPEG or WebP; SVG refused), accent
+  colour with automatic text contrast, and a notice and contact details on the
+  sign-in page and in the footer. An **Activity** log lists who did what.
+  The menu is grouped (Room map, Settings) so it fits on one line.
 - **Campus on buildings**: an optional label, shown and filterable on every
   room-map list and counted on the status page; the sync ignores it.
 - **The service** (`bas-sync-service`, the image's `serve`): runs the sync on

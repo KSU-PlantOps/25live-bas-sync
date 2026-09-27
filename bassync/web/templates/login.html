@@ -3,13 +3,15 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · 25Live → BAS sync</title>
+  <title>Sign in · {{ brand.name }}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ app_version }}">
+  {% if brand.accent %}<link rel="stylesheet" href="{{ url_for('branding_css') }}?c={{ brand.accent[1:] }}">{% endif %}
   <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
 </head>
 <body class="login">
   <form method="post" class="card narrow" action="{{ url_for('login') }}">
-    <h1>25Live <span aria-hidden="true">→</span> BAS sync</h1>
+    {% if brand.logo %}<img class="login-logo" src="{{ url_for('branding_logo') }}?f={{ brand.logo }}" alt="">{% endif %}
+    <h1>{{ brand.name }}</h1>
     {% if error %}<div class="flash error" role="alert">{{ error }}</div>{% endif %}
     {% if sso %}
       <a class="button primary wide" href="{{ url_for('auth_login', next=next) }}">Sign in with Microsoft</a>
@@ -27,6 +29,8 @@
     {% if not sso and not local %}
       <p>No way to sign in is set up. Set <code>BAS_WEB_PASSWORD</code> in the service's environment and restart it.</p>
     {% endif %}
+    {% if brand.notice %}<p class="notice">{{ brand.notice }}</p>{% endif %}
+    {% include "_contact.html" %}
   </form>
 </body>
 </html>

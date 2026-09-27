@@ -31,9 +31,10 @@
 {% endmacro %}
 {% block body %}
 <h1>Connection</h1>
-<p class="hint">config.yaml: where the bookings come from and where the schedules go. Passwords are not here —
-they come from the service's environment (<code>.env</code>). Settings this page doesn't show (alerts, safety,
-retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', name='config') }}">Files</a>.</p>
+<p class="hint">config.yaml: where the bookings come from and where the schedules go. Passwords never go in
+config.yaml — set them under <a href="#passwords">Passwords</a> below, or in <code>.env</code>. Alerts and email are
+on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retries under
+<a href="{{ url_for('file_edit', name='config') }}">Files</a>.</p>
 
 {% if error %}
   <div class="flash error">config.yaml can't be read, so this page can't save over it without losing the
@@ -130,7 +131,7 @@ retries) are kept as they are; edit them under <a href="{{ url_for('file_edit', 
 </section>
 {% endif %}
 
-<section class="card">
+<section class="card" id="passwords">
   <h2>Passwords</h2>
   {% include "_passwords.html" %}
   <p class="hint">Set one here, and it is stored in the service's state folder, readable only by the service — never in
