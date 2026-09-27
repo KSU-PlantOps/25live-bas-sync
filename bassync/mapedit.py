@@ -28,7 +28,7 @@ FILE_HEADER = """\
 # 25Live → BAS schedule cross-reference.
 #
 # This file is managed by the web UI and editor.py, but is plain YAML and
-# safe to hand-edit. See README.md for the full field reference.
+# safe to hand-edit. See docs/configuration.md for the full field reference.
 #
 #   buildings:  each building's roll-up schedule, defined once.
 #   floors:     optional per-floor corridor schedules (building + level).
@@ -482,7 +482,7 @@ CONFIG_HEADER = """\
 # 25Live → BAS connection settings. Managed by the web UI and editor.py
 # (Connection), but safe to hand-edit. Passwords are NOT stored here — set them as environment
 # variables: BAS_25LIVE_PASSWORD and BAS_SYS_<SYSTEM>_PASSWORD. See
-# config.example.yaml and README.md for the full reference.
+# config.example.yaml and docs/configuration.md for the full reference.
 """
 
 # Fields shown for a BAS system, per driver. The Connection tab edits one

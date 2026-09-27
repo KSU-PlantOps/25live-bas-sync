@@ -155,7 +155,7 @@ systems:
   # booking BooleanSchedule to the station's BacnetNetwork > Local Device >
   # Export Table, and target "<station device instance>:<exported schedule
   # instance>". The station applies the writes as native special events,
-  # visible in Workbench. See README, "Tridium Niagara".
+  # visible in Workbench. See docs/bas-setup.md, "Tridium Niagara".
   #
   # A station on the same network as other controllers can share their
   # system; this one sits behind its own BBMD, so it gets its own.
@@ -173,8 +173,8 @@ systems:
   # ── niagara (DEPRECATED): a station REST service ──────────────────────────
   # Kept only so existing deployments keep running; it needs a REST service
   # stock Niagara 4 doesn't ship, and logs a deprecation warning. New
-  # stations: use the BACnet export above. README, "Moving off the niagara
-  # driver", has the steps. Password: BAS_SYS_SUPERVISOR_PASSWORD.
+  # stations: use the BACnet export above. docs/upgrading.md, "Moving off
+  # the niagara driver", has the steps. Password: BAS_SYS_SUPERVISOR_PASSWORD.
   #
   # supervisor:
   #   driver: niagara

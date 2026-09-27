@@ -224,13 +224,14 @@ def plan_outputs(plan: Plan) -> list[str]:
 
 def release_notes(section: Section, tag: str, version: str, image: str,
                   repo_url: str, wheel: str | None = None) -> str:
+    docs = f"{repo_url}/blob/{tag}/docs"
     install = [f"**Docker:** `docker pull {image}:{version}` "
-               f"([Run with Docker]({repo_url}#run-with-docker))"]
+               f"([Running with Docker]({docs}/docker.md))"]
     if wheel:
         install.append(f"**pip:** download `{wheel}` below, then "
                        f"`pip install \"./{wheel}[bacnet]\"`")
-    install.append(f"**Upgrading:** read [Upgrading]({repo_url}#upgrading) "
-                   "in the README before the first run")
+    install.append(f"**Upgrading:** read [Upgrading]({docs}/upgrading.md) "
+                   "before the first run")
     install.append(f"Full history: [CHANGELOG.md]({repo_url}/blob/{tag}/CHANGELOG.md)")
     return section.body + "\n\n---\n\n" + "\n\n".join(install) + "\n"
 

@@ -1,0 +1,62 @@
+name: Bug report
+description: Something doesn't work the way the docs say it should.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Please **don't include passwords, tokens, internal hostnames or full data dumps** — redact them. For a security problem, use [a private report](https://github.com/KSU-PlantOps/25live-bas-sync/security/advisories/new) instead.
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`bas-sync --version`, the web UI's footer, or the image tag."
+      placeholder: 25live-bas-sync 1.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: how
+    attributes:
+      label: How do you run it?
+      options:
+        - Docker (the service and web UI)
+        - Docker (one-shot sync)
+        - pip / a checkout, from Task Scheduler or cron
+        - Something else
+    validations:
+      required: true
+  - type: dropdown
+    id: drivers
+    attributes:
+      label: BAS drivers involved
+      multiple: true
+      options:
+        - bacnet
+        - rest
+        - preview
+        - niagara (deprecated)
+        - None — it's about 25Live, the web UI or the setup
+  - type: input
+    id: bas
+    attributes:
+      label: BAS platform and version
+      placeholder: e.g. WebCTRL 8.5, EBO 2024, Niagara 4.14
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead. The exit code helps.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log output
+      description: The relevant part of a `--verbose` run, or of the job's output in the web UI. Redact hostnames and credentials.
+      render: text
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant configuration
+      description: The relevant, redacted part of config.yaml or space_mapping.yaml, if it matters.
+      render: yaml

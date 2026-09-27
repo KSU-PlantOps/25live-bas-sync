@@ -2,7 +2,7 @@
 #
 # The image runs the service: the sync on its schedule, plus the web UI for
 # status, "Sync now" and editing the room map and settings. docker compose is
-# the way to run it (see docker-compose.yml and README "Run with Docker"):
+# the way to run it (see docker-compose.yml and docs/docker.md):
 #
 #   docker compose up -d            # then browse to http://<host>:8080
 #

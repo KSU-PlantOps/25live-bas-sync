@@ -30,4 +30,5 @@ tests/
 .ruff_cache
 .mypy_cache
 *.md
+docs/
 LICENSE

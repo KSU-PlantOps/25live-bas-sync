@@ -1,6 +1,6 @@
 {% set c = brand.contact %}
 {% if c.name or c.email or c.phone %}
   <p class="contact">Questions? {{ c.name }}{% if c.name and (c.email or c.phone) %} · {% endif %}
-    {% if c.email %}<a href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}{% if c.email and c.phone %} · {% endif %}
-    {% if c.phone %}<a href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}</p>
+    {% if c.email %}<a class="nowrap" href="mailto:{{ c.email }}">{{ c.email }}</a>{% endif %}{% if c.email and c.phone %} · {% endif %}
+    {% if c.phone %}<a class="nowrap" href="tel:{{ c.phone | replace(' ', '') }}">{{ c.phone }}</a>{% endif %}</p>
 {% endif %}
