@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}History{% endblock %}
+{% block body %}
+<h1>Sync history</h1>
+<p class="hint">Every live sync, newest first, with the report it emailed.</p>
+<table class="list wide">
+  <thead><tr><th></th><th>Started</th><th>Result</th><th>Written</th><th>Failed</th><th>Not written</th><th>Bookings</th><th>Safety</th></tr></thead>
+  <tbody>
+  {% for r in runs %}
+    <tr>
+      <td><span class="dot {{ 'ok' if r.ok else 'bad' }}"></span></td>
+      <td><a href="{{ url_for('run', run_id=r.id) }}">{{ local_time(r.started) }}</a>{% if r.only_system %} <span class="hint">{{ r.only_system }} only</span>{% endif %}</td>
+      <td>{{ 'OK' if r.ok else 'FAILED (exit ' ~ r.exit_code ~ ')' }}{% if r.outcome and not r.ok %}<br><span class="hint">{{ r.outcome }}</span>{% endif %}</td>
+      <td>{{ r.counts.written }}{% if r.counts.preview %} <span class="hint">+{{ r.counts.preview }} preview</span>{% endif %}</td>
+      <td>{% if r.counts.failed %}<span class="bad">{{ r.counts.failed }}</span>{% else %}0{% endif %}</td>
+      <td>{% if r.counts.not_written %}<span class="warn">{{ r.counts.not_written }}</span>{% else %}0{% endif %}</td>
+      <td>{{ r.event_count if r.event_count is not none else '—' }}</td>
+      <td>{% if r.safety_ok is none %}—{% elif r.safety_ok %}passed{% elif r.safety_forced %}<span class="warn">forced</span>{% else %}<span class="bad">blocked</span>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="hint">No live sync has run yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

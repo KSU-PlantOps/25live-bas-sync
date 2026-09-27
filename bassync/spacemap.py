@@ -47,7 +47,9 @@ from .model import Destination, SpaceConfig
 MAX_MINUTES = 1440
 
 TOP_LEVEL_KEYS = ("buildings", "floors", "spaces")
-BUILDING_KEYS = ("id", "name", "system", "target", "niagara_path",
+# `campus` is a label for people (the web UI groups and filters by it); the
+# sync doesn't use it — 25Live has no campus to match it against.
+BUILDING_KEYS = ("id", "name", "campus", "system", "target", "niagara_path",
                  "pre_condition_minutes", "post_buffer_minutes",
                  "merge_gap_minutes", "space_id", "note")
 FLOOR_KEYS = ("building", "level", "name", "system", "target", "niagara_path",

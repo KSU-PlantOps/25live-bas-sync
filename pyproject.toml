@@ -28,6 +28,8 @@ classifiers = [
 [project.optional-dependencies]
 # The BACnet driver. Imported lazily, so HTTP-only sites can skip it.
 bacnet = ["bacpypes3>=0.0.98,<0.1"]
+# The web UI and the long-running service that runs the schedule (Docker).
+web = ["flask>=3.1,<4", "cheroot>=10"]
 
 [project.urls]
 Homepage = "https://github.com/KSU-PlantOps/25live-bas-sync"
@@ -35,12 +37,16 @@ Changelog = "https://github.com/KSU-PlantOps/25live-bas-sync/blob/main/CHANGELOG
 
 [project.scripts]
 bas-sync = "bassync.cli:main"
+bas-sync-service = "bassync.service:main"
 
 [project.gui-scripts]
 bas-sync-editor = "bassync.editor:main"
 
 [tool.setuptools]
-packages = ["bassync", "bassync.drivers"]
+packages = ["bassync", "bassync.drivers", "bassync.web"]
+
+[tool.setuptools.package-data]
+"bassync.web" = ["templates/*.html", "static/*"]
 
 [tool.setuptools.dynamic]
 version = { attr = "bassync.__version__" }

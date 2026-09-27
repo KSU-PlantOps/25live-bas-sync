@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Jobs{% endblock %}
+{% block body %}
+<h1>Jobs</h1>
+<p class="hint">Every sync and tool, from the schedule or from here. Each is the ordinary
+<code>bas-sync</code> command in a process of its own; its full output is kept.</p>
+<table class="list wide">
+  <thead><tr><th></th><th>Job</th><th>Started</th><th>Took</th><th>By</th><th>Result</th></tr></thead>
+  <tbody>
+  {% for j in jobs %}
+    <tr>
+      <td><span class="dot {{ 'run' if j.running else ('ok' if j.exit_code == 0 else 'bad') }}"></span></td>
+      <td><a href="{{ url_for('job', job_id=j.id) }}">{{ j.label }}</a>
+        {% if j.args %}<code class="hint">{{ j.args | join(' ') }}</code>{% endif %}</td>
+      <td>{{ local_time(j.started) }}</td>
+      <td>{{ duration(j.started, j.finished) }}</td>
+      <td class="hint">{{ j.trigger }}</td>
+      <td>{% if j.running %}running…{% elif j.stopped_by %}stopped ({{ j.stopped_by }}){% else %}exit {{ j.exit_code }}{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="hint">No jobs yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

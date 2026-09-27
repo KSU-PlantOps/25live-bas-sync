@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if index is not none else 'Add' }} {{ spec.one }}{% endblock %}
+{% block body %}
+<h1>{{ 'Edit' if index is not none else 'Add' }} {{ spec.one }}</h1>
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+<form method="post" action="{{ url_for('map_save', kind=kind) }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="version" value="{{ version }}">
+  <input type="hidden" name="index" value="{{ index if index is not none else '' }}">
+  {% for key, label, ftype, hint in spec.fields %}
+    {% set value = values.get(key, '') %}
+    {% set value = '' if value is none else value %}
+    <label for="f-{{ key }}">{{ label }}</label>
+    <div class="field">
+      {% if ftype == 'building' %}
+        <select id="f-{{ key }}" name="{{ key }}">
+          {% if kind != 'floors' %}<option value="">(none)</option>{% endif %}
+          {% for b in choices.buildings %}<option {{ 'selected' if b == value | string }}>{{ b }}</option>{% endfor %}
+          {% if value and value | string not in choices.buildings %}<option selected>{{ value }}</option>{% endif %}
+        </select>
+      {% elif ftype == 'system' %}
+        {% if choices.systems %}
+          <select id="f-{{ key }}" name="{{ key }}">
+            <option value="">{{ '(default)' if kind == 'buildings' else '(inherit)' }}</option>
+            {% for s in choices.systems %}<option {{ 'selected' if s == value | string }}>{{ s }}</option>{% endfor %}
+            {% if value and value | string not in choices.systems %}<option selected>{{ value }}</option>{% endif %}
+          </select>
+        {% else %}
+          <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" placeholder="no systems yet — see Connection">
+        {% endif %}
+      {% elif ftype == 'campus' %}
+        <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" list="campuses">
+        <datalist id="campuses">{% for c in choices.campuses %}<option value="{{ c }}">{% endfor %}</datalist>
+      {% elif ftype == 'level' %}
+        <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" inputmode="numeric" list="levels">
+        <datalist id="levels">{% for l in choices.levels %}<option value="{{ l }}">{% endfor %}</datalist>
+      {% elif ftype == 'int' %}
+        <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" inputmode="numeric" pattern="-?[0-9]*">
+      {% else %}
+        <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}"{% if key == 'target' %} class="mono" spellcheck="false"{% endif %}>
+      {% endif %}
+      {% if hint %}<small>{{ hint }}</small>{% endif %}
+    </div>
+  {% endfor %}
+  {% if confirm %}
+    <div class="flash warn full">
+      <strong>Saving this makes the room map report {{ confirm | length }} new problem(s):</strong>
+      <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
+      The sync leaves problem rows out (and the floor and building schedules they feed), and alerts.
+      <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label>
+    </div>
+  {% endif %}
+  <div class="buttons full">
+    <button class="primary">Save</button>
+    <a class="button" href="{{ url_for('map_list', kind=kind) }}">Cancel</a>
+  </div>
+</form>
+{% if kind == 'rooms' %}
+<details class="card hint">
+  <summary>Targets, by driver</summary>
+  <ul>
+    <li><code>bacnet</code>: <code>device:schedule</code>, e.g. <code>12001:5</code>; <code>12001:5@10.4.2.30</code> pins the address; a Niagara station is its exported schedule, e.g. <code>2001:1</code>.</li>
+    <li><code>rest</code>: whatever your API's path template expects.</li>
+  </ul>
+</details>
+{% endif %}
+{% endblock %}

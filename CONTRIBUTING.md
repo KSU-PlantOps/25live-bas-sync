@@ -32,6 +32,7 @@ python3.14 -m venv .venv && . .venv/bin/activate   # (.venv\Scripts\activate on 
 # Python 3.13+ required, 3.14 recommended; CI tests both.
 pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
 pip install -r requirements-bacnet.txt -c constraints.txt   # the bacnet driver
+pip install -r requirements-web.txt -c constraints.txt      # the web UI / service
 cp config.example.yaml config.yaml              # edit for your test instance
 cp space_mapping.example.yaml space_mapping.yaml
 ```
@@ -48,6 +49,13 @@ mypy
 With BACpypes3 installed, `tests/test_bacnet_device.py` runs the BACnet driver
 against simulated controllers over loopback — extend it when you change what
 goes on the wire.
+
+Run the web UI against your test files (the schedule runs too — turn it off
+on the Schedule page if you don't want it to):
+
+```bash
+BAS_WEB_PASSWORD=dev-password-123 BAS_WEB_HOST=127.0.0.1 python -m bassync.service
+```
 
 Validate end-to-end safely (neither mode writes anything):
 

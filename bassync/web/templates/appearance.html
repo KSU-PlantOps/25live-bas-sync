@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Appearance{% endblock %}
+{% block body %}
+<h1>Appearance</h1>
+<p class="hint">Your name, logo and colour on every page, and who to contact on the sign-in page. Stored in
+<code>web.yaml</code> beside the other settings, with the logo next to it.</p>
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+<form method="post" class="card form" enctype="multipart/form-data">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2 class="full">Branding</h2>
+  <label for="b-name">Site name</label>
+  <div class="field"><input id="b-name" name="site_name" value="{{ brand_form.site_name }}" maxlength="80"
+    placeholder="{{ default_name }}"><small>shown in the header, the sign-in page and browser tabs</small></div>
+  <label for="b-logo">Logo</label>
+  <div class="field">
+    {% if brand_form.logo %}<img class="logo-preview" src="{{ url_for('branding_logo') }}?f={{ brand_form.logo }}" alt="Current logo">{% endif %}
+    <input id="b-logo" name="logo" type="file" accept="image/png,image/jpeg,image/webp">
+    <small>PNG, JPEG or WebP, under 512 KB; a wide, transparent PNG about 64 px tall looks best</small>
+    {% if brand_form.logo %}<label class="check"><input type="checkbox" name="remove_logo" value="1"> Remove the logo</label>{% endif %}
+  </div>
+  <label for="b-accent">Accent colour</label>
+  <div class="field">
+    <input id="b-accent" name="accent" type="color" value="{{ brand_form.accent or '#1f5fd6' }}" class="swatch">
+    <label class="check"><input type="checkbox" name="accent_default" value="1" {{ 'checked' if not brand_form.accent }}> Use the default blue</label>
+    <small>buttons and the menu; text on it turns black or white, whichever reads better</small>
+  </div>
+  <h2 class="full">Sign-in page</h2>
+  <label for="b-notice">Notice</label>
+  <div class="field"><textarea id="b-notice" name="notice" rows="3" maxlength="1000"
+    placeholder="Authorized Plant Operations staff only. Activity is logged.">{{ brand_form.notice }}</textarea>
+    <small>plain text, shown under the sign-in buttons</small></div>
+  <label for="b-cname">Contact</label>
+  <div class="field"><input id="b-cname" name="contact_name" value="{{ brand_form.contact.name }}" placeholder="BAS Controls Shop"></div>
+  <label for="b-cemail">Contact email</label>
+  <div class="field"><input id="b-cemail" name="contact_email" type="email" value="{{ brand_form.contact.email }}" placeholder="plantopsbas@kennesaw.edu"></div>
+  <label for="b-cphone">Contact phone</label>
+  <div class="field"><input id="b-cphone" name="contact_phone" value="{{ brand_form.contact.phone }}" placeholder="470-555-0100">
+    <small>the contact line also appears at the foot of every page</small></div>
+  <div class="buttons full"><button class="primary">Save</button></div>
+</form>
+{% endblock %}

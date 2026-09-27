@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Files{% endblock %}
+{% block body %}
+<h1>Files</h1>
+<p class="hint">The three settings files, as text. Edit them directly for anything the other pages don't cover
+(alerts, email, safety limits, retries). Saving checks them the way the sync will, and keeps the previous version
+as <code>.bak</code>.</p>
+<table class="list wide">
+  <thead><tr><th>File</th><th>Where</th><th>Size</th><th>Changed</th><th></th></tr></thead>
+  <tbody>
+  {% for f in files %}
+    <tr><td><strong>{{ f.title }}</strong></td><td><code>{{ f.path }}</code></td>
+      <td>{{ f.size if f.size is not none else 'not created yet' }}</td>
+      <td>{{ local_time(f.modified) if f.modified else '' }}</td>
+      <td class="row-actions"><a href="{{ url_for('file_edit', name=f.name) }}">{{ 'Edit' if can('admin') else 'View' }}</a>
+        {% if f.size is not none %}<a href="{{ url_for('file_download', name=f.name) }}">Download</a>{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p><a class="button" href="{{ url_for('files_backup') }}">Download all three (zip)</a></p>
+{% endblock %}

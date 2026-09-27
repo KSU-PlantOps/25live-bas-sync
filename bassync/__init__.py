@@ -21,4 +21,4 @@ standard BACnet Schedule object — from a single run.
 without a network.
 """
 
-__version__ = "1.2.0"
+__version__ = "1.3.0rc1"

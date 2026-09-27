@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}{{ spec.title }}{% endblock %}
+{% block body %}
+<h1>{{ spec.title }} <span class="count">{{ rows | length }}</span></h1>
+{% if kind == 'rooms' %}
+  <p class="hint">Each 25Live room, the schedule it drives (its <em>target</em>), and the building — and optionally
+  floor — it rolls up into. A room with no target of its own still keeps its building and floor running.</p>
+{% elif kind == 'buildings' %}
+  <p class="hint">Each building's common-area schedule. It runs whenever any of its rooms is booked.</p>
+{% else %}
+  <p class="hint">Optional per-floor corridor schedules. A floor runs whenever a room on it is booked.</p>
+{% endif %}
+
+{% if error %}
+  <div class="flash error">{{ error }} — <a href="{{ url_for('file_edit', name='map') }}">edit space_mapping.yaml</a></div>
+{% endif %}
+{% if health.map_errors %}
+  <details class="flash warn" {{ 'open' if health.map_errors | length < 6 }}>
+    <summary>{{ health.map_errors | length }} room map problem(s) — the sync leaves those rows out</summary>
+    <ul class="compact">{% for e in health.map_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+  </details>
+{% endif %}
+
+<div class="toolbar">
+  {% if can('edit_map') %}<a class="button primary" href="{{ url_for('map_form', kind=kind) }}">Add {{ spec.one }}</a>{% endif %}
+  <input type="search" placeholder="Filter" data-filter="rows" class="filter" aria-label="Filter">
+  {% if campuses %}
+    <select data-campus-filter="rows" aria-label="Campus">
+      <option value="">All campuses</option>
+      {% for c in campuses %}<option>{{ c }}</option>{% endfor %}
+    </select>
+  {% endif %}
+</div>
+<table class="list wide" id="rows">
+  <thead><tr>
+    {% for key, label in spec.columns %}<th data-sort>{{ label }}</th>{% endfor %}
+    <th></th>
+  </tr></thead>
+  <tbody>
+  {% for row in rows %}
+    {% set campus = row.get('campus') if kind == 'buildings' else campus_of.get(row.get('building') | string, '') %}
+    <tr data-campus="{{ campus or '' }}">
+      {% for key, label in spec.columns %}
+        <td>{% if key == '_campus' %}{{ campus or '' }}
+            {% elif key == 'target' and row.get(key) %}<code>{{ row.get(key) }}</code>
+            {% elif key == 'system' and not row.get(key) %}<span class="hint">{{ 'default' if kind == 'buildings' else 'inherit' }}</span>
+            {% else %}{{ row.get(key, '') if row.get(key) is not none else '' }}{% endif %}</td>
+      {% endfor %}
+      <td class="row-actions">
+        {% if can('edit_map') %}
+        <a href="{{ url_for('map_form', kind=kind, index=loop.index0) }}">Edit</a>
+        <a href="{{ url_for('map_form', kind=kind, copy=loop.index0) }}">Copy</a>
+        <a href="{{ url_for('map_delete', kind=kind, index=loop.index0) }}" class="danger">Delete</a>
+        {% endif %}
+      </td>
+    </tr>
+  {% else %}
+    <tr><td colspan="{{ spec.columns | length + 1 }}" class="hint">None yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endblock %}

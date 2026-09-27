@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Delete {{ spec.one }}{% endblock %}
+{% block body %}
+<h1>Delete {{ label }}?</h1>
+{% if blocked %}
+  <div class="flash error pre">{{ blocked }}</div>
+  <a class="button" href="{{ url_for('map_list', kind=kind) }}">Back</a>
+{% else %}
+  {% if consequences %}<div class="flash warn pre">{{ consequences }}</div>{% endif %}
+  <p class="hint">This doesn't touch the BAS: the sync just stops managing that schedule, and the
+  bookings it last wrote there (up to the lookahead ahead) stay until they pass or you clear them at the controller.</p>
+  <form method="post" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="version" value="{{ version }}">
+    <button class="danger">Delete</button>
+    <a class="button" href="{{ url_for('map_list', kind=kind) }}">Cancel</a>
+  </form>
+{% endif %}
+{% endblock %}

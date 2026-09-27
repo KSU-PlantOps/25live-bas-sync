@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{% endblock %} · {{ brand.name }}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='app.css') }}?v={{ app_version }}">
+  {% if brand.accent %}<link rel="stylesheet" href="{{ url_for('branding_css') }}?c={{ brand.accent[1:] }}">{% endif %}
+  <link rel="icon" href="{{ url_for('static', filename='icon.svg') }}" type="image/svg+xml">
+  <script src="{{ url_for('static', filename='app.js') }}?v={{ app_version }}" defer></script>
+</head>
+<body>
+{# Top-level sections; each lists the pages (endpoints) that belong to it. #}
+{% set nav_sections = [
+  ('Status', url_for('dashboard'), 'view_basic', ['dashboard']),
+  ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
+  ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
+  ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
+  ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults',
+                                                    'files_list', 'file_edit', 'access_page', 'appearance']),
+  ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
+{% set args = request.view_args or {} %}
+<header class="top">
+  <a class="brand" href="{{ url_for('dashboard') }}">
+    {% if brand.logo %}<img src="{{ url_for('branding_logo') }}?f={{ brand.logo }}" alt="">{% endif %}
+    <span>{{ brand.name }}</span>
+  </a>
+  <nav aria-label="Sections">
+    {% for label, href, capability, endpoints in nav_sections if can(capability) %}
+      <a href="{{ href }}"{% if request.endpoint in endpoints %} aria-current="page"{% endif %}>{{ label }}</a>
+    {% endfor %}
+  </nav>
+  <div class="who">
+    {% if current_job and can('view_basic') %}
+      <a class="pill running" href="{{ url_for('job', job_id=current_job.id) }}">{{ current_job.label }} running…</a>
+    {% endif %}
+    {% if auth_required %}
+      <span class="hint" title="{{ user.username or '' }}">{{ user.name }} · {{ role_label }}</span>
+      <form method="post" action="{{ url_for('logout') }}">
+        <input type="hidden" name="csrf" value="{{ csrf_token }}">
+        <button class="link">Sign out</button>
+      </form>
+    {% endif %}
+  </div>
+</header>
+{% set nav_sub = [] %}
+{% if request.endpoint in ['map_list', 'map_form', 'map_delete'] %}
+  {% set nav_sub = [('Rooms', url_for('map_list', kind='rooms'), 'view_all', args.get('kind') == 'rooms'),
+                   ('Buildings', url_for('map_list', kind='buildings'), 'view_all', args.get('kind') == 'buildings'),
+                   ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors')] %}
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'files_list', 'file_edit', 'access_page', 'appearance'] %}
+  {% set nav_sub = [('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
+                   ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
+                   ('Schedule', url_for('schedule'), 'view_all', request.endpoint == 'schedule'),
+                   ('Defaults', url_for('defaults'), 'view_all', request.endpoint == 'defaults'),
+                   ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
+                   ('Access', url_for('access_page'), 'admin', request.endpoint == 'access_page'),
+                   ('Appearance', url_for('appearance'), 'admin', request.endpoint == 'appearance')] %}
+{% endif %}
+<main>
+  {% if nav_sub %}
+    <nav class="subnav tabs" aria-label="Pages">
+      {% for label, href, capability, here in nav_sub if can(capability) %}
+        <a href="{{ href }}"{% if here %} aria-current="page"{% endif %}>{{ label }}</a>
+      {% endfor %}
+    </nav>
+  {% endif %}
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for kind, message in messages %}
+      <div class="flash {{ kind }}" role="status">{{ message }}</div>
+    {% endfor %}
+  {% endwith %}
+  {% block body %}{% endblock %}
+</main>
+<footer>
+  {% include "_contact.html" %}
+  <span>25live-bas-sync {{ app_version }}</span>
+</footer>
+</body>
+</html>

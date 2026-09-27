@@ -144,6 +144,17 @@ DEFAULTS: dict[str, Any] = {
         "ping_fail_url": "",                  # GET after a failed live run
     },
 
+    # ── When the service runs the sync ──
+    # Used by `bas-sync-service` — what the Docker container runs, with the web
+    # UI. Local times in `timezone`, 24-hour. The one-shot CLI ignores this;
+    # schedule it with cron or Task Scheduler instead. SYNC_AT in the
+    # environment, when set, overrides `times`.
+    "schedule": {
+        "enabled": True,
+        "times": ["02:00"],
+        "run_on_start": False,                # also run once when it starts
+    },
+
     "space_map_file": None,                   # None -> paths.space_map_file()
     "log_file": None,                         # None -> default_log_file()
     "log_max_mb": 10,                         # rotate the log at this size
@@ -380,6 +391,7 @@ CONFIG_SCHEMA: dict = {
             "report", "attach_csv", "subject_prefix")},
     },
     "monitoring": {"ping_url": None, "ping_fail_url": None},
+    "schedule": {"enabled": None, "times": None, "run_on_start": None},
     "space_map_file": None,
     "log_file": None,
     "log_max_mb": None,
@@ -495,6 +507,35 @@ def _as_str(section: dict, key: str, where: str, errors: list) -> None:
     errors.append(f"{where}{key} must be text, got {value!r}.")
 
 
+def parse_hhmm(value) -> str:
+    """'2:00', '02:00' or 120 -> '02:00'. Raises ValueError otherwise.
+
+    The number is there because YAML 1.1 reads an unquoted `02:00` as the
+    base-60 integer 120, so `times: [02:00]` arrives as minutes past midnight.
+    """
+    if isinstance(value, int) and not isinstance(value, bool):
+        if 0 <= value < 24 * 60:
+            return f"{value // 60:02d}:{value % 60:02d}"
+        raise ValueError(f"{value!r} is not a 24-hour HH:MM time")
+    m = re.match(r"^\s*([01]?\d|2[0-3]):([0-5]\d)\s*$", str(value or ""))
+    if not m:
+        raise ValueError(f"{value!r} is not a 24-hour HH:MM time")
+    return f"{int(m.group(1)):02d}:{m.group(2)}"
+
+
+def _time_list(section: dict, key: str, where: str, errors: list) -> None:
+    """A list of HH:MM times, normalised to sorted, distinct 'HH:MM' text."""
+    value = section.get(key)
+    if value is None:
+        return
+    if not isinstance(value, list):
+        value = [value]
+    try:
+        section[key] = sorted({parse_hhmm(v) for v in value})
+    except ValueError as exc:
+        errors.append(f"{where}{key}: {exc}, e.g. \"02:00\".")
+
+
 def check_timezone(value, where: str, errors: list) -> None:
     """IANA zone names only. A typo here used to surface as a
     ZoneInfoNotFoundError traceback from inside --validate itself."""
@@ -520,7 +561,8 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
     errors: list = []
     warnings = warnings if warnings is not None else []
 
-    for section in ("collegenet", "retry", "safety", "alerts", "monitoring"):
+    for section in ("collegenet", "retry", "safety", "alerts", "monitoring",
+                    "schedule"):
         if not isinstance(cfg.get(section), dict):
             errors.append(f"`{section}:` must be a mapping of settings, got "
                           f"{type(cfg.get(section)).__name__}.")
@@ -581,6 +623,10 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
 
     for key in ("ping_url", "ping_fail_url"):
         _as_str(cfg["monitoring"], key, "monitoring.", errors)
+    schedule = cfg["schedule"]
+    _as_bool(schedule, "enabled", "schedule.", errors)
+    _as_bool(schedule, "run_on_start", "schedule.", errors)
+    _time_list(schedule, "times", "schedule.", errors)
     _as_int(cfg, "log_max_mb", "", errors, minimum=0)
     _as_int(cfg, "log_backups", "", errors, minimum=0, maximum=1000)
 
@@ -672,7 +718,13 @@ def load_credentials(cfg: dict) -> None:
 
     A password written into config.yaml is honored but warned about — the file
     is gitignored, not encrypted, and tends to end up in a backup or a ticket.
+
+    Any of these the environment lacks are filled in first from the passwords
+    the web UI stores in state/secrets.json (bassync/secretstore.py); the
+    environment always wins.
     """
+    from . import secretstore
+    secretstore.fill_environ(secretstore.store_file(cfg))
     cn_pw = os.environ.get("BAS_25LIVE_PASSWORD")
     if cn_pw:
         cfg["collegenet"]["password"] = cn_pw

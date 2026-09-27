@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Access{% endblock %}
+{% block body %}
+<h1>Access</h1>
+<p class="hint">Who can sign in to this web UI, and as what. Stored in <code>{{ path }}</code>; the client secret is kept
+in the service's state folder instead.</p>
+{% if file_error %}<div class="flash error">{{ path.name }} can't be read, so single sign-on is off until it's fixed: {{ file_error }}</div>{% endif %}
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+
+<section class="card">
+  <h2>Roles</h2>
+  <table class="list">
+    <tr><td><strong>Basic</strong></td><td>The status page and sync history; <em>Sync now</em> for every system.</td></tr>
+    <tr><td><strong>Advanced</strong></td><td>Sees everything; the tools (dry run, validate, discover, test alert), syncing one
+      system, stopping a job; adds and edits rooms, buildings and floors.</td></tr>
+    <tr><td><strong>Admin</strong></td><td>Full control: connection, systems and passwords, alerts, defaults, schedule, the
+      files, this page, and <em>Force</em> (overriding the mass-clear safety check).</td></tr>
+  </table>
+  <p class="hint">Someone in several groups gets the highest of their roles. Changes here apply to people already signed in.</p>
+</section>
+
+<section class="card">
+  <h2>Groups that may sign in</h2>
+  {% if conf.groups %}
+    <table class="list wide">
+      <thead><tr><th>Group (as it appears in the token)</th><th>Role</th><th>Note</th><th></th></tr></thead>
+      <tbody>
+      {% for row in conf.groups %}
+        <tr><td><code>{{ row.group }}</code></td><td>{{ role_labels[row.role] }}</td><td>{{ row.note }}</td>
+          <td class="row-actions">
+            <form method="post" action="{{ url_for('access_group_delete', index=loop.index0) }}" class="inline"
+                  data-confirm="Stop {{ row.group }} from signing in?">
+              <input type="hidden" name="csrf" value="{{ csrf_token }}">
+              <button class="link danger">Remove</button>
+            </form></td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  {% else %}
+    <p class="hint">None yet. Add at least one Admin group before you rely on single sign-on.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('access_group_add') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input name="group" placeholder="e.g. BAS_Admins, or the group's object ID" aria-label="Group" required size="36">
+    <select name="role" aria-label="Role">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'basic' }}>{{ role_labels[r] }}</option>{% endfor %}</select>
+    <input name="note" placeholder="note (optional)" aria-label="Note">
+    <button>Add group</button>
+  </form>
+  <p class="hint">Enter a group the way Entra puts it in the sign-in token: its <strong>object ID</strong> (the default),
+    or its <strong>name</strong> — e.g. <code>VPN_Role_PlantOps_BAS</code> → Basic, <code>BAS_Users</code> → Advanced,
+    <code>BAS_Admins</code> → Admin — if the app registration is set to emit names (see the setup steps). Matching ignores case.</p>
+  {% if last_refusal %}
+    <details class="flash warn" open>
+      <summary>Last refused sign-in: {{ last_refusal.user.name }} ({{ last_refusal.user.username }}),
+        {{ relative(last_refusal.when) }}</summary>
+      <p>Their token carried {{ last_refusal.count }} group value(s){% if last_refusal.count > last_refusal.groups | length %}
+        (the first {{ last_refusal.groups | length }} shown){% endif %}. If none of these is a group above, that's why:</p>
+      <p class="mono">{{ last_refusal.groups | join(', ') or '(none)' }}</p>
+      <p class="hint">GUIDs mean the registration emits object IDs; names mean it emits names. Enter groups the same way.</p>
+    </details>
+  {% endif %}
+</section>
+
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2 class="full">Microsoft Entra ID sign-in</h2>
+  <div class="full">
+    {% if conf.sso.enabled and not problems %}<p class="ok">On, and complete.</p>
+    {% elif conf.sso.enabled %}<p class="bad">On, but not usable yet: {{ problems | join(' ') }}</p>
+    {% else %}<p class="hint">Off.</p>{% endif %}
+  </div>
+  <label for="a-enabled">Single sign-on</label>
+  <div class="field"><label class="check"><input type="checkbox" id="a-enabled" name="enabled" value="1" {{ 'checked' if conf.sso.enabled }}> Sign in with Microsoft</label></div>
+  <label for="a-tenant">Directory (tenant) ID</label>
+  <div class="field"><input id="a-tenant" name="tenant_id" value="{{ conf.sso.tenant_id }}" class="mono" spellcheck="false"
+    placeholder="00000000-0000-0000-0000-000000000000"><small>Entra ID → Overview</small></div>
+  <label for="a-client">Application (client) ID</label>
+  <div class="field"><input id="a-client" name="client_id" value="{{ conf.sso.client_id }}" class="mono" spellcheck="false"
+    placeholder="00000000-0000-0000-0000-000000000000"><small>the app registration's Overview</small></div>
+  <label for="a-secret">Client secret</label>
+  <div class="field">
+    {% if secret_source == 'environment' %}
+      <p class="ok">Set in the environment (<code>BAS_WEB_SSO_CLIENT_SECRET</code>), which wins.</p>
+    {% else %}
+      <input id="a-secret" name="client_secret" type="password" autocomplete="new-password"
+             placeholder="{{ 'stored — leave blank to keep it' if secret_source else 'the secret Value from Certificates & secrets' }}">
+      <small>Stored in the state folder, readable only by the service; never shown again. Secrets expire — note the date Entra gives it.</small>
+    {% endif %}
+  </div>
+  <label for="a-host">Cloud</label>
+  <div class="field"><select id="a-host" name="authority_host">
+    {% for host, label in hosts.items() %}<option value="{{ host }}" {{ 'selected' if host == conf.sso.authority_host }}>{{ label }}</option>{% endfor %}
+  </select></div>
+  <label for="a-url">Public URL</label>
+  <div class="field"><input id="a-url" name="public_url" value="{{ conf.sso.public_url }}" placeholder="https://bas-sync.example.edu">
+    <small>the https address people use for this page; blank = the address of this request</small></div>
+  <label>Redirect URI</label>
+  <div class="field"><code>{{ redirect }}</code>
+    <small>register this exactly, as a <strong>Web</strong> platform redirect URI. Microsoft requires https (http only for localhost).</small></div>
+  <h2 class="full">Local password</h2>
+  <label for="a-local">Break-glass sign-in</label>
+  <div class="field"><label class="check"><input type="checkbox" id="a-local" name="local_password" value="1" {{ 'checked' if conf.local_password }}>
+    Allow signing in with <code>BAS_WEB_PASSWORD</code>, as Admin</label>
+    <small>{{ 'BAS_WEB_PASSWORD is set.' if local_set else 'BAS_WEB_PASSWORD is not set, so this has no effect.' }}
+      Keep it on until single sign-on works; if SSO then breaks, turn it back on in
+      <code>{{ path.name }}</code> (<code>local_password: true</code>).</small></div>
+  <div class="buttons full"><button class="primary">Save</button></div>
+</form>
+
+<details class="card">
+  <summary>Setting up the app in Microsoft Entra</summary>
+  <ol>
+    <li><strong>Register it.</strong> Entra admin center → App registrations → New registration. Single tenant. Redirect URI:
+      platform <em>Web</em>, <code>{{ redirect }}</code>.</li>
+    <li><strong>A secret.</strong> Certificates &amp; secrets → New client secret. Paste its <em>Value</em> above, and put
+      its expiry date in your calendar.</li>
+    <li><strong>Groups in the token.</strong> Token configuration → Add groups claim → <em>Security groups</em>. Under ID,
+      choose <em>Group ID</em> (then enter object IDs here), or for groups synced from on-premises AD,
+      <em>sAMAccountName</em> (then enter names like <code>BAS_Admins</code>). For large directories choose
+      <em>Groups assigned to the application</em> instead and assign the groups under Enterprise applications → Users and
+      groups; nested groups don't count there, so assign each group directly.</li>
+    <li><strong>The IDs.</strong> Copy the Directory (tenant) ID and Application (client) ID above.</li>
+    <li><strong>Try it</strong> in a private window: <a href="{{ url_for('auth_login') }}" target="_blank" rel="noopener">Sign in with Microsoft</a>.
+      Once it works for an Admin group, you can turn the local password off.</li>
+  </ol>
+</details>
+{% endblock %}

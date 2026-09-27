@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Logs{% endblock %}
+{% block body %}
+<h1>Logs</h1>
+<div class="toolbar">
+  <div class="tabs">
+    <a href="{{ url_for('logs', which='sync') }}" {% if which == 'sync' %}aria-current="page"{% endif %}>Sync</a>
+    <a href="{{ url_for('logs', which='service') }}" {% if which == 'service' %}aria-current="page"{% endif %}>Service</a>
+    {% if can('admin') %}<a href="{{ url_for('logs', which='activity') }}" {% if which == 'activity' %}aria-current="page"{% endif %}>Activity</a>{% endif %}
+  </div>
+  {% if which != 'activity' %}
+    <span class="hint">last {{ lines }} lines of <code>{{ path }}</code></span>
+    <a href="{{ url_for('logs', which=which, lines=2000) }}">more</a>
+    <a href="{{ url_for('log_download', which=which) }}">download</a>
+  {% else %}
+    <input type="search" placeholder="Filter" data-filter="activity" class="filter" aria-label="Filter">
+  {% endif %}
+</div>
+{% if which == 'activity' %}
+  <p class="hint">Who did what in the web UI — sign-ins, refused sign-ins, every change and every job — newest first,
+  from the service log.</p>
+  <table class="list wide" id="activity">
+    <thead><tr><th>When</th><th>What</th></tr></thead>
+    <tbody>
+    {% for when, what in activity %}<tr><td class="nowrap">{{ when }}</td><td>{{ what }}</td></tr>
+    {% else %}<tr><td colspan="2" class="hint">Nothing yet.</td></tr>{% endfor %}
+    </tbody>
+  </table>
+{% else %}
+<pre class="output tall" data-scroll-end>{{ text or '(empty)' }}</pre>
+{% endif %}
+{% endblock %}

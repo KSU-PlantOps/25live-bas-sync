@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}{{ job.label }}{% endblock %}
+{% block body %}
+<h1>{{ job.label }} {% if job.args %}<code class="hint">{{ job.args | join(' ') }}</code>{% endif %}</h1>
+<p class="hint">Started {{ local_time(job.started, '%Y-%m-%d %H:%M:%S') }} · {{ job.trigger }}</p>
+<p id="job-status" class="status">
+  {% if job.running %}<span class="dot run"></span> Running…
+  {% elif job.stopped_by %}<span class="dot bad"></span> Stopped — {{ job.stopped_by }} (exit {{ job.exit_code }})
+  {% elif job.exit_code == 0 %}<span class="dot ok"></span> Finished — exit 0
+  {% else %}<span class="dot bad"></span> Finished — exit {{ job.exit_code }}{% endif %}
+</p>
+{% if job.running and can('stop_job') %}
+  <form method="post" action="{{ url_for('job_stop', job_id=job.id) }}" class="inline"
+        data-confirm="{{ 'Stop the sync part-way? Schedules already written stay written; run it again to bring everything into agreement.' if job.kind == 'sync' else 'Stop this job?' }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="danger">Stop</button>
+  </form>
+{% endif %}
+{% set output_lines = job.output_since(0) %}
+<pre id="output" class="output" data-url="{{ url_for('api_job', job_id=job.id) }}"
+     data-next="{{ output_lines[1] }}" data-running="{{ '1' if job.running else '' }}">{{ output_lines[0] | join('\n') }}</pre>
+
+{% if discovered is not none %}
+<section class="card">
+  <h2>Discovered spaces</h2>
+  <p class="hint">25Live spaces with bookings in the window. Add the ones this sync should condition.</p>
+  <input type="search" placeholder="Filter" data-filter="discovered" class="filter">
+  <table class="list wide" id="discovered">
+    <thead><tr><th data-sort>Space ID</th><th data-sort>Name</th><th></th></tr></thead>
+    <tbody>
+    {% for s in discovered %}
+      <tr><td>{{ s.space_id }}</td><td>{{ s.space_name }}</td>
+        <td>{% if s.mapped %}<span class="hint">in the room map</span>
+            {% elif can('edit_map') %}<a href="{{ url_for('map_form', kind='rooms', space_id=s.space_id, space_name=s.space_name) }}">Add as a room</a>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+{% endblock %}

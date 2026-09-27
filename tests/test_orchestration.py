@@ -312,6 +312,12 @@ def test_cli_live_run_emails_what_it_scheduled(tmp_path, monkeypatch):
     assert "Main Hall 101" in body and "09:00–10:00" in body
     assert "Building Main Hall" in body
     assert "B/Rm1" in kw["attachments"][0][1]
+    # ...and the run is in the history the web UI shows, beside the state.
+    from bassync import history
+    runs = history.list_runs(tmp_path / "state" / "runs")
+    assert len(runs) == 1 and runs[0]["subject"] == subject.replace("[25Live sync] ", "")
+    assert "Main Hall 101" in history.load_run(tmp_path / "state" / "runs",
+                                               runs[0]["id"])["text"]
 
 
 def test_discover_prints_loadable_yaml(monkeypatch, capsys):

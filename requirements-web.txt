@@ -1,0 +1,5 @@
+# The web UI and the long-running service (bas-sync-service): what the Docker
+# image runs. Not needed for a one-shot `python main.py` or the desktop editor.
+#   pip install -r requirements.txt -r requirements-web.txt -c constraints.txt
+flask>=3.1,<4
+cheroot>=10

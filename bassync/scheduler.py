@@ -69,6 +69,12 @@ def next_run(at: str, now: datetime) -> datetime:
     raise RuntimeError("no next run found")            # pragma: no cover
 
 
+def next_run_any(times, now: datetime) -> Optional[datetime]:
+    """The soonest of next_run() over several HH:MM times; None for none."""
+    runs = [next_run(at, now) for at in times]
+    return min(runs, key=lambda d: d.astimezone(timezone.utc)) if runs else None
+
+
 def _zone() -> ZoneInfo:
     name = os.environ.get("TZ") or "UTC"
     try:
