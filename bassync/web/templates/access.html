@@ -37,6 +37,53 @@ in the service's state folder instead.</p>
     </table>
     </div>
     <p class="hint">A role with <em>Everything</em> ticked has every capability, whatever else is ticked.</p>
+
+    <h3 id="sync-limits">What each role may sync</h3>
+    <p class="hint">A role with nothing ticked here syncs everything. Tick systems or buildings to limit its
+      <em>Sync now</em> to those, one at a time — for people who look after one building, or one BAS. Someone in several
+      roles may sync what any of them allows. The scheduled sync always covers everything, and Dry run and Validate, which
+      write nothing, aren't limited.</p>
+    {% set known_buildings = sync_buildings | map(attribute=0) | list %}
+    <div class="scroll-x">
+    <table class="list">
+      <thead><tr><th scope="col">Role</th><th scope="col">Systems</th><th scope="col">Buildings</th></tr></thead>
+      <tbody>
+      {% for r in conf.roles if r.capabilities == 'all' or 'sync' in r.capabilities %}
+        {% set lim = r.sync_only or {} %}
+        <tr>
+          <td><strong>{{ r.name }}</strong><input type="hidden" name="limits:{{ r.id }}" value="1">
+            <small>{{ 'syncs everything' if not lim else 'syncs only what is ticked' }}</small></td>
+          <td><div class="checks">
+            {% for sname in sync_systems %}
+              <label class="check"><input type="checkbox" name="sync_system:{{ r.id }}" value="{{ sname }}"
+                {{ 'checked' if sname in (lim.systems or []) }}> {{ sname }}</label>
+            {% endfor %}
+            {% for sname in (lim.systems or []) if sname not in sync_systems %}
+              <label class="check"><input type="checkbox" name="sync_system:{{ r.id }}" value="{{ sname }}" checked>
+                {{ sname }} <span class="bad">(no such system)</span></label>
+            {% endfor %}
+          </div></td>
+          <td>
+            {% if sync_buildings or lim.buildings %}
+            <select multiple name="sync_building:{{ r.id }}" aria-label="Buildings {{ r.name }} may sync"
+                    size="{{ [[sync_buildings | length + (lim.buildings or []) | length, 2] | max, 6] | min }}">
+              {% for bid, bname in sync_buildings %}
+                <option value="{{ bid }}" {{ 'selected' if bid in (lim.buildings or []) }}>{{ bname }}{% if bname != bid %} ({{ bid }}){% endif %}</option>
+              {% endfor %}
+              {% for bid in (lim.buildings or []) if bid not in known_buildings %}
+                <option value="{{ bid }}" selected>{{ bid }} — not in the room map</option>
+              {% endfor %}
+            </select>
+            {% else %}<span class="hint">no buildings yet</span>{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="hint">No role can sync.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+    <p class="hint">Ctrl-click (⌘-click on a Mac) to pick several buildings, or to unpick one.</p>
     <div class="buttons"><button class="primary">Save roles</button></div>
   </form>
   <div class="split">

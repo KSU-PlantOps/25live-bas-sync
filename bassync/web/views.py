@@ -374,6 +374,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             jobs=service.jobs.recent(6), service=service,
             secrets=secret_status(raw),
             systems=sorted(mapedit.config_systems(raw)),
+            sync_choices=_sync_choices(raw),
             setup_steps=setup_steps,
             paths=files())
 
@@ -402,21 +403,36 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         kind = request.form.get("kind", "")
         if kind not in KINDS:
             abort(400, "Unknown job.")
-        needed = "sync"
-        if kind != "sync" or request.form.get("system"):
-            needed = "run_tools"
-        if kind == "sync" and request.form.get("force"):
-            needed = "force"
+        # What to limit it to: "only" is the status page's one list of both.
+        only = request.form.get("only") or ""
+        system = (request.form.get("system") or "").strip()
+        building = (request.form.get("building") or "").strip()
+        if only.startswith("system:"):
+            system = only.split(":", 1)[1]
+        elif only.startswith("building:"):
+            building = only.split(":", 1)[1]
+        if system and building:
+            abort(400, "Choose a system or a building, not both.")
+        needed = "run_tools"
+        if kind == "sync":
+            needed = "force" if request.form.get("force") else "sync"
         if not access.can(g.caps, needed):
             abort(403, f"Your role ({g.role_label or 'none'}) can't start that: it needs "
                        f"“{access.CAPABILITY_LABELS[needed]}”.")
+        if kind == "sync" and not access.may_sync(g.sync_scope, system or None,
+                                                  building or None):
+            abort(403, f"Your role ({g.role_label or 'none'}) may sync only "
+                       f"{access.describe_scope(g.sync_scope)}, one at a time.")
         args: list = []
-        system = (request.form.get("system") or "").strip()
         if system and kind in ("sync", "dry-run", "validate"):
             raw, _err = load_config_raw()
             if system not in mapedit.config_systems(raw):
                 abort(400, f"No system named {system!r}.")
             args += ["--system", system]
+        if building and kind in ("sync", "dry-run"):
+            if building not in {str(b.get("id")) for b in load_map()[0]}:
+                abort(400, f"No building {building!r} in the room map.")
+            args += ["--building", building]
         if kind == "sync" and request.form.get("force"):
             args.append("--force")
         if kind == "discover":
@@ -633,6 +649,20 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                 mapedit.save_mapping(files().space_map, *new_lists)
             except OSError as exc:
                 return again([_write_error(exc)])
+            renamed = (kind == "buildings" and index_n is not None
+                       and str(original.get("id")) != str(row.get("id")))
+            if renamed:
+                # Roles limited to syncing this building keep it.
+                conf = load_access()
+                if access.rename_building(conf, str(original.get("id")), str(row.get("id"))):
+                    try:
+                        access.save(files().web_file, conf)
+                    except OSError as exc:
+                        notice("The roles that may sync this building still name it "
+                               f"'{original.get('id')}': {_write_error(exc)}", "warn")
+                    else:
+                        audit("followed building '%s' → '%s' in the roles' sync limits",
+                              original.get("id"), row.get("id"))
         audit("saved %s", row_label(kind, row))
         message = f"Saved {row_label(kind, row)}."
         if added:
@@ -1270,7 +1300,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             problems=access.sso_problems(conf, bool(secret_source)),
             redirect=redirect_uri(conf), path=path,
             local_set=bool(os.environ.get("BAS_WEB_PASSWORD")),
-            last_refusal=ctx().get("last_refusal")), 422 if errors else 200
+            last_refusal=ctx().get("last_refusal"),
+            sync_systems=sorted(mapedit.config_systems(load_config_raw()[0])),
+            sync_buildings=sorted(((str(b["id"]), str(b.get("name") or b["id"]))
+                                   for b in load_map()[0]
+                                   if isinstance(b, dict) and b.get("id") not in (None, "")),
+                                  key=lambda pair: pair[1].lower())), 422 if errors else 200
 
     @app.route("/settings/appearance", methods=["GET", "POST"])
     @requires("manage_access")
@@ -1407,7 +1442,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         changed = []
         for role in conf["roles"]:
             rid = role["id"]
-            before = (role["name"], role["capabilities"])
+            before = (role["name"], role["capabilities"], role.get("sync_only"))
             name = (form.get(f"name:{rid}") or "").strip()[:40]
             if name:
                 role["name"] = name
@@ -1419,10 +1454,23 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                 notice(f"{role['name']} would be able to do nothing; give it something, "
                        "or delete it.", "error")
                 return redirect(url_for("access_page"))
-            if (role["name"], role["capabilities"]) != before:
+            # The limits are only on the form for a role that could sync when
+            # it was drawn; leave others' as they are.
+            if f"limits:{rid}" in form:
+                limits = access.clean_sync_only({
+                    "systems": form.getlist(f"sync_system:{rid}"),
+                    "buildings": form.getlist(f"sync_building:{rid}")})
+                if limits:
+                    role["sync_only"] = limits
+                else:
+                    role.pop("sync_only", None)
+            if (role["name"], role["capabilities"], role.get("sync_only")) != before:
                 caps = role["capabilities"]
+                limits = role.get("sync_only")
                 changed.append(f"{role['name']}: "
-                               + ("everything" if caps == "all" else ", ".join(caps)))
+                               + ("everything" if caps == "all" else ", ".join(caps))
+                               + (f" (syncs only {access.describe_scope(access.limits_scope(limits))})"
+                                  if limits else ""))
         lowered = [r["name"].lower() for r in conf["roles"]]
         if len(set(lowered)) != len(lowered):
             notice("Two roles have the same name.", "error")
@@ -1735,6 +1783,22 @@ def _capability_groups() -> list:
             out.append((heading, []))
         out[-1][1].append((cap, label))
     return out
+
+
+def _sync_choices(raw: dict) -> dict:
+    """What this person's Sync now can cover: everything, and the systems and
+    buildings they may sync one at a time."""
+    scope = g.get("sync_scope")
+    buildings = [b for b in load_map()[0] if isinstance(b, dict) and b.get("id") not in (None, "")]
+    systems = sorted(mapedit.config_systems(raw))
+    return {
+        "all": access.may_sync(scope),
+        "systems": [s for s in systems if access.may_sync(scope, system=s)],
+        "buildings": sorted(((str(b["id"]), str(b.get("name") or b["id"])) for b in buildings
+                             if access.may_sync(scope, building=str(b["id"]))),
+                            key=lambda pair: pair[1].lower()),
+        "limited_to": access.describe_scope(scope),
+    }
 
 
 def _times_text(times) -> list:

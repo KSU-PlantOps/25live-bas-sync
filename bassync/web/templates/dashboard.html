@@ -102,14 +102,25 @@
   {% if current_job %}
     <p><a href="{{ url_for('job', job_id=current_job.id) }}">{{ current_job.label }}</a> is running — one job at a time.</p>
   {% endif %}
+  {% set sc = sync_choices %}
+  {% set sync_count = (1 if sc.all else 0) + sc.systems | length + sc.buildings | length %}
+  {% if can('sync') and not sync_count %}
+    <p class="hint">Your role may sync only {{ sc.limited_to }}, and none of those is in the room map any more.</p>
+  {% endif %}
   <div class="actions">
+    {% if not can('sync') or sync_count %}
     <form method="post" action="{{ url_for('jobs') }}" class="inline" data-confirm="Sync now? This writes schedules to the BAS.">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <input type="hidden" name="kind" value="sync">
-      {% if systems | length > 1 and can('run_tools') %}
-        <select name="system" aria-label="Limit to one system">
-          <option value="">All systems</option>
-          {% for s in systems %}<option>{{ s }}</option>{% endfor %}
+      {% if sync_count > 1 or not sc.all %}
+        <select name="only" aria-label="What to sync">
+          {% if sc.all %}<option value="">Everything</option>{% endif %}
+          {% if sc.systems and (systems | length > 1 or not sc.all) %}
+            <optgroup label="One system">{% for s in sc.systems %}<option value="system:{{ s }}">{{ s }}</option>{% endfor %}</optgroup>
+          {% endif %}
+          {% if sc.buildings %}
+            <optgroup label="One building">{% for bid, bname in sc.buildings %}<option value="building:{{ bid }}">{{ bname }}</option>{% endfor %}</optgroup>
+          {% endif %}
         </select>
       {% endif %}
       {% if can('force') %}
@@ -118,6 +129,7 @@
       {% endif %}
       <button class="primary" {{ 'disabled' if current_job }}>Sync now</button>
     </form>
+    {% endif %}
     {% if can('run_tools') %}
     {% for kind, label, hint in [('dry-run', 'Dry run', 'fetch and build; writes nothing'),
                                 ('validate', 'Validate', 'checks config, 25Live, every BAS and target; writes nothing'),

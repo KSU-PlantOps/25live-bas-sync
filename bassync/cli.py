@@ -230,7 +230,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     parser.add_argument("--system", metavar="NAME",
                         help="Limit the run to one system from `systems:` — "
-                             "use it to commission a building at a time")
+                             "use it to commission one BAS at a time")
+    parser.add_argument("--building", metavar="ID", action="append",
+                        help="Limit a sync or --dry-run to a building's "
+                             "schedules — its own, its floors', its equipment's "
+                             "and its rooms'. Repeat for several")
     parser.add_argument("--force", action="store_true",
                         help="Override the mass-clear safety check. Needed at "
                              "semester break, when a big drop in bookings is real")
@@ -244,6 +248,11 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     if args.discover_days < 1:
         parser.error("--discover-days must be at least 1")
+    if args.building:
+        if args.system:
+            parser.error("--building and --system can't be used together")
+        if args.validate or args.discover or args.test_alert or args.list_drivers:
+            parser.error("--building limits a sync or a --dry-run")
 
     if args.list_drivers:
         return print_drivers()
@@ -302,7 +311,7 @@ def main(argv=None) -> int:
                  resolve_default_system(cfg) or "(none)")
 
     if not (args.test_alert or args.validate or args.discover or args.dry_run):
-        return live_sync(cfg, args.force, args.system)
+        return live_sync(cfg, args.force, args.system, args.building)
     try:
         if args.test_alert:
             code = run_test_alert(cfg)
@@ -312,7 +321,8 @@ def main(argv=None) -> int:
             code = run_discover(cfg, args.discover_days,
                                 every_space=not args.discover_booked_only)
         else:
-            code = run_sync(cfg, dry_run=True, only_system=args.system)
+            code = run_sync(cfg, dry_run=True, only_system=args.system,
+                            only_buildings=args.building)
     except KeyboardInterrupt:
         return 130
     except Exception:                                # noqa: BLE001 — last-resort guard
@@ -326,7 +336,7 @@ def _finish(code: int) -> int:
     return code
 
 
-def live_sync(cfg: dict, force: bool, only_system) -> int:
+def live_sync(cfg: dict, force: bool, only_system, only_buildings=None) -> int:
     """
     A live run: sync, then report. The only mode that notifies — the others
     are interactive and just return a code to whoever ran them.
@@ -341,7 +351,8 @@ def live_sync(cfg: dict, force: bool, only_system) -> int:
     try:
         try:
             code = run_sync(cfg, dry_run=False, force=force,
-                            only_system=only_system, report=report)
+                            only_system=only_system, report=report,
+                            only_buildings=only_buildings)
         except KeyboardInterrupt:
             logging.warning("Interrupted — some schedules may be partially "
                             "written. Re-run to bring everything back into "
@@ -360,7 +371,13 @@ def live_sync(cfg: dict, force: bool, only_system) -> int:
         logging.info("%s", line)
     save_report(report, runs_dir(cfg))
     send_run_report(cfg, report)
-    ping_monitor(cfg.get("monitoring") or {}, report.ok)
+    # The dead-man's switch is for the full sync: a run limited to one system
+    # or building succeeding says nothing about the rest of the campus, and
+    # its pings could hide a scheduler that stopped. Failures still report.
+    if report.ok and (only_system or only_buildings):
+        logging.info("Limited run: the monitoring success ping is left to full syncs.")
+    else:
+        ping_monitor(cfg.get("monitoring") or {}, report.ok)
     return _finish(code)
 
 

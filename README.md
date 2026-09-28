@@ -156,11 +156,12 @@ box:
 
 | Role | Can |
 |---|---|
-| **Basic** | See the status page and sync history; *Sync now*. |
+| **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
 | **Advanced** | See everything; run the tools; add and edit rooms, buildings, floors and extra bookings. |
 | **Admin** | Full control: connection, passwords, alerts, schedule, safety, access, appearance, restarting the service, and *Force*. |
 
-Change what each role may do, or add your own, on the Access page.
+Change what each role may do, add your own, or limit a role to syncing
+particular systems or buildings, on the Access page.
 
 | Room map, with campuses | Each sync's report |
 |---|---|

@@ -50,6 +50,7 @@ def report_record(report: RunReport) -> dict:
         "event_count": report.event_count,
         "rooms": report.rooms,
         "only_system": report.only_system,
+        "only_buildings": list(report.only_buildings),
         "safety_ok": report.safety_ok,
         "safety_forced": report.safety_forced,
         "safety_reason": report.safety_reason,

@@ -13,6 +13,10 @@ built in, and are what a site gets until it changes them on the Access page:
               editing rooms, buildings, floors and extra bookings
     admin     everything, including capabilities added in later versions
 
+A role that can sync can be limited to some systems and buildings
+(`sync_only:`): its Sync now then covers only those, one at a time. The
+scheduled sync always covers everything.
+
 Who gets which role is `web.yaml`, beside config.yaml, edited on the Access
 page: the roles, Microsoft Entra ID sign-in, and which Entra groups may sign
 in with which role. Someone in several groups gets every capability of every
@@ -34,8 +38,9 @@ CAPABILITY_LIST = (
     ("view_basic", "See the status page and the sync history", "See"),
     ("view_all", "See everything else: jobs, the room map, extra bookings, "
                  "settings and logs (read-only)", "See"),
-    ("sync", "Sync now, every system", "Run"),
-    ("run_tools", "Dry run, Validate, Discover and Test alert; sync one system", "Run"),
+    ("sync", "Sync now — everything, or one system or building (a role can be "
+             "limited to some, below)", "Run"),
+    ("run_tools", "Dry run, Validate, Discover and Test alert", "Run"),
     ("stop_job", "Stop a running job", "Run"),
     ("force", "Force a sync past the mass-clear safety check", "Run"),
     ("edit_map", "Add and edit rooms, buildings and floors", "Change"),
@@ -118,10 +123,96 @@ def clean_roles(data) -> list:
             continue
         name = str(row.get("name") or rid).strip()[:40] or rid
         caps = row.get("capabilities")
-        out.append({"id": rid, "name": name,
-                    "capabilities": "all" if caps == "all" else complete(
-                        caps if isinstance(caps, list) else [])})
+        role: dict = {"id": rid, "name": name,
+                      "capabilities": "all" if caps == "all" else complete(
+                          caps if isinstance(caps, list) else [])}
+        limits = clean_sync_only(row.get("sync_only"))
+        if limits:
+            role["sync_only"] = limits
+        out.append(role)
     return out or default_roles()
+
+
+# ── what a role may sync ─────────────────────────────────────────────────────
+
+def _names(value) -> list:
+    if not isinstance(value, list):
+        return []
+    out: list = []
+    for item in value:
+        text = str(item or "").strip()[:64]
+        if text and "\n" not in text and text not in out:
+            out.append(text)
+    return out[:500]
+
+
+def clean_sync_only(data) -> dict:
+    """A role's sync limits: the systems and building ids it may sync. Empty
+    (no key at all) means no limit."""
+    if not isinstance(data, dict):
+        return {}
+    out = {key: _names(data.get(key)) for key in ("systems", "buildings")}
+    return {k: v for k, v in out.items() if v}
+
+
+def sync_scope(role_ids, settings: dict) -> Optional[dict]:
+    """What someone with these roles may sync: None for everything (any of
+    their roles that can sync has no limits), else {"systems", "buildings"}:
+    every one any of their syncing roles is limited to."""
+    scope: dict = {"systems": set(), "buildings": set()}
+    for role in settings["roles"]:
+        if role["id"] not in role_ids or "sync" not in role_capabilities(role):
+            continue
+        limits = role.get("sync_only") or {}
+        if not limits:
+            return None
+        scope["systems"] |= set(limits.get("systems") or ())
+        scope["buildings"] |= set(limits.get("buildings") or ())
+    return scope
+
+
+def may_sync(scope: Optional[dict], system: Optional[str] = None,
+             building: Optional[str] = None) -> bool:
+    """Whether a Sync now of everything (neither given), one system, or one
+    building is within `scope`."""
+    if scope is None:
+        return True
+    if system:
+        return system in scope["systems"]
+    if building:
+        return building in scope["buildings"]
+    return False
+
+
+def limits_scope(limits: dict) -> dict:
+    """A role's `sync_only` as a scope, for describe_scope."""
+    return {"systems": set(limits.get("systems") or ()),
+            "buildings": set(limits.get("buildings") or ())}
+
+
+def describe_scope(scope: Optional[dict]) -> str:
+    if scope is None:
+        return "everything"
+    parts = []
+    if scope["systems"]:
+        parts.append("the system" + ("s " if len(scope["systems"]) > 1 else " ")
+                     + ", ".join(sorted(scope["systems"])))
+    if scope["buildings"]:
+        parts.append("the building" + ("s " if len(scope["buildings"]) > 1 else " ")
+                     + ", ".join(sorted(scope["buildings"])))
+    return " and ".join(parts) or "nothing"
+
+
+def rename_building(settings: dict, old: str, new: str) -> bool:
+    """Follow a renamed building in every role's sync limits; True if any
+    changed."""
+    changed = False
+    for role in settings["roles"]:
+        buildings = (role.get("sync_only") or {}).get("buildings")
+        if buildings and old in buildings:
+            role["sync_only"]["buildings"] = [new if b == old else b for b in buildings]
+            changed = True
+    return changed
 
 
 def role_names(settings: dict) -> dict:

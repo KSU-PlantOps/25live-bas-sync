@@ -68,6 +68,7 @@ class RunReport:
     safety_forced: bool = False
     baseline: str = ""
     only_system: str = ""
+    only_buildings: list = field(default_factory=list)
     systems: dict = field(default_factory=dict)
     schedules: list = field(default_factory=list)
     problems: list = field(default_factory=list)
@@ -138,6 +139,9 @@ class RunReport:
         lines.append(f"Run: {self.mode} started {when}{took} (25live-bas-sync {self.version})")
         if self.only_system:
             lines.append(f"Limited to system: {self.only_system}")
+        if self.only_buildings:
+            lines.append(f"Limited to building{'s' if len(self.only_buildings) > 1 else ''}: "
+                         + ", ".join(self.only_buildings))
         if self.event_count is not None:
             lines.append(f"25Live: {self.event_count} booking(s) for {self.rooms} mapped room(s)")
         if self.extra_bookings:
