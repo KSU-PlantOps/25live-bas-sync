@@ -127,6 +127,31 @@ def test_old_jobs_are_pruned(tmp_path, monkeypatch):
     assert len(list((tmp_path / "jobs").glob("*.log"))) == 2
 
 
+def test_a_job_is_only_shown_finished_once_it_is_recorded_and_tidied(tmp_path, monkeypatch):
+    """Regression: a job used to show as finished before its record was
+    written and old ones pruned, so the next job could start half-way
+    through — and pruning, which sorted same-second ids by their random
+    part, could take the new job's files."""
+    monkeypatch.setattr(jobs_mod, "KEEP_JOBS", 1)
+    real_prune = JobManager._prune
+
+    def slow_prune(self, *args, **kwargs):
+        time.sleep(0.3)
+        return real_prune(self, *args, **kwargs)
+
+    monkeypatch.setattr(JobManager, "_prune", slow_prune)
+    jm = manager(tmp_path)
+    ids = []
+    for _ in range(3):
+        job = jm.start("validate")
+        ids.append(job.id)
+        wait(job)
+        records = sorted(p.stem for p in (tmp_path / "jobs").glob("*.json"))
+        logs = sorted(p.stem for p in (tmp_path / "jobs").glob("*.log"))
+        assert records == logs == [job.id], (records, logs)
+    assert [j["id"] for j in jm.recent()][:1] == ids[-1:]
+
+
 def test_get_refuses_ids_that_are_not_job_ids(tmp_path):
     jm = manager(tmp_path)
     assert jm.get("../../etc/passwd") is None and jm.get("") is None
