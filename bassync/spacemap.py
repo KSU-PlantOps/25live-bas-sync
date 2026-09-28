@@ -189,7 +189,8 @@ class SpaceMap:
                  building_count: int = 0, floor_count: int = 0,
                  labels: Optional[dict] = None, fatal: bool = False,
                  held: Optional[set] = None, buildings: Optional[dict] = None,
-                 floors: Optional[dict] = None, equipment: Optional[dict] = None):
+                 floors: Optional[dict] = None, equipment: Optional[dict] = None,
+                 building_ids: Optional[set] = None):
         self.spaces = spaces              # { space_id: SpaceConfig }
         self.errors = errors              # rows left out, or the whole file
         self.warnings = warnings          # worth saying, not worth stopping for
@@ -210,6 +211,8 @@ class SpaceMap:
         self.buildings: dict = buildings or {}     # { id: BuildingSchedule }
         self.floors: dict = floors or {}           # { (id, level): Destination }
         self.equipment: dict = equipment or {}     # { (id, equipment id): Destination }
+        # Every building id the map defines, broken ones included.
+        self.building_ids: set = set(building_ids or ()) | set(self.buildings)
 
     def __bool__(self) -> bool:
         return bool(self.spaces)
@@ -239,6 +242,19 @@ class SpaceMap:
 
     def systems_used(self) -> set:
         return {d.system for d in self.destinations()}
+
+    def building_destinations(self, building_ids) -> set:
+        """Every schedule that belongs to these buildings: each building's
+        own, its floors', its equipment's, and its rooms' own schedules —
+        what a sync limited to them (--building) writes."""
+        wanted = {str(b) for b in building_ids}
+        out = {b.destination for bid, b in self.buildings.items() if bid in wanted}
+        out |= {d for (bid, _level), d in self.floors.items() if bid in wanted}
+        out |= {d for (bid, _eid), d in self.equipment.items() if bid in wanted}
+        for sc in self.spaces.values():
+            if sc.building_id in wanted:
+                out.update(sc.all_destinations())
+        return out
 
 
 def load_space_map(path: str, cfg: dict) -> SpaceMap:
@@ -582,6 +598,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                 floor=floor,
                 floor_destination=fdest,
                 equipment_destinations=tuple(edests),
+                building_id=room_building if building is not None else None,
             )
         except RowError as exc:
             errors.append(str(exc))
@@ -618,6 +635,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                 merge_gap_minutes=_minutes_or_default(
                     b.get("merge_gap_minutes"), default_gap,
                     "merge_gap_minutes", where),
+                building_id=building_id,
             )
         except RowError as exc:
             errors.append(str(exc))
@@ -676,7 +694,8 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     return SpaceMap(space_map, errors, warnings,
                     building_count=len(buildings), floor_count=len(floor_dest),
                     labels=labels, held=held, buildings=building_schedules,
-                    floors=floor_schedules, equipment=equipment_schedules)
+                    floors=floor_schedules, equipment=equipment_schedules,
+                    building_ids=set(buildings))
 
 
 def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
@@ -741,6 +760,7 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
             floor_destination=_fix(sc.floor_destination),
             equipment_destinations=tuple(dict.fromkeys(
                 d for d in (_fix(e) for e in sc.equipment_destinations) if d is not None)),
+            building_id=sc.building_id,
         )
         if not fixed.all_destinations():
             errors.append(f"Room {space_id}: every schedule it would write or "

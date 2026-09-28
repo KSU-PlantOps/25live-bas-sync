@@ -66,9 +66,10 @@ of the file.
 
 Alerts only fire when the job runs. Set `monitoring.ping_url` to a
 dead-man's-switch monitor — healthchecks.io, an Uptime Kuma push monitor,
-Cronitor — and it's fetched after every successful run, so the monitor alarms
-when the pings stop: an expired service password, a disabled task, a rebuilt
-host. `ping_fail_url` is fetched after a failed run.
+Cronitor — and it's fetched after every successful run of the whole campus, so
+the monitor alarms when the pings stop: an expired service password, a disabled
+task, a rebuilt host. A run limited to one system or building doesn't ping it.
+`ping_fail_url` is fetched after any failed run.
 
 Pair it with a BAS-side heartbeat (`heartbeat_object` for BACnet,
 `heartbeat_path` for the deprecated Niagara driver) and the BAS can alarm on

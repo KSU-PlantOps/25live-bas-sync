@@ -6,11 +6,25 @@ Read the section for the version you're coming from, and each one after it.
 Run `--validate` and `--dry-run` after upgrading, as always. Every release's
 changes are in [CHANGELOG.md](../CHANGELOG.md).
 
+- [From 1.3](#from-13)
 - [From 1.3.0rc1](#from-130rc1)
 - [From 1.2](#from-12)
 - [From 1.1](#from-11)
 - [Moving off the niagara driver](#moving-off-the-niagara-driver)
 - [From a pre-1.0 release](#from-a-pre-10-release)
+
+## From 1.3
+
+Nothing to edit. Two things behave differently:
+
+1. **Syncing one system is part of *Sync now*.** It used to need *Run the
+   tools* as well; now any role that can sync may sync one system or one
+   building — a part of what it could already sync. To keep a role to some
+   systems or buildings, [limit it](web-ui.md#limiting-what-a-role-may-sync).
+2. **A sync limited to one system (or building) no longer sends the monitoring
+   success ping** (`monitoring.ping_url`); only full syncs do, so a dead-man's
+   switch notices when the scheduled sync stops. Failures still ping
+   `ping_fail_url`.
 
 ## From 1.3.0rc1
 

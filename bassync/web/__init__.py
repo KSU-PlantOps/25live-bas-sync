@@ -152,11 +152,11 @@ def create_app(service, settings: dict) -> Flask:
     # ── request guards ───────────────────────────────────────────────────────
 
     def _who() -> Optional[tuple]:
-        """(user, capabilities, role label) for this session, or None. Worked
-        out again on every request, so a changed password, SSO app, role or
-        group applies to sessions already open."""
+        """(user, capabilities, role label, what they may sync) for this
+        session, or None. Worked out again on every request, so a changed
+        password, SSO app, role or group applies to sessions already open."""
         if not auth_required:
-            return {"name": "anyone", "via": "none"}, access.EVERYTHING, "Admin"
+            return {"name": "anyone", "via": "none"}, access.EVERYTHING, "Admin", None
         if not session.get("auth"):
             return None
         conf = load_access()
@@ -164,7 +164,8 @@ def create_app(service, settings: dict) -> Flask:
         if via == "password":
             if local_usable(conf) and hmac.compare_digest(str(session.get("fp", "")),
                                                           password_fp):
-                return {"name": "local admin", "via": "password"}, access.EVERYTHING, "Admin"
+                return ({"name": "local admin", "via": "password"}, access.EVERYTHING,
+                        "Admin", None)
             return None
         if via == "sso" and sso_usable(conf) and hmac.compare_digest(
                 str(session.get("fp", "")), sso_fp(conf)):
@@ -173,13 +174,14 @@ def create_app(service, settings: dict) -> Flask:
             if caps:
                 names = access.role_names(conf)
                 return (dict(session.get("user") or {}, via="sso"), caps,
-                        " + ".join(names[r] for r in roles))
+                        " + ".join(names[r] for r in roles), access.sync_scope(roles, conf))
         return None
 
     @app.before_request
     def _guard():
         g.addr = request.remote_addr or "?"
         g.user, g.caps, g.role_label = {"name": "", "via": ""}, frozenset(), ""
+        g.sync_scope = {"systems": set(), "buildings": set()}
         if request.endpoint in _OPEN_ENDPOINTS:
             return None
         who = _who()
@@ -188,7 +190,7 @@ def create_app(service, settings: dict) -> Flask:
             if request.method == "GET" and not request.path.startswith("/api/"):
                 return redirect(url_for("login", next=request.full_path.rstrip("?")))
             abort(401)
-        g.user, g.caps, g.role_label = who
+        g.user, g.caps, g.role_label, g.sync_scope = who
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -348,6 +350,9 @@ def create_app(service, settings: dict) -> Flask:
             "brand": _brand(),
             "role_label": g.get("role_label", ""),
             "can": lambda capability: access.can(g.get("caps"), capability),
+            "may_sync": lambda system=None, building=None: (
+                access.can(g.get("caps"), "sync")
+                and access.may_sync(g.get("sync_scope"), system, building)),
             "current_job": service.jobs.current,
             "local_time": lambda value, fmt="%Y-%m-%d %H:%M": local_time(service, value, fmt),
             "relative": relative_time,

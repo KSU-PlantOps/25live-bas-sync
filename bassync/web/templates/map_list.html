@@ -54,6 +54,15 @@
             {% else %}{{ row.get(key, '') if row.get(key) is not none else '' }}{% endif %}</td>
       {% endfor %}
       <td class="row-actions">
+        {% if kind == 'buildings' and may_sync(building=row.get('id') | string) %}
+        <form method="post" action="{{ url_for('jobs') }}" class="inline"
+              data-confirm="Sync {{ row.get('name') or row.get('id') }} now? This writes its schedules to the BAS.">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="kind" value="sync">
+          <input type="hidden" name="building" value="{{ row.get('id') }}">
+          <button class="link" {{ 'disabled' if current_job }}>Sync</button>
+        </form>
+        {% endif %}
         {% if can('edit_map') %}
         <a href="{{ url_for('map_form', kind=kind, index=loop.index0) }}">Edit</a>
         <a href="{{ url_for('map_form', kind=kind, copy=loop.index0) }}">Copy</a>

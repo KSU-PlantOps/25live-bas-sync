@@ -9,7 +9,7 @@
   {% for r in runs %}
     <tr>
       <td><span class="dot {{ 'ok' if r.ok else 'bad' }}"></span></td>
-      <td><a href="{{ url_for('run', run_id=r.id) }}">{{ local_time(r.started) }}</a>{% if r.only_system %} <span class="hint">{{ r.only_system }} only</span>{% endif %}</td>
+      <td><a href="{{ url_for('run', run_id=r.id) }}">{{ local_time(r.started) }}</a>{% if r.only_system %} <span class="hint">{{ r.only_system }} only</span>{% endif %}{% if r.only_buildings %} <span class="hint">{{ r.only_buildings | join(', ') }} only</span>{% endif %}</td>
       <td>{{ 'OK' if r.ok else 'FAILED (exit ' ~ r.exit_code ~ ')' }}{% if r.outcome and not r.ok %}<br><span class="hint">{{ r.outcome }}</span>{% endif %}</td>
       <td>{{ r.counts.written }}{% if r.counts.preview %} <span class="hint">+{{ r.counts.preview }} preview</span>{% endif %}</td>
       <td>{% if r.counts.failed %}<span class="bad">{{ r.counts.failed }}</span>{% else %}0{% endif %}</td>

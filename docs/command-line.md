@@ -23,6 +23,7 @@ python main.py --discover       # list 25Live spaces and their upcoming bookings
 python main.py --dry-run        # fetch + build, print what WOULD be written
 python main.py                  # live run
 python main.py --system ebo_campus   # limit to one BAS (commissioning)
+python main.py --building science_hall   # limit to one building's schedules
 python main.py --force          # override the mass-clear safety check
 ```
 
@@ -50,6 +51,15 @@ python main.py --force          # override the mass-clear safety check
   wrong, which is a bad time to discover the relay rejects your `from` address.
 - **`--system NAME`** limits a run to one BAS system, for commissioning one
   before the rest.
+- **`--building ID`** (repeatable) limits a sync or `--dry-run` to those
+  buildings' schedules: each building's own, its floors', its equipment's and
+  its rooms' own. Everything is still fetched and built — a schedule a room
+  elsewhere also feeds still gets all its bookings — but only those schedules
+  are written, the safety check covers only them, and the rest of the
+  baseline is kept. It can't be combined with `--system`.
+- A run limited by either leaves the [monitoring](reports-and-alerts.md#catch-the-job-not-running-at-all)
+  success ping to full syncs, so manual partial syncs can't hide a schedule
+  that stopped running; a failure still pings `ping_fail_url`.
 - **`--force`** overrides the [mass-clear safety check](safety.md) — the
   right answer at semester break, when the drop is real.
 

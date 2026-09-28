@@ -40,7 +40,25 @@ semantic versioning from 1.0 onward.
   the sync doesn't include, aren't counted), and keeps them in
   `state/discovery.json`. Its printed YAML has the same shape.
 
+- **Roles limited to some systems or buildings.** On the Access page, a role
+  can be limited to syncing particular systems and buildings: its *Sync now*
+  lists only those, one at a time, and the Buildings list has a *Sync* link on
+  each. Someone in several roles may sync what any allows. Kept in `web.yaml`
+  as the role's `sync_only`, and followed when a building is renamed. The
+  scheduled sync always covers everything.
+- **Syncing one building**: `--building ID` (repeatable) limits a sync or dry
+  run to those buildings' schedules — their own, their floors', their
+  equipment's and their rooms'. Everything is still fetched and built; only
+  those are written, the safety check covers only them, and the rest of the
+  baseline is kept. From the web UI, *Sync now* offers each building.
+
 ### Changed
+- *Sync now* can sync one system or one building for any role that can sync,
+  instead of needing *Run the tools* for one system. A role can be limited
+  instead (above).
+- A run limited to one system or building no longer sends the monitoring
+  success ping, which is for the full sync; a failure still pings
+  `ping_fail_url`.
 - The status page's *Getting started* card follows the setup guide's steps,
   and goes once the guide is finished or skipped, or the site has run a live
   sync.

@@ -123,10 +123,17 @@ def load_map_for_run(cfg: dict, report: RunReport) -> tuple:
 
 def run_sync(cfg: dict, dry_run: bool = False, force: bool = False,
              only_system: Optional[str] = None,
-             report: Optional[RunReport] = None) -> int:
+             report: Optional[RunReport] = None,
+             only_buildings: Optional[list] = None) -> int:
     """
     One full sync pass. Returns a process exit code, and records what it did
     in `report` (created if not given).
+
+    `only_system` or `only_buildings` limit what is written — to one BAS, or
+    to the schedules of some buildings (their own, their floors', their
+    equipment's and their rooms'). Everything is still fetched and built, so
+    a schedule shared with rooms elsewhere still gets all of its bookings;
+    only the writes, the safety check and the saved baseline are limited.
 
     dry_run fetches and builds, logs what *would* be written per driver
     (including whether the safety check would let a live run through), and
@@ -137,6 +144,7 @@ def run_sync(cfg: dict, dry_run: bool = False, force: bool = False,
     if report is None:
         report = RunReport("DRY RUN" if dry_run else "SYNC", __version__, tz)
     report.only_system = only_system or ""
+    report.only_buildings = list(only_buildings or [])
 
     space_map, stop, map_problem = load_map_for_run(cfg, report)
     if stop is not None:
@@ -151,7 +159,7 @@ def run_sync(cfg: dict, dry_run: bool = False, force: bool = False,
 
     if dry_run:
         return _sync_locked(cfg, tz, space_map, report, dry_run, force,
-                            only_system, map_problem)
+                            only_system, map_problem, only_buildings)
 
     lock = RunLock(_lock_path(cfg))
     try:
@@ -167,14 +175,20 @@ def run_sync(cfg: dict, dry_run: bool = False, force: bool = False,
         return _done(report, EXIT_LOCKED, "another sync was already running")
     try:
         return _sync_locked(cfg, tz, space_map, report, dry_run, force,
-                            only_system, map_problem)
+                            only_system, map_problem, only_buildings)
     finally:
         lock.release()
 
 
 def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport,
                  dry_run: bool, force: bool, only_system: Optional[str],
-                 map_problem: bool) -> int:
+                 map_problem: bool, only_buildings: Optional[list] = None) -> int:
+    if only_buildings:
+        unknown = [b for b in only_buildings if b not in space_map.building_ids]
+        if unknown:
+            logging.error("No building %s in the room map.",
+                          ", ".join(f"'{b}'" for b in unknown))
+            return _done(report, EXIT_NO_MAP, f"no building {', '.join(unknown)}")
     try:
         events = _fetch(cfg, tz, space_map)
     except CollegeNetError as exc:
@@ -204,21 +218,23 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     # bookings this week, which must be actively cleared rather than left
     # holding last week's occupancy.
     all_destinations = space_map.destinations()
-    if only_system:
-        all_destinations = {d for d in all_destinations if d.system == only_system}
-        schedule = {d: w for d, w in schedule.items() if d.system == only_system}
-        logging.info("Limited to system '%s': %d schedule(s)",
-                     only_system, len(all_destinations))
+    in_scope = _scope(space_map, only_system, only_buildings)
+    if in_scope is not None:
+        what = (f"system '{only_system}'" if only_system else
+                "building" + ("s " if len(only_buildings or []) > 1 else " ")
+                + ", ".join(f"'{b}'" for b in only_buildings or []))
+        all_destinations = {d for d in all_destinations if in_scope(d)}
+        schedule = {d: w for d, w in schedule.items() if in_scope(d)}
+        logging.info("Limited to %s: %d schedule(s)", what, len(all_destinations))
         if not all_destinations:
-            logging.error("No schedules belong to system '%s'.", only_system)
-            return _done(report, EXIT_NO_MAP, f"no schedules on system {only_system}")
+            logging.error("No schedules belong to %s.", what)
+            return _done(report, EXIT_NO_MAP, f"no schedules for {what}")
 
     # Roll-ups a broken room row feeds keep their current schedule: writing
     # them now would drop that room's bookings from its corridor and building.
     # Reported even when no healthy room still feeds one, so the email says
     # which buildings were left alone.
-    held = {d for d in space_map.held | extra.held
-            if not only_system or d.system == only_system}
+    held = {d for d in space_map.held | extra.held if in_scope is None or in_scope(d)}
     if held:
         logging.warning(
             "Not writing %d schedule(s) this run because a broken room-map row "
@@ -275,7 +291,7 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
         saved = safety.save_state(cfg["safety"]["state_file"],
                                   {d: w for d, w in schedule.items() if d in written},
                                   len(events), only_system=only_system,
-                                  merge=code != EXIT_OK or map_problem)
+                                  merge=code != EXIT_OK or map_problem or bool(only_buildings))
         if not saved:
             report.baseline += " — could NOT be saved for the next run"
 
@@ -292,6 +308,21 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
         return _done(report, EXIT_NO_MAP, f"{' and '.join(broken)} left out; "
                                           f"{c['written']} schedule(s) written")
     return _done(report, EXIT_OK, f"{c['written']} schedule(s) written")
+
+
+def _scope(space_map: SpaceMap, only_system: Optional[str],
+           only_buildings: Optional[list]):
+    """Which schedules a limited run writes, as a test on a destination; None
+    for all of them."""
+    tests = []
+    if only_system:
+        tests.append(lambda d: d.system == only_system)
+    if only_buildings:
+        wanted = space_map.building_destinations(only_buildings)
+        tests.append(lambda d: d in wanted)
+    if not tests:
+        return None
+    return lambda d: all(test(d) for test in tests)
 
 
 def _group_by_system(schedule: dict) -> dict:

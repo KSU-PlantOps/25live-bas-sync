@@ -110,6 +110,9 @@ class SpaceConfig:
     # Equipment that serves this room besides its own schedule: an AHU it
     # shares with other rooms, or a second VAV. Each one's schedule is the
     # union of every room it serves, like a floor's.
+    building_id: Optional[str] = None
+    # The room-map building it's in (for a bookable building, itself) — what
+    # a sync limited to some buildings (--building) goes by.
 
     # `destination` is optional because how finely a building can be scheduled
     # depends on how it was built out. A room-level VAV retrofit gets its own

@@ -127,7 +127,11 @@ def test_basic_sees_the_basics_and_can_sync_everything(sso_site, monkeypatch):
     assert post(c, "/jobs", {"kind": "sync"}).status_code == 302
     assert sso_site.jobs.started[-1][:2] == ("sync", [])
     assert post(c, "/jobs", {"kind": "dry-run"}).status_code == 403
-    assert post(c, "/jobs", {"kind": "sync", "system": "campus"}).status_code == 403
+    # Syncing everything includes syncing part of it: one system, or one building.
+    assert post(c, "/jobs", {"kind": "sync", "system": "campus"}).status_code == 302
+    assert sso_site.jobs.started[-1][:2] == ("sync", ["--system", "campus"])
+    assert post(c, "/jobs", {"kind": "sync", "only": "building:SCI"}).status_code == 302
+    assert sso_site.jobs.started[-1][:2] == ("sync", ["--building", "SCI"])
     assert post(c, "/jobs", {"kind": "sync", "force": "1"}).status_code == 403
 
 

@@ -27,7 +27,7 @@ is saved. It follows the browser's light or dark setting.
 
 | Page | What it does |
 |---|---|
-| **Status** | Last sync and its result, the next scheduled run, room-map problems, missing passwords, and buttons for *Sync now* (optionally one system, optionally *Force*), *Dry run*, *Validate*, *Test alert* and *Discover spaces*. |
+| **Status** | Last sync and its result, the next scheduled run, room-map problems, missing passwords, and buttons for *Sync now* (everything, or one system or building; optionally *Force*), *Dry run*, *Validate*, *Test alert* and *Discover spaces*. |
 | **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
 | **Bookings** | [Extra bookings](configuration.md#extra-bookings): occupancy that isn't in 25Live — one day or every week, on a room, a floor or a whole building; add, edit, copy and delete, and clear out the ones that have ended. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
@@ -142,8 +142,8 @@ Out of the box there are three roles, each including the one before:
 
 | Role | Can |
 |---|---|
-| **Basic** | See the status page and sync history; *Sync now* (every system). |
-| **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), sync one system, stop a job; add and edit rooms, buildings, floors and extra bookings. |
+| **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
+| **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), stop a job; add and edit rooms, buildings, floors and extra bookings. |
 | **Admin** | Everything: connection, systems and passwords, alerts, defaults, schedule, safety, the files, access and appearance, the activity log, restarting the service — and *Force*, which overrides the mass-clear safety check. |
 
 They can be changed, and more added — see [Changing the roles](#changing-the-roles).
@@ -186,8 +186,8 @@ Advanced and Admin back as they came.
 |---|---|
 | See the basics | See the status page and the sync history. |
 | See everything | See every other page — jobs, the room map, extra bookings, settings and logs — read-only. |
-| Sync now | Sync every system. |
-| Run the tools | Dry run, Validate, Discover and Test alert; sync one system. |
+| Sync now | Sync everything, or one system or one building — unless the role is [limited](#limiting-what-a-role-may-sync). |
+| Run the tools | Dry run, Validate, Discover and Test alert. |
 | Stop a job | Stop a running sync or tool. |
 | Force | Sync past the mass-clear safety check. |
 | Edit the room map | Add and edit rooms, buildings and floors. |
@@ -207,6 +207,38 @@ they keep picking up new capabilities too.
 So nobody is locked out: the local password can always do everything, and
 with it turned off, a change that would leave no group able to manage access
 is refused.
+
+### Limiting what a role may sync
+
+Under the table, **What each role may sync** limits a role's *Sync now* to
+some systems and buildings — for someone who looks after one building, or a
+contractor commissioning one BAS. Tick systems and pick buildings for the role,
+and *Save roles*. A role with nothing picked syncs everything.
+
+- A limited role syncs one of its systems or buildings at a time: *Sync now*
+  lists just those, and the Buildings list has a *Sync* link on each of its
+  buildings. Everything at once is refused.
+- A building's sync writes its own schedule, its floors', its equipment's and
+  its rooms' ([`--building`](command-line.md)). The rest of the campus is left
+  as it is, and the safety check covers only what's written.
+- Someone in several roles may sync what any of them allows, and one role
+  without limits means everything.
+- The scheduled sync always covers everything, and Dry run and Validate, which
+  write nothing, aren't limited.
+- Renaming a building on the room map keeps it in the roles that may sync it.
+  A system or building that's gone is shown, so it can be taken off.
+
+In `web.yaml` it's the role's `sync_only`:
+
+```yaml
+roles:
+  - id: sci_ops
+    name: Science ops
+    capabilities: [view_basic, sync]
+    sync_only:
+      buildings: [science_hall]
+      systems: [west_campus]      # optional; either or both
+```
 
 ## Setting up Microsoft Entra sign-in
 
