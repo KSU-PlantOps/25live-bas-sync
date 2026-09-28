@@ -4,64 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.3.0] — 2026-09-28 — A web UI, and Docker as the way to run it
 
-### Added
-- **Extra bookings**: occupancy the sync schedules that isn't in 25Live — an
-  open house, an evening shift, a building 25Live doesn't have. One day, or
-  every week on chosen days between optional dates, on a room, a floor or a
-  whole building, with or without the run-up and run-down. They're added on
-  the web UI's new **Bookings** page (or in `extra_bookings.yaml`), written
-  like 25Live bookings, never counted as 25Live bookings by the safety check,
-  counted in the run report and checked by `--validate`. A broken one is
-  left out and holds the schedules it would drive, like a broken room-map row.
-- **Roles you can change**: the Access page shows the roles as a table of
-  capabilities — see the basics, see everything, sync, run the tools, stop a
-  job, force, edit the room map, edit extra bookings, edit settings, set
-  passwords, see the activity log, restart, manage access. Change what each
-  role may do, rename, add and delete roles, or restore the built-in three,
-  which stay the defaults. Someone in several groups gets every capability of
-  every role they're in.
-- **Settings → Safety**: the mass-clear check (on or off, the share of
-  schedules one run may clear, the fewest 25Live bookings), what a broken row
-  does, and retries, with the current baseline.
-- **Settings → Service**: restart the service from the web UI — in place, in
-  a few seconds, nobody signed out, and not while a job runs or a scheduled
-  sync is due; the version and whether a newer release is out (checked on
-  GitHub twice a day, and can be turned off), with a note for Admins on the
-  status page; what's running, where the web UI listens, and when the HTTPS
-  certificate expires.
-- `contrib/systemd/`: a host-side timer that keeps the container on the
-  newest patch release (docs/docker.md, "Updating automatically"). The
-  container can't safely update itself.
-
-### Changed
-- **Every building and floor in the room map is managed**, whether or not any
-  room rolls up into it: with no bookings its schedule is cleared, like any
-  other, and `--validate` checks its target. Before, a building with no rooms
-  was never written.
-- Every web UI page and action checks a specific capability instead of the
-  role, and a refusal says which capability was missing. The local password
-  still has every capability.
-- **Documentation**: the README is now a short landing page with screenshots,
-  and the full documentation lives in `docs/` — running with Docker, the web
-  UI, configuration, BAS setup by vendor, networking, 25Live, reports and
-  alerts, the safety rails, the command line, and upgrading. The README's
-  content is all there, checked against the code, with an environment-variable
-  reference added. Release notes link to the docs of their own version.
-- A security policy (`SECURITY.md`), and issue and pull request templates.
-
-### Fixed
-- Web UI: a contact email address or phone number no longer breaks across two
-  lines on the sign-in page and in the footer.
-- The status page said missing passwords go in `.env` only; they can be set
-  on the Connection and Alerts pages too.
-
-## [1.3.0rc1] — 2026-09-27 — Web UI, and Docker as the way to run it
-
-A release candidate: the container now runs a long-lived service with a web
-UI, and Docker becomes the recommended way to run the sync. The sync itself is
-unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
+The container now runs a long-lived service with a web UI: status and
+history, *Sync now*, and editing of the room map and every setting in the
+browser, with Microsoft Entra ID sign-in and roles you can change. Docker
+becomes the recommended way to run the sync. The sync engine is unchanged
+apart from two additions: extra bookings, and every building and floor in
+the room map being managed. Read *From 1.2* in `docs/upgrading.md` before
+switching (and *From 1.3.0rc1* if you ran the release candidate).
 
 ### Added
 - **Web UI**, served by the container: status (last sync, next run, room-map
@@ -72,22 +23,36 @@ unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
   connections and BAS systems, defaults and the schedule, with the same checks
   as the desktop editor and the sync; the settings files as text; the logs.
   Discovered 25Live spaces can be added as rooms in one click.
-- Web UI security: a local password (`BAS_WEB_PASSWORD`) with lockout after
-  five wrong tries, signed sessions that end when the password changes, CSRF
-  tokens, a strict Content-Security-Policy, optional HTTPS
-  (`BAS_WEB_TLS_CERT`/`_KEY`) or a trusted reverse proxy, and every change
-  logged with the address that made it. Edits made at the same time by two
-  people are caught rather than one silently undoing the other.
-- **Sign-in with Microsoft Entra ID and three roles** — Basic (status, history,
-  Sync now), Advanced (everything visible, the tools, editing rooms, buildings
-  and floors) and Admin (full control, and Force). Entra groups, by object ID
-  or name, are mapped to roles on the new Access page; the highest role wins,
-  changes apply to open sessions, and a refused sign-in shows the groups its
-  token carried. The local password stays as an Admin way in, and can be
-  turned off once SSO works. Every page and action checks the role, and the
-  audit log names the person.
+- **Sign-in with Microsoft Entra ID, and roles.** Entra groups, by object ID
+  or name, get roles on the Access page. Basic (status, history, *Sync now*),
+  Advanced (everything visible, the tools, editing the room map and extra
+  bookings) and Admin (everything) come built in, and roles can be changed,
+  added and deleted as a table of capabilities — see the basics, see
+  everything, sync, run the tools, stop a job, force, edit the room map, edit
+  extra bookings, edit settings, set passwords, see the activity log, restart,
+  manage access. Someone in several groups gets every capability of every
+  role they're in; changes apply to open sessions; a refused sign-in shows the
+  groups its token carried. The local password can always do everything, and
+  can be turned off once SSO works, but never so as to lock everyone out.
+- **Extra bookings**: occupancy the sync schedules that isn't in 25Live — an
+  open house, an evening shift, a building 25Live doesn't have. One day, or
+  every week on chosen days between optional dates, on a room, a floor or a
+  whole building, with or without the run-up and run-down. They're added on
+  the **Bookings** page (or in `extra_bookings.yaml`), written like 25Live
+  bookings, never counted as 25Live bookings by the safety check, counted in
+  the run report and checked by `--validate`. A broken one is left out and
+  holds the schedules it would drive, like a broken room-map row.
 - **Alerts page**: email (SMTP server, security, account, recipients, report
   style, CSV), webhooks and dead-man's-switch pings, with *Send a test*.
+- **Safety page**: the mass-clear check (on or off, the share of schedules one
+  run may clear, the fewest 25Live bookings), what a broken row does, and
+  retries, with the current baseline.
+- **Service page**: restart the service from the web UI — in place, in a few
+  seconds, nobody signed out, and not while a job runs or a scheduled sync is
+  due; the version, and whether a newer release is out (checked on GitHub
+  twice a day, and can be turned off), with a note for Admins on the status
+  page; what's running, where the web UI listens, and when the HTTPS
+  certificate expires.
 - **Passwords from the web UI**: the 25Live, BAS-system, SMTP and SSO secrets
   can be set on the web UI and are kept in `state/secrets.json`, readable only
   by the service. The environment still wins, and every way of running the
@@ -95,9 +60,14 @@ unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
 - **Appearance**: a site name, logo (PNG, JPEG or WebP; SVG refused), accent
   colour with automatic text contrast, and a notice and contact details on the
   sign-in page and in the footer. An **Activity** log lists who did what.
-  The menu is grouped (Room map, Settings) so it fits on one line.
 - **Campus on buildings**: an optional label, shown and filterable on every
   room-map list and counted on the status page; the sync ignores it.
+- Web UI security: every page and action checks a capability; five wrong
+  local passwords lock the address out; signed sessions that end when the
+  password or SSO app changes; CSRF tokens; a strict Content-Security-Policy;
+  optional HTTPS (`BAS_WEB_TLS_CERT`/`_KEY`) or a trusted reverse proxy; every
+  change logged with who made it. Edits made at the same time by two people
+  are caught rather than one silently undoing the other.
 - **The service** (`bas-sync-service`, the image's `serve`): runs the sync on
   its schedule and serves the web UI. Every sync and tool is the ordinary
   command in a process of its own, one at a time.
@@ -108,9 +78,16 @@ unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
   lets a running sync finish, `PUID`/`PGID`, and a hardened compose file
   (read-only root filesystem, capabilities dropped, `no-new-privileges`, log
   rotation).
-- README: *Running in a datacenter or the cloud* — which devices the sync
-  talks to, and why it needs a foreign-device registration rather than being
-  a BBMD.
+- `contrib/systemd/`: a host-side timer that keeps the container on the
+  newest patch release of its minor version. The container can't safely
+  update itself.
+- **Documentation** in `docs/`, one page per topic — running with Docker, the
+  web UI, configuration, BAS setup by vendor, networking (including running in
+  a datacenter or the cloud, and why the sync registers as a foreign device
+  rather than being a BBMD), 25Live, reports and alerts, the safety rails, the
+  command line, and upgrading — with the README as a short landing page.
+  Release notes link to the docs of their own version. A security policy
+  (`SECURITY.md`), and issue and pull request templates.
 
 ### Changed
 - **`docker-compose.yml` runs `serve`**, mounts `./config` read-write, and no
@@ -118,6 +95,10 @@ unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
   (or `PUID`/`PGID`), dropping root before anything else runs.
 - Image: one-shot runs are `sync [args]`; 1.x-style flags, and no arguments at
   all, still behave as they did.
+- **Every building and floor in the room map is managed**, whether or not any
+  room rolls up into it: with no bookings its schedule is cleared, like any
+  other, and `--validate` checks its target. Before, a building with no rooms
+  was never written.
 - The desktop editor and the web UI share one module for reading, checking and
   writing the settings files (`bassync/mapedit.py`).
 
@@ -125,6 +106,22 @@ unchanged. Read *From 1.2* in `docs/upgrading.md` before switching.
 - Saving a file from the desktop editor left it readable only by its owner
   (mode 0600), so a sync running as another user could no longer read it.
   Saves now keep the file's permissions.
+
+### Since 1.3.0rc1
+- Added: extra bookings and the Bookings page; roles you can change; the
+  Safety and Service pages (restart, update check); the systemd update timer;
+  the documentation in `docs/`.
+- Changed: every building and floor is managed; each page checks a
+  capability rather than a role; someone in several groups gets every
+  capability of every role they're in.
+- Fixed: the job runner could show a job finished before recording it and
+  pruning old ones, so a job started straight after could have its files
+  pruned; a contact email address broke across two lines on the sign-in page;
+  the status page said missing passwords could only go in `.env`.
+
+## [1.3.0rc1] — 2026-09-27 — Web UI, and Docker as the way to run it
+
+The release candidate of 1.3.0; everything in it is listed under 1.3.0.
 
 ## [1.2.0] — 2026-09-27 — Hardening, email run reports, Niagara over BACnet
 
