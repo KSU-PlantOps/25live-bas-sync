@@ -121,6 +121,34 @@
   }
   document.querySelectorAll("pre[data-scroll-end]").forEach(function (p) { p.scrollTop = p.scrollHeight; });
 
+  // The setup guide: tick or untick every room the filter leaves showing.
+  document.querySelectorAll("button[data-check-all], button[data-check-none]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var on = btn.hasAttribute("data-check-all");
+      var table = document.getElementById(btn.getAttribute(on ? "data-check-all" : "data-check-none"));
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach(function (tr) {
+        if (tr.hidden) return;
+        tr.querySelectorAll("input[type=checkbox]").forEach(function (box) { box.checked = on; });
+      });
+    });
+  });
+  // On a phone the steps are one row that scrolls: start it at this step.
+  var here = document.querySelector(".stepper [aria-current]");
+  if (here) {
+    var row = here.closest("ol");
+    if (row && row.scrollWidth > row.clientWidth) row.scrollLeft = here.offsetLeft - row.offsetLeft - 16;
+  }
+  // ...and suggest this browser's timezone when none is chosen yet.
+  document.querySelectorAll("select[data-browser-zone]").forEach(function (sel) {
+    if (sel.value) return;
+    var zone = "";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return; }
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === zone) { sel.value = zone; return; }
+    }
+  });
+
   // The status page refreshes itself when a job starts or finishes.
   var status = document.querySelector("[data-status-url]");
   if (status) {

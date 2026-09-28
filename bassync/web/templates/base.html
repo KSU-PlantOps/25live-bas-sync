@@ -19,7 +19,7 @@
   ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
   ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults', 'safety_page',
                                                     'files_list', 'file_edit', 'access_page', 'appearance',
-                                                    'service_page']),
+                                                    'service_page', 'setup_step']),
   ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
 {% set args = request.view_args or {} %}
 <header class="top">
@@ -50,8 +50,9 @@
   {% set nav_sub = [('Rooms', url_for('map_list', kind='rooms'), 'view_all', args.get('kind') == 'rooms'),
                    ('Buildings', url_for('map_list', kind='buildings'), 'view_all', args.get('kind') == 'buildings'),
                    ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors')] %}
-{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page'] %}
-  {% set nav_sub = [('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page', 'setup_step'] %}
+  {% set nav_sub = [('Setup guide', url_for('setup_step'), 'edit_settings', request.endpoint == 'setup_step'),
+                   ('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
                    ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
                    ('Schedule', url_for('schedule'), 'view_all', request.endpoint == 'schedule'),
                    ('Defaults', url_for('defaults'), 'view_all', request.endpoint == 'defaults'),

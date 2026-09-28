@@ -23,7 +23,13 @@ The sync only ever **reads** from 25Live, through Series25 WebServices.
   either takes the single full response or — if it would silently truncate —
   fails the fetch with a message, instead of re-requesting the same page.
 - Find a space's numeric `space_id` from its detail-page URL in 25Live, with
-  *Discover spaces* on the web UI, or with `--discover`.
+  *Discover spaces* on the web UI, or with `--discover`. The web UI's
+  [setup guide](web-ui.md#the-setup-guide) lists every space booked in a window
+  of up to 180 days, with its capacity and number of bookings, and adds the ones
+  you tick. Discovery asks the same `events.xml` the sync does, so a space
+  appears only if it has a booking in the window. Where your instance includes
+  a space's building in that response, it's used; otherwise the building is
+  guessed from the space's name, for you to check.
 
 A 25Live that returns nothing at all — an expired account, a changed `state`
 parameter — looks exactly like an empty campus. The

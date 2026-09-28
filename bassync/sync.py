@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
-from . import __version__, extras, safety
+from . import __version__, discovery, extras, safety
 from .collegenet import CollegeNetClient, CollegeNetError
 from .config import ConfigError
 from .drivers import build_driver
@@ -627,7 +627,8 @@ def _bookings_check(cfg: dict, client: CollegeNetClient, space_map) -> tuple:
 
 def run_discover(cfg: dict, days: int) -> int:
     """List 25Live spaces with events in the next `days` days, as a starter for
-    space_mapping.yaml. Read-only."""
+    space_mapping.yaml, and keep them in state/discovery.json for the web UI.
+    Read-only as far as 25Live and the BAS are concerned."""
     tz = ZoneInfo(cfg["timezone"])
     if not cfg["collegenet"].get("base_url"):
         logging.error("25Live base_url is not set — configure "
@@ -656,4 +657,9 @@ def run_discover(cfg: dict, days: int) -> int:
           "target for each ---")
     print(yaml.safe_dump({"spaces": rows}, sort_keys=False, allow_unicode=True,
                          default_flow_style=False), end="")
+    # Kept for the web UI's setup guide, which offers them for import.
+    try:
+        discovery.save(Path(cfg["safety"]["state_file"]).parent, days, spaces)
+    except OSError as exc:
+        logging.warning("Couldn't keep the discovered spaces for the web UI: %s", exc)
     return EXIT_OK

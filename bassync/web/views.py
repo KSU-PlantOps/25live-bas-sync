@@ -310,18 +310,31 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     @app.route("/")
     @requires("view_basic")
     def dashboard():
+        from . import setup
+        if setup.wants_setup():
+            return redirect(url_for("setup_step"))
         service = svc()
         raw, _err = load_config_raw()
         runs = history.list_runs(files().runs_dir, limit=6)
         updates = None
         if access.can(g.caps, "restart"):
             updates = service.updates.status(load_access()["updates"]["check"])
+        # The setup guide's steps, until it's finished or skipped — or the
+        # site has synced live, or its steps were all done some other way and
+        # the schedule is on (a site set up before the guide existed).
+        setup_steps = None
+        if access.can(g.caps, "edit_settings") and not runs and not setup.settled():
+            buildings, _f, rooms, _v, _e = load_map()
+            setup_steps = setup.progress(raw, buildings, rooms)
+            if service.schedule.enabled and all(s["done"] for s in setup_steps[:-1]):
+                setup_steps = None
         return render_template(
             "dashboard.html", health=health(), runs=runs, updates=updates,
             last_run=runs[0] if runs else None,
             jobs=service.jobs.recent(6), service=service,
             secrets=secret_status(raw),
             systems=sorted(mapedit.config_systems(raw)),
+            setup_steps=setup_steps,
             paths=files())
 
     @app.route("/api/status")

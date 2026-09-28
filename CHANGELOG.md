@@ -4,6 +4,32 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Added
+- **A setup guide in the web UI.** A new install opens on it: 25Live (saved
+  and tested), the campus timezone and defaults, a BACnet system with this
+  host's address filled in, the rooms, each building's schedule, then
+  *Validate*, a *Dry run* and the schedule. It's a guided view over the usual
+  settings files, so it can be left and picked up again, and it's under
+  Settings. Nothing reaches the BAS before the end: the guide creates
+  `config.yaml` with the schedule off, and imported buildings wait on a
+  `preview` system called `staging` until they have a schedule.
+- **Rooms found in 25Live, imported with their buildings.** The guide lists
+  every space booked in the next 30–180 days, with its capacity and number of
+  bookings, and a building taken from 25Live where the instance gives one, or
+  guessed from the name ("Science Hall 204 (Chem lab)" → Science Hall).
+  Ticked rooms are added in one go, creating their buildings.
+- `--discover` collects each space's formal name, capacity, building and
+  number of bookings (cancelled occurrences, and states the sync doesn't
+  include, aren't counted), and keeps them in `state/discovery.json`. Its
+  printed YAML is unchanged.
+
+### Changed
+- The status page's *Getting started* card follows the setup guide's steps,
+  and goes once the guide is finished or skipped, or the site has run a live
+  sync.
+
 ## [1.3.0] — 2026-09-28 — A web UI, and Docker as the way to run it
 
 The container now runs a long-lived service with a web UI: status and

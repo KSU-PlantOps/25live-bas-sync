@@ -31,25 +31,6 @@ def test_state_param_styles():
     assert client("none")._state_params() == {}
 
 
-def test_discover_collects_spaces_from_xml():
-    import xml.etree.ElementTree as ET
-
-    from bassync.collegenet import CollegeNetClient
-    client = CollegeNetClient({"base_url": "http://x"}, TZ)
-    xml = """<r25:results xmlns:r25="http://www.collegenet.com/r25">
-      <r25:event><r25:reservations><r25:reservation><r25:space_reservation>
-        <r25:space_id>101</r25:space_id><r25:space_name>Room A</r25:space_name>
-      </r25:space_reservation></r25:reservation></r25:reservations></r25:event>
-      <r25:event><r25:reservations><r25:reservation><r25:space_reservation>
-        <r25:space_id>102</r25:space_id><r25:formal_name>Room B Formal</r25:formal_name>
-      </r25:space_reservation></r25:reservation></r25:reservations></r25:event>
-    </r25:results>"""
-    seen: dict = {}
-    client._collect_spaces_from(ET.fromstring(xml), seen)
-    assert seen == {"101": "Room A", "102": "Room B Formal"}, seen
-    client.close()
-
-
 def test_parse_event_applies_buffers_and_dedupes_spaces():
     """Buffers widen the window, and a space id repeated in the XML yields ONE
     RawEvent rather than a duplicate per nesting level."""
@@ -299,3 +280,62 @@ def test_probe_reports_which_state_style_returns_events():
     counts = c.probe_state_styles(_spaces(1))
     assert counts["comma"] == 1 and counts["plus"] == 0 and counts["space"] == 0
     assert c.state_param_style == "plus"               # restored afterwards
+
+
+# ── discovery ────────────────────────────────────────────────────────────────
+
+def _discover_doc():
+    """Three spaces, as different instances describe them: a nested <space>
+    with details, a formal name only, and a building in a nested element."""
+    return _doc([
+        "<r25:event><r25:event_id>1</r25:event_id><r25:state>2</r25:state>"
+        "<r25:reservations><r25:reservation><r25:space_reservation>"
+        "<r25:space_id>101</r25:space_id><r25:space><r25:space_id>101</r25:space_id>"
+        "<r25:space_name>SCI 101</r25:space_name>"
+        "<r25:formal_name>Science Hall 101</r25:formal_name>"
+        "<r25:max_capacity>40</r25:max_capacity>"
+        "<r25:building_name>Science Hall</r25:building_name></r25:space>"
+        "</r25:space_reservation></r25:reservation>"
+        "<r25:reservation><r25:reservation_state>99</r25:reservation_state>"
+        "<r25:space_reservation><r25:space_id>101</r25:space_id>"
+        "</r25:space_reservation></r25:reservation>"
+        "<r25:reservation><r25:space_reservation><r25:space_id>101</r25:space_id>"
+        "</r25:space_reservation></r25:reservation></r25:reservations></r25:event>",
+        "<r25:event><r25:event_id>2</r25:event_id><r25:state>2</r25:state>"
+        "<r25:reservations><r25:reservation><r25:space_reservation>"
+        "<r25:space_id>102</r25:space_id><r25:formal_name>Room B Formal</r25:formal_name>"
+        "<r25:building><r25:building_name>Art Center</r25:building_name></r25:building>"
+        "</r25:space_reservation></r25:reservation></r25:reservations></r25:event>",
+        # Tentative, and the sync includes confirmed only: listed, not counted.
+        "<r25:event><r25:event_id>3</r25:event_id><r25:state>1</r25:state>"
+        "<r25:reservations><r25:reservation><r25:space_reservation>"
+        "<r25:space_id>103</r25:space_id>"
+        "</r25:space_reservation></r25:reservation></r25:reservations></r25:event>",
+    ])
+
+
+def test_discover_describes_each_space_and_counts_its_bookings():
+    c = _client(lambda p: _discover_doc())
+    found = {s["space_id"]: s for s in c.discover_spaces(30)}
+    assert found["101"] == {"space_id": "101", "space_name": "SCI 101",
+                            "formal_name": "Science Hall 101", "capacity": 40,
+                            "building": "Science Hall", "bookings": 2}
+    assert found["102"]["space_name"] == "Room B Formal"
+    assert found["102"]["building"] == "Art Center"
+    assert found["102"]["capacity"] is None and found["102"]["bookings"] == 1
+    assert found["103"]["space_name"] == "103" and found["103"]["bookings"] == 0
+    # Sorted by name, and asked of every space (no space_id filter).
+    assert [s["space_id"] for s in c.discover_spaces(30)] == ["103", "102", "101"]
+    assert "space_id" not in c.session.calls[0]
+
+
+def test_discover_merges_what_each_page_says_about_a_space():
+    """A name that only appears on a later page still reaches the space."""
+    pages = {0: _doc([_event_xml(i, space_id="7") for i in range(100)]),
+             100: _doc(["<r25:event><r25:event_id>x</r25:event_id><r25:reservations>"
+                        "<r25:reservation><r25:space_reservation><r25:space_id>7</r25:space_id>"
+                        "<r25:space_name>Late Name</r25:space_name></r25:space_reservation>"
+                        "</r25:reservation></r25:reservations></r25:event>"])}
+    c = _client(lambda p: pages[int(p["page_offset"])])
+    [only] = c.discover_spaces(30)
+    assert only["space_name"] == "Late Name" and only["bookings"] == 101

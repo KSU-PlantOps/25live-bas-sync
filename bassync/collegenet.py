@@ -229,29 +229,84 @@ class CollegeNetClient:
 
     def discover_spaces(self, days: int) -> list:
         """
-        Distinct {space_id, space_name} seen in events over the next `days`.
+        Every space booked in the next `days` days, with what 25Live says
+        about it: {space_id, space_name, formal_name, capacity, building,
+        bookings}, sorted by name.
 
         Uses the same events endpoint as the sync — no extra API surface to
         validate — so it finds spaces that have bookings in the window. Spaces
         with no upcoming events won't appear; widen `days` to surface more.
+        `bookings` counts the occurrences not cancelled; `capacity` and
+        `building` are None and "" when this instance doesn't include them.
         """
         now = datetime.now(self.tz)
         seen: dict = {}
         for root in self._pages({}, now, now + timedelta(days=days),
                                 "discovering spaces"):
             self._collect_spaces_from(root, seen)
-        return [{"space_id": sid, "space_name": name}
-                for sid, name in sorted(seen.items(), key=lambda kv: kv[1].lower())]
+        for row in seen.values():
+            row["space_name"] = row["space_name"] or row["formal_name"] or row["space_id"]
+        return sorted(seen.values(), key=lambda s: (s["space_name"].lower(), s["space_id"]))
+
+    # Where a space's building may be, by instance: a child of the space, or
+    # a nested <building> with its own name.
+    _BUILDING_TAGS = ("building_name", "bldg_name")
+
+    def _space_details(self, elem: ET.Element) -> dict:
+        """What an element with a space_id child says about that space."""
+        building = ""
+        for tag in self._BUILDING_TAGS:
+            building = self._child_text(elem, tag) or ""
+            if building:
+                break
+        if not building:
+            for child in elem:
+                if self._local(child.tag) == "building":
+                    building = (self._child_text(child, "building_name")
+                                or self._child_text(child, "name")
+                                or (child.text or "").strip())
+                    break
+        capacity = None
+        for tag in ("max_capacity", "capacity"):
+            text = self._child_text(elem, tag)
+            if text and text.isdigit():
+                capacity = int(text)
+                break
+        return {"space_name": self._child_text(elem, "space_name") or "",
+                "formal_name": self._child_text(elem, "formal_name") or "",
+                "capacity": capacity, "building": building}
 
     def _collect_spaces_from(self, root: ET.Element, into: dict) -> None:
-        """Collect {space_id: space_name} from any element having a space_id
-        child, preferring space_name then formal_name."""
+        """
+        Add each space in one page of events to `into` ({space_id: details}).
+
+        A space's details are merged from every element that names it — some
+        versions give only the id under the reservation and the name in a
+        nested space element — and each occurrence that isn't cancelled
+        counts as a booking. Events in states the sync doesn't include still
+        list their spaces, with no bookings counted.
+        """
         for elem in root.iter():
             sid = self._child_text(elem, "space_id")
-            if sid:
-                name = (self._child_text(elem, "space_name")
-                        or self._child_text(elem, "formal_name") or sid)
-                into.setdefault(sid, name)
+            if not sid:
+                continue
+            row = into.setdefault(sid, {"space_id": sid, "space_name": "",
+                                        "formal_name": "", "capacity": None,
+                                        "building": "", "bookings": 0})
+            for key, value in self._space_details(elem).items():
+                if value not in (None, "") and row[key] in (None, ""):
+                    row[key] = value
+        for ev in root.findall("r25:event", R25_NS):
+            state = ev.findtext("r25:state", namespaces=R25_NS)
+            if state and self.include_states and state.strip().isdigit() \
+                    and int(state) not in self.include_states:
+                continue
+            for res in ev.iterfind("r25:reservations/r25:reservation", R25_NS):
+                if self._reservation_cancelled(res):
+                    continue
+                for sid in self._find_space_ids(res):
+                    if sid in into:
+                        into[sid]["bookings"] += 1
 
     # ── paging ───────────────────────────────────────────────────────────────
 

@@ -37,7 +37,10 @@ python main.py --force          # override the mass-clear safety check
   encoding — for BACnet, the per-date special events that would go on the
   wire — and says whether the safety check would let a live run through.
 - **`--discover`** (optionally `--discover-days N`, default 30) prints spaces
-  with bookings as ready-to-paste YAML for `space_mapping.yaml`.
+  with bookings as ready-to-paste YAML for `space_mapping.yaml`. It also keeps
+  what it found — each space's name, capacity, building where 25Live gives one,
+  and number of bookings — in `state/discovery.json`, which the web UI's
+  [setup guide](web-ui.md#the-setup-guide) offers for import.
 - **`--test-alert`** sends a test through every configured channel — email
   gets a sample run report — and reports each one. Worth running the day you
   set alerting up: alerting only matters when something has already gone

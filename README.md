@@ -45,6 +45,9 @@ finely as that building actually supports.
 - **Runs itself.** One Docker container runs the sync on its schedule and
   serves a web UI for status, history, *Sync now*, and editing the room map and
   settings.
+- **Set up in the browser.** A setup guide connects 25Live, finds the rooms
+  booked there, and imports them with their buildings, then points each building
+  at its BAS schedule.
 - **Mixed-vendor campus in one run.** Every building names the BAS it lives on,
   and its rooms inherit it.
 - **Per-room, per-floor or per-building scheduling**, mixed freely. Occupancy
@@ -95,16 +98,18 @@ mkdir -p config             # your settings will live here
 docker compose up -d
 ```
 
-Browse to **`http://<host>:8080`**, sign in with `BAS_WEB_PASSWORD`, and follow
-*Getting started* on the status page:
+Browse to **`http://<host>:8080`** and sign in with `BAS_WEB_PASSWORD`. The
+**setup guide** opens:
 
-1. **Connection**: your 25Live instance and account, the timezone, and a BAS
-   system (usually `bacnet`, with this host's address).
-2. **Buildings**, then **Rooms**. *Discover spaces* lists the 25Live rooms with
-   bookings, each with an *Add as a room* link.
-3. **Validate**, then **Dry run**. Neither writes anything.
-4. **Schedule**: nightly at 02:00 by default. Add a midday time to pick up
-   same-day bookings sooner.
+1. **25Live**: your instance and service account, tested as you save.
+2. **Campus**: the timezone, and how early rooms start conditioning.
+3. **BAS**: a `bacnet` system, with this host's address filled in.
+4. **Rooms**: it lists the spaces booked in 25Live, with each room's building
+   filled in from 25Live or guessed from its name. Tick the ones to add.
+5. **Schedules**: each building's BACnet schedule.
+6. **Check and finish**: *Validate* and a *Dry run*, then turn the schedule on.
+
+Nothing is written to the BAS until the last step. → [The setup guide](docs/web-ui.md#the-setup-guide)
 
 → [Running with Docker](docs/docker.md) covers host networking, the config
 folder, volumes and published images. If the host isn't on the controls

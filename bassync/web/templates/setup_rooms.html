@@ -1,0 +1,71 @@
+<h1>Rooms</h1>
+<p class="hint">The rooms whose bookings the sync schedules. 25Live can list every space booked in the coming weeks;
+pick the ones to condition, and which building each is in.</p>
+
+{% if running %}
+  <div data-status-url="{{ url_for('api_status') }}" data-job="{{ running.id }}"></div>
+  <section class="card">
+    <p><span class="dot run"></span> Looking for rooms in 25Live… This page updates when it's done.
+      <a href="{{ url_for('job', job_id=running.id) }}">Watch it</a></p>
+  </section>
+{% else %}
+  {% if last and last.exit_code != 0 %}
+    <div class="flash error">The last search didn't finish (exit {{ last.exit_code }}).
+      <a href="{{ url_for('job', job_id=last.id) }}">See what happened</a> — usually the 25Live connection.</div>
+  {% endif %}
+  <section class="card">
+    <form method="post" action="{{ url_for('setup_rooms_find') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <label class="inline-label">Look for spaces booked in the next
+        <select name="days">{% for d in days %}<option value="{{ d }}" {{ 'selected' if d == ((found.days if found and found.days in days else none) or 60) }}>{{ d }} days</option>{% endfor %}</select></label>
+      <button class="{{ '' if found else 'primary' }}" {{ 'disabled' if current_job }}>{{ 'Search again' if found else 'Find rooms in 25Live' }}</button>
+    </form>
+    {% if current_job %}<p class="hint">{{ current_job.label }} is running; wait for it to finish.</p>{% endif %}
+    <p class="hint">A space with no bookings in the window won't be listed — look further ahead, or add it on the
+      <a href="{{ url_for('map_list', kind='rooms') }}">Rooms</a> page with its 25Live space ID.</p>
+  </section>
+{% endif %}
+
+{% if found %}
+<form method="post" action="{{ url_for('setup_rooms_import') }}" class="card">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="version" value="{{ map_version }}">
+  <h2>Found {{ found.spaces | length }} space{{ '' if found.spaces | length == 1 else 's' }}
+    <span class="count">booked in the {{ found.days or '?' }} days from {{ local_time(found.when, '%a %d %b') if found.when else '?' }}</span></h2>
+  <p class="hint">Tick the rooms to add. Each needs a building: it's filled in from 25Live where 25Live says,
+    otherwise guessed from the name — check it. Rooms with the same building name go in the same building. A room
+    left without one isn't ticked; type its building to add it.</p>
+  <div class="toolbar">
+    <input type="search" placeholder="Filter" data-filter="found-rooms" class="filter" aria-label="Filter the rooms">
+    <button type="button" data-check-all="found-rooms">Tick all shown</button>
+    <button type="button" data-check-none="found-rooms">Untick all shown</button>
+  </div>
+  <datalist id="building-names">{% for n in building_names %}<option value="{{ n }}">{% endfor %}</datalist>
+  <table class="list wide" id="found-rooms">
+    <thead><tr><th></th><th data-sort>Name</th><th data-sort>Space ID</th><th data-sort>Capacity</th>
+      <th data-sort>Bookings</th><th>Building</th></tr></thead>
+    <tbody>
+      {% for r in rows %}
+        <tr class="{{ 'muted' if r.mapped }}">
+          <td>{% if r.mapped %}<span class="hint">added</span>{% else %}
+            <input type="checkbox" name="pick" value="{{ r.space_id }}" aria-label="Add {{ r.space_name }}"
+                   {{ 'checked' if r.bookings and (r.building or r.guess) }}>{% endif %}</td>
+          <td>{{ r.space_name }}{% if r.formal_name and r.formal_name != r.space_name %}<small>{{ r.formal_name }}</small>{% endif %}</td>
+          <td>{{ r.space_id }}</td>
+          <td>{{ r.capacity if r.capacity is not none else '' }}</td>
+          <td>{{ r.bookings }}</td>
+          <td>{% if not r.mapped %}<input name="b.{{ r.space_id }}" value="{{ r.building or r.guess }}" list="building-names"
+                   aria-label="Building of {{ r.space_name }}" placeholder="building">{% endif %}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <div class="buttons">
+    {% if can('edit_map') %}<button class="primary" {{ 'disabled' if not new_count }}>Add the ticked rooms</button>{% endif %}
+    <a href="{{ url_for('setup_step', step='schedules') }}">Next: schedules</a>
+  </div>
+  <p class="hint">New buildings start on the <code>{{ staging }}</code> preview system, which writes nothing, until the
+    next step gives each its schedule. Floors, and rooms with schedules of their own, are set on the
+    <a href="{{ url_for('map_list', kind='rooms') }}">Room map</a> pages.</p>
+</form>
+{% endif %}

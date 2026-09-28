@@ -72,14 +72,16 @@ covers:
 
 - the merge/roll-up logic, and the loader and its inheritance rules
 - config validation, the safety rail and its state file
-- the 25Live client's paging, cancellation and fetch-window handling
+- the 25Live client's paging, cancellation and fetch-window handling, and
+  what discovery collects and guesses
 - extra bookings: reading them, their occurrences and buffers, and a whole
   run with them
 - the email/webhook reports, the service's scheduler (DST included), its job
   runner, run history, restarting in place, and the update check
 - the web UI: sign-in and lockout, Entra sign-in, roles and capabilities,
-  CSRF, every editing page, concurrent-edit and confirmation handling,
-  branding, and the sandboxed report view
+  CSRF, every editing page, the setup guide from nothing to a schedule,
+  concurrent-edit and confirmation handling, branding, and the sandboxed
+  report view
 - the editors' shared save logic
 - the release helper (`.github/scripts/release_info.py`), and every link in
   the documentation
@@ -101,8 +103,9 @@ check.
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
 | `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI, restarting in place), its job runner, and the run history. |
 | `bassync/extras.py` | Extra bookings: occupancy that isn't in 25Live. |
+| `bassync/discovery.py` | What `--discover` found, kept for the setup guide, and its guesses at each room's building. |
 | `bassync/updates.py` | Whether a newer release is out (GitHub's releases API). |
-| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
+| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, and the setup guide in `setup.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
 | `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
 | `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
 | `bassync/editor.py` · `editor.py` · `Edit-Rooms.bat` | The desktop editor (Tkinter), its launcher, and a double-click launcher for Windows. |

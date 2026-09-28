@@ -375,11 +375,12 @@ def test_a_fresh_install_renders_and_is_set_up_from_the_browser(tmp_path):
     service.tick()
     c = app_for(service).test_client()
     c.post("/login", data={"password": PASSWORD})
-    for url in ("/", "/map/rooms", "/map/buildings/new", "/settings/connection",
+    # The first visit goes to the setup guide; the rest of the site works too.
+    assert c.get("/").location == "/setup"
+    for url in ("/setup", "/map/rooms", "/map/buildings/new", "/settings/connection",
                 "/settings/schedule", "/settings/defaults", "/files", "/files/config",
                 "/runs", "/jobs", "/logs"):
         assert c.get(url).status_code == 200, url
-    assert "Getting started" in c.get("/").text
     # A system, then the connection settings, then a building: all from nothing.
     post(c, "/settings/systems", {"name": "campus", "driver": "bacnet"})
     form = _connection_form(c)
@@ -389,6 +390,8 @@ def test_a_fresh_install_renders_and_is_set_up_from_the_browser(tmp_path):
     saved = yaml.safe_load(files.config.read_text())
     assert saved["default_system"] == "campus"            # the only system
     assert saved["systems"]["campus"]["local_address"] == "10.0.0.5/24"
+    # config.yaml exists now: the status page shows, with the guide's steps.
+    assert "Getting started" in c.get("/").text
     v = version(c, "/map/buildings/new")
     assert post(c, "/map/buildings/save", {"version": v, "id": "SCI",
                                            "target": "12001:5"}).status_code == 302

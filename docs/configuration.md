@@ -170,7 +170,9 @@ by [extra bookings](#extra-bookings).
 
 `space_mapping.example.yaml` documents every field and shows all three
 granularity patterns side by side. Find a room's `space_id` with *Discover
-spaces* in the web UI or `--discover` on the command line.
+spaces* in the web UI or `--discover` on the command line. The web UI's
+[setup guide](web-ui.md#the-setup-guide) adds rooms found in 25Live with their
+buildings in one go.
 
 ## Targets
 
