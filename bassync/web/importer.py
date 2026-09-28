@@ -114,15 +114,17 @@ def register(app) -> None:            # noqa: C901 — the import's routes toget
         except ValueError:
             days = 60
         days = max(1, min(days, 366))
+        args = ["--discover-days", str(days)]
+        if not request.form.get("every"):
+            args.append("--discover-booked-only")
         try:
-            svc().jobs.start("discover", ["--discover-days", str(days)],
-                             trigger=f"web ({request.remote_addr})")
+            svc().jobs.start("discover", args, trigger=f"web ({request.remote_addr})")
         except JobBusy as exc:
             notice(f"{exc} is already running — wait for it to finish, then try again.", "error")
         except RuntimeError as exc:
             notice(str(exc), "error")
         else:
-            audit("started Discover spaces --discover-days %d (to add rooms)", days)
+            audit("started Discover spaces %s (to add rooms)", " ".join(args))
         return redirect(url_for("setup_step", step="rooms") if back == "setup"
                         else url_for("map_import"))
 

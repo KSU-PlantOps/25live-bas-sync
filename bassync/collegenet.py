@@ -227,26 +227,46 @@ class CollegeNetClient:
 
     # ── discovery ────────────────────────────────────────────────────────────
 
-    def discover_spaces(self, days: int) -> list:
+    def discover_spaces(self, days: int, every_space: bool = True) -> tuple:
         """
-        Every space booked in the next `days` days, with what 25Live says
-        about it: {space_id, space_name, formal_name, capacity, building,
-        bookings}, sorted by name.
+        (spaces, whether that is every space), for choosing rooms to map.
 
-        Uses the same events endpoint as the sync — no extra API surface to
-        validate — so it finds spaces that have bookings in the window. Spaces
-        with no upcoming events won't appear; widen `days` to surface more.
-        `bookings` counts the occurrences not cancelled; `capacity` and
-        `building` are None and "" when this instance doesn't include them.
+        Each space is {space_id, space_name, formal_name, capacity, building,
+        bookings}, sorted by name. `bookings` counts the occurrences in the
+        next `days` days that aren't cancelled; `capacity` and `building` are
+        None and "" when this instance doesn't include them.
+
+        With `every_space`, spaces.xml lists every space the account can see,
+        booked or not, and the window only adds the booking counts. If that
+        listing fails — an instance or account that doesn't allow it, or
+        paging it doesn't honour — this falls back to the spaces with
+        bookings in the window, from the same events endpoint the sync uses,
+        says why in the log, and returns False. Nothing here is written
+        anywhere but the discovery list, so an incomplete list costs a
+        missing row, not a wrong schedule.
         """
         now = datetime.now(self.tz)
         seen: dict = {}
+        listed = False
+        if every_space:
+            try:
+                for root in self._pages({}, None, None, "listing every space",
+                                        endpoint="spaces.xml"):
+                    self._collect_spaces_from(root, seen)
+                listed = True
+            except (requests.RequestException, CollegeNetError) as exc:
+                logging.warning(
+                    "Couldn't list every space from 25Live (spaces.xml): %s — "
+                    "listing only the spaces with bookings in the next %d days "
+                    "instead.", exc, days)
+                seen = {}
         for root in self._pages({}, now, now + timedelta(days=days),
                                 "discovering spaces"):
             self._collect_spaces_from(root, seen)
         for row in seen.values():
             row["space_name"] = row["space_name"] or row["formal_name"] or row["space_id"]
-        return sorted(seen.values(), key=lambda s: (s["space_name"].lower(), s["space_id"]))
+        spaces = sorted(seen.values(), key=lambda s: (s["space_name"].lower(), s["space_id"]))
+        return spaces, listed
 
     # Where a space's building may be, by instance: a child of the space, or
     # a nested <building> with its own name.
@@ -310,11 +330,28 @@ class CollegeNetClient:
 
     # ── paging ───────────────────────────────────────────────────────────────
 
-    def _pages(self, extra_params: dict, start: datetime, end: datetime,
-               context: str):
+    def _page_ids(self, root: ET.Element, endpoint: str) -> set:
+        """What one page holds, as ids: its events for events.xml, its
+        spaces for spaces.xml. Spaces are the top-level <space> entries, so
+        related spaces nested inside one (a divisible room's parts) don't
+        make a full page look over-full; with an unexpected layout, every
+        distinct space id counts, so it can't read as a short, final page."""
+        if endpoint == "events.xml":
+            events = root.findall("r25:event", R25_NS)
+            return {ev.findtext("r25:event_id", "", R25_NS) or f"#{i}"
+                    for i, ev in enumerate(events)}
+        top = root.findall("r25:space", R25_NS)
+        if top:
+            return {self._child_text(sp, "space_id") or f"#{i}" for i, sp in enumerate(top)}
+        return {sid for elem in root.iter()
+                if (sid := self._child_text(elem, "space_id"))}
+
+    def _pages(self, extra_params: dict, start: Optional[datetime],
+               end: Optional[datetime], context: str, endpoint: str = "events.xml"):
         """
         Yield each page's XML root for one query, stopping safely whatever
-        the server does with the paging parameters.
+        the server does with the paging parameters. `start`/`end` bound an
+        events query; a listing (spaces.xml) passes None for both.
 
         Three behaviours are handled:
           * paging honored — stop on the first short page;
@@ -329,28 +366,25 @@ class CollegeNetClient:
         """
         offset = 0
         seen_ids: set = set()
+        what = "event" if endpoint == "events.xml" else "space"
         for _page in range(MAX_PAGES):
-            params = {
-                **extra_params,
-                **self._window_params(start, end),
-                **self._state_params(),
-                "scope": "extended",                  # include setup/pre-event times
-                "page_size": PAGE_SIZE,
-                "page_offset": offset,
-            }
-            resp = self.session.get(f"{self.base_url}/events.xml", params=params,
+            params = dict(extra_params)
+            if start is not None and end is not None:
+                params.update(self._window_params(start, end))
+                params.update(self._state_params())
+                params["scope"] = "extended"          # include setup/pre-event times
+            params.update({"page_size": PAGE_SIZE, "page_offset": offset})
+            resp = self.session.get(f"{self.base_url}/{endpoint}", params=params,
                                     timeout=HTTP_TIMEOUT_FETCH)
             resp.raise_for_status()
             root = self._parse_xml(resp.text, context)
-            events = root.findall("r25:event", R25_NS)
-            ids = {ev.findtext("r25:event_id", "", R25_NS) or f"#{i}"
-                   for i, ev in enumerate(events)}
-            if offset and events and not (ids - seen_ids):
+            ids = self._page_ids(root, endpoint)
+            if offset and ids and not (ids - seen_ids):
                 raise CollegeNetError(
-                    f"25Live returned the same {len(events)} event(s) for page "
+                    f"25Live returned the same {len(ids)} {what}(s) for page "
                     f"offset {offset} as for an earlier page while {context} — "
                     "it is ignoring the page_offset parameter, so everything "
-                    f"after the first {PAGE_SIZE} events would be silently "
+                    f"after the first {PAGE_SIZE} {what}s would be silently "
                     "dropped. Check the paging parameters your Series25 "
                     "version expects before running live.")
             seen_ids |= ids
@@ -359,11 +393,11 @@ class CollegeNetClient:
             # total-count element: if a response omits it, or names it
             # differently across API versions, stopping early would silently
             # drop every event past the first page.
-            if len(events) != PAGE_SIZE:
-                if len(events) > PAGE_SIZE:
-                    logging.debug("25Live ignored page_size (%d events in one "
+            if len(ids) != PAGE_SIZE:
+                if len(ids) > PAGE_SIZE:
+                    logging.debug("25Live ignored page_size (%d %ss in one "
                                   "page); treating it as the full result.",
-                                  len(events))
+                                  len(ids), what)
                 return
             offset += PAGE_SIZE
         logging.warning("Reached MAX_PAGES (%d) while %s; results may be "

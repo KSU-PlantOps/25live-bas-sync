@@ -111,7 +111,7 @@ def test_the_whole_guide_from_nothing_to_a_schedule(fresh, admin, connected):
     assert cfg["default_system"] == "campus"
 
     # Rooms: look in 25Live, then add what it found.
-    assert post(admin, "/map/import/find", {"days": "90", "back": "setup"}).location == "/setup/rooms"
+    assert post(admin, "/map/import/find", {"days": "90", "every": "1", "back": "setup"}).location == "/setup/rooms"
     assert fresh.jobs.started[-1][:2] == ("discover", ["--discover-days", "90"])
     discovery.save(fresh.paths.state_dir, 90, FOUND)
     page = admin.get("/setup/rooms").text

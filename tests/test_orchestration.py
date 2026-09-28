@@ -325,7 +325,8 @@ def test_discover_prints_loadable_yaml(monkeypatch, capsys, tmp_path):
     from bassync.collegenet import CollegeNetClient
     found = [{"space_id": "12", "space_name": 'Hall "A" \\ Annex: East',
               "formal_name": "", "capacity": 30, "building": "", "bookings": 4}]
-    monkeypatch.setattr(CollegeNetClient, "discover_spaces", lambda self, days: found)
+    monkeypatch.setattr(CollegeNetClient, "discover_spaces",
+                        lambda self, days, every_space=True: (found, every_space))
     cfg = load_config("/nonexistent/config.yaml")
     cfg["collegenet"]["base_url"] = "http://stub"
     cfg["safety"]["state_file"] = str(tmp_path / "state" / "last_run.json")
@@ -335,7 +336,15 @@ def test_discover_prints_loadable_yaml(monkeypatch, capsys, tmp_path):
     # ...and kept for the web UI's setup guide.
     kept = discovery.load(tmp_path / "state")
     assert kept["days"] == 30 and kept["spaces"][0]["capacity"] == 30
-    assert kept["spaces"][0]["bookings"] == 4
+    assert kept["spaces"][0]["bookings"] == 4 and kept["listing"] == "every"
+    # Asked for the booked ones only, it says so.
+    assert sync_mod.run_discover(cfg, 30, every_space=False) == 0
+    assert discovery.load(tmp_path / "state")["listing"] == "booked-only"
+    # ...and when listing every space failed, that it fell back.
+    monkeypatch.setattr(CollegeNetClient, "discover_spaces",
+                        lambda self, days, every_space=True: (found, False))
+    assert sync_mod.run_discover(cfg, 30) == 0
+    assert discovery.load(tmp_path / "state")["listing"] == "booked-fallback"
 
 
 def test_validate_names_a_state_style_that_works(campus, monkeypatch):

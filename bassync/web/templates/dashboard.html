@@ -131,7 +131,7 @@
     <form method="post" action="{{ url_for('jobs') }}" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <input type="hidden" name="kind" value="discover">
-      <button title="lists 25Live spaces with bookings, to add as rooms" {{ 'disabled' if current_job }}>Discover spaces</button>
+      <button title="lists the 25Live spaces and their bookings, to add as rooms" {{ 'disabled' if current_job }}>Discover spaces</button>
       <label class="check">next <input type="number" name="days" value="30" min="1" max="366" class="tiny"> days</label>
     </form>
     {% endif %}

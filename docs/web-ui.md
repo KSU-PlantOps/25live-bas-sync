@@ -32,7 +32,7 @@ is saved. It follows the browser's light or dark setting.
 | **Bookings** | [Extra bookings](configuration.md#extra-bookings): occupancy that isn't in 25Live — one day or every week, on a room, a floor or a whole building; add, edit, copy and delete, and clear out the ones that have ended. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
 | **Room map** → Rooms · Buildings · Floors · Equipment | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. [Equipment](configuration.md#the-room-map) — an AHU several rooms share, or a room's second VAV — is ticked on each room's form. Renaming a building or equipment repoints what uses it; deleting a building takes its floors and equipment and won't leave rooms driving nothing, and equipment in use can't be deleted. |
-| **Room map** → From 25Live | The spaces booked in 25Live, [grouped by building](#adding-rooms-from-25live), to add a building at a time. |
+| **Room map** → From 25Live | The spaces in 25Live, booked or not, [grouped by building](#adding-rooms-from-25live), to add a building at a time. |
 | **Settings** → Setup guide | A new install's [walk through setup](#the-setup-guide): 25Live, the campus, a BAS system, rooms found in 25Live, each building's schedule, and the checks before the schedule goes on. |
 | **Settings** → Connection | 25Live, BAS systems (add, remove, change driver), timezone and default system; the passwords, set or cleared here. *Validate* per system. |
 | **Settings** → Alerts | Email (SMTP server, security, account and password, recipients, full or summary report, CSV), webhooks (Slack, Teams, generic) and the dead-man's-switch pings; *Send a test*. |
@@ -97,10 +97,12 @@ run a live sync. Only whether it was finished or skipped is kept, in
 ## Adding rooms from 25Live
 
 **Room map → From 25Live** (and the setup guide's Rooms step) lists every space
-booked in 25Live in a window you choose — 30 to 180 days — grouped by building,
-with each room's capacity and number of bookings. *Find rooms in 25Live* runs
-[`--discover`](command-line.md); it needs *Run the tools*, and adding rooms
-needs *Edit the room map*.
+25Live lets the service account see, booked or not, grouped by building, with
+each room's capacity and its number of bookings over a window you choose — 30 to
+180 days. Untick *include spaces with no bookings* to list only the booked ones.
+If 25Live won't list every space for the account, the page says so and shows
+the booked ones. *Find rooms in 25Live* runs [`--discover`](command-line.md);
+it needs *Run the tools*, and adding rooms needs *Edit the room map*.
 
 Each room's building comes from 25Live where your instance says; otherwise it's
 guessed from the name — "Science Hall 204 (Chem lab)" is in *Science Hall*, and
@@ -109,7 +111,8 @@ editable box: change a room's building to move it to another group when you add
 it.
 
 - **One building at a time:** each building's *Add* button adds its ticked rooms,
-  and nothing else. A building the room map doesn't have yet is created, and
+  and nothing else. Rooms with bookings start ticked; tick the building's own
+  box to take all of them, bookings or not. A building the room map doesn't have yet is created, and
   you go straight to its form to give it its schedule.
 - **Or all at once:** tick rooms anywhere, and *Add the ticked rooms*.
 

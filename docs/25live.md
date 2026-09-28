@@ -24,12 +24,17 @@ The sync only ever **reads** from 25Live, through Series25 WebServices.
   fails the fetch with a message, instead of re-requesting the same page.
 - Find a space's numeric `space_id` from its detail-page URL in 25Live, with
   *Discover spaces* on the web UI, or with `--discover`. The web UI's
-  [Room map → From 25Live](web-ui.md#adding-rooms-from-25live) lists every space
-  booked in a window of up to 180 days, grouped by building, with its capacity
-  and number of bookings, and adds them a building at a time. Discovery asks the same `events.xml` the sync does, so a space
-  appears only if it has a booking in the window. Where your instance includes
-  a space's building in that response, it's used; otherwise the building is
-  guessed from the space's name, for you to check.
+  [Room map → From 25Live](web-ui.md#adding-rooms-from-25live) lists the
+  spaces grouped by building, with each one's capacity and number of bookings,
+  and adds them a building at a time.
+- Discovery lists **every space** the service account can see from
+  `spaces.xml`, booked or not, and counts each one's bookings from the same
+  `events.xml` the sync reads. If your instance or account won't list spaces —
+  or pages the list in a way the sync doesn't recognise — it falls back to the
+  spaces with bookings in the window, and says so. What the account can see is
+  set by its 25Live security; a space it can't see can still be added by its
+  `space_id`. Where either response includes a space's building, it's used;
+  otherwise the building is guessed from the space's name, for you to check.
 
 A 25Live that returns nothing at all — an expired account, a changed `state`
 parameter — looks exactly like an empty campus. The

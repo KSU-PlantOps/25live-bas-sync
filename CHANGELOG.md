@@ -15,11 +15,13 @@ semantic versioning from 1.0 onward.
   Settings. Nothing reaches the BAS before the end: the guide creates
   `config.yaml` with the schedule off, and imported buildings wait on a
   `preview` system called `staging` until they have a schedule.
-- **Rooms found in 25Live, imported with their buildings.** The guide lists
-  every space booked in the next 30–180 days, with its capacity and number of
-  bookings, and a building taken from 25Live where the instance gives one, or
-  guessed from the name ("Science Hall 204 (Chem lab)" → Science Hall).
-  Ticked rooms are added in one go, creating their buildings.
+- **Rooms found in 25Live, imported with their buildings.** Every space
+  25Live lists for the account (`spaces.xml`), booked or not, with its capacity
+  and its number of bookings in the next 30–180 days, and a building taken from
+  25Live where the instance gives one, or guessed from the name ("Science Hall
+  204 (Chem lab)" → Science Hall). If 25Live won't list every space, the ones
+  with bookings are listed instead, and the page says so. Ticked rooms are
+  added in one go, creating their buildings.
 - **Equipment: one AHU for many rooms, several VAVs for one room.** A
   building's `equipment:` lists the air handlers, VAVs and the like that have a
   schedule of their own; each room lists the ones that serve it
@@ -28,15 +30,15 @@ semantic versioning from 1.0 onward.
   several, with or without its own `target:`. Edited on **Room map →
   Equipment**, and ticked on each room's form; renaming equipment repoints its
   rooms, and equipment in use can't be deleted.
-- **Room map → From 25Live**: the spaces booked in 25Live, grouped by
-  building, to add a building at a time (each group has its own *Add* button,
+- **Room map → From 25Live**: those spaces, grouped by building, to add a building at a time (each group has its own *Add* button,
   and a new building goes straight to its form for its schedule) or all at
   once. It's the setup guide's Rooms step too, and needs *Edit the room map*
   rather than *Edit settings*.
-- `--discover` collects each space's formal name, capacity, building and
-  number of bookings (cancelled occurrences, and states the sync doesn't
-  include, aren't counted), and keeps them in `state/discovery.json`. Its
-  printed YAML is unchanged.
+- `--discover` lists every space, not only those with bookings
+  (`--discover-booked-only` for the old list), with each one's formal name,
+  capacity, building and number of bookings (cancelled occurrences, and states
+  the sync doesn't include, aren't counted), and keeps them in
+  `state/discovery.json`. Its printed YAML has the same shape.
 
 ### Changed
 - The status page's *Getting started* card follows the setup guide's steps,

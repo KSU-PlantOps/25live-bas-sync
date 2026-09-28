@@ -212,7 +212,8 @@ def build_parser() -> argparse.ArgumentParser:
                            "returned, reachability, schedule targets, safety "
                            "state; no writes")
     mode.add_argument("--discover", action="store_true",
-                      help="List 25Live spaces with upcoming events (read-only)")
+                      help="List the 25Live spaces, with their upcoming bookings "
+                           "(read-only)")
     mode.add_argument("--list-drivers", action="store_true",
                       help="Show the available BAS drivers and exit")
     mode.add_argument("--test-alert", action="store_true",
@@ -221,7 +222,11 @@ def build_parser() -> argparse.ArgumentParser:
                            "report the result. Works even with alerts.enabled "
                            "false, so you can prove the plumbing first")
     parser.add_argument("--discover-days", type=int, default=30,
-                        help="Window for --discover, in days (default 30)")
+                        help="--discover counts bookings over this many days "
+                             "(default 30)")
+    parser.add_argument("--discover-booked-only", action="store_true",
+                        help="--discover lists only the spaces with bookings in "
+                             "the window, not every space 25Live has")
 
     parser.add_argument("--system", metavar="NAME",
                         help="Limit the run to one system from `systems:` — "
@@ -304,7 +309,8 @@ def main(argv=None) -> int:
         elif args.validate:
             code = run_validate(cfg, config_warnings)
         elif args.discover:
-            code = run_discover(cfg, args.discover_days)
+            code = run_discover(cfg, args.discover_days,
+                                every_space=not args.discover_booked_only)
         else:
             code = run_sync(cfg, dry_run=True, only_system=args.system)
     except KeyboardInterrupt:

@@ -16,17 +16,24 @@
     <form method="post" action="{{ url_for('map_import_find') }}" class="inline">
       <input type="hidden" name="csrf" value="{{ csrf_token }}">
       <input type="hidden" name="back" value="{{ back }}">
-      <label class="inline-label">Look for spaces booked in the next
+      <label class="inline-label">Count bookings over the next
         <select name="days">{% for d in days %}<option value="{{ d }}" {{ 'selected' if d == ((found.days if found and found.days in days else none) or 60) }}>{{ d }} days</option>{% endfor %}</select></label>
+      <label class="check"><input type="checkbox" name="every" value="1" {{ 'checked' if not found or found.listing != 'booked-only' }}>
+        include spaces with no bookings</label>
       <button class="{{ '' if found else 'primary' }}" {{ 'disabled' if current_job }}>{{ 'Search again' if found else 'Find rooms in 25Live' }}</button>
     </form>
     {% if current_job %}<p class="hint">{{ current_job.label }} is running; wait for it to finish.</p>{% endif %}
     {% elif not found %}
       <p class="hint">Nobody has looked in 25Live yet, and your role can't: ask someone who can run the tools.</p>
     {% endif %}
-    <p class="hint">A space with no bookings in the window won't be listed — look further ahead, or add it on the
-      <a href="{{ url_for('map_list', kind='rooms') }}">Rooms</a> page with its 25Live space ID.</p>
+    <p class="hint">Every space 25Live lets this account see is listed, with how many bookings it has in the window.
+      Without <em>include spaces with no bookings</em>, only the booked ones are. A space missing from both can be
+      added on the <a href="{{ url_for('map_list', kind='rooms') }}">Rooms</a> page with its 25Live space ID.</p>
   </section>
+{% endif %}
+{% if found and found.listing == 'booked-fallback' %}
+  <div class="flash warn">25Live didn't list every space{% if last %} (<a href="{{ url_for('job', job_id=last.id) }}">why</a>){% endif %},
+    so only the spaces with bookings in the window are shown. The service account may not be allowed to list spaces.</div>
 {% endif %}
 
 {% if found %}
@@ -35,10 +42,12 @@
   <input type="hidden" name="version" value="{{ map_version }}">
   <input type="hidden" name="back" value="{{ back }}">
   <h2>Found {{ space_count }} space{{ '' if space_count == 1 else 's' }} in {{ groups | rejectattr('name', 'equalto', '') | list | length }} building{{ '' if (groups | rejectattr('name', 'equalto', '') | list | length) == 1 else 's' }}
-    <span class="count">booked in the {{ found.days or '?' }} days from {{ local_time(found.when, '%a %d %b') if found.when else '?' }}</span></h2>
+    <span class="count">{% if found.listing == 'every' %}everything 25Live lists, with bookings{% else %}booked{% endif %}
+      in the {{ found.days or '?' }} days from {{ local_time(found.when, '%a %d %b') if found.when else '?' }}</span></h2>
   <p class="hint">Each room's building is filled in from 25Live where 25Live says, otherwise guessed from its name — check
     it, and change a room's to move it. Add one building at a time with its <em>Add</em> button, or tick rooms anywhere
-    and add them together. A room without a building isn't ticked; type its building to add it.</p>
+    and add them together. Rooms with no bookings, and rooms without a building, start unticked; type a room's
+    building to add it.</p>
   <div class="toolbar">
     <input type="search" placeholder="Filter" data-filter="found-rooms" class="filter" aria-label="Filter the rooms">
     <button type="button" data-check-all="found-rooms">Tick all shown</button>

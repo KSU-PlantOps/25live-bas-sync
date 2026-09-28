@@ -105,8 +105,8 @@ Browse to **`http://<host>:8080`** and sign in with `BAS_WEB_PASSWORD`. The
 1. **25Live**: your instance and service account, tested as you save.
 2. **Campus**: the timezone, and how early rooms start conditioning.
 3. **BAS**: a `bacnet` system, with this host's address filled in.
-4. **Rooms**: it lists the spaces booked in 25Live, grouped by building, filled
-   in from 25Live or guessed from the room names. Add a building at a time.
+4. **Rooms**: it lists your 25Live spaces, booked or not, grouped by building,
+   filled in from 25Live or guessed from the room names. Add a building at a time.
 5. **Schedules**: each building's BACnet schedule.
 6. **Check and finish**: *Validate* and a *Dry run*, then turn the schedule on.
 

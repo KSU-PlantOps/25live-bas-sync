@@ -94,7 +94,7 @@ def test_advanced_can_add_rooms_basic_can_not_see_them(found, monkeypatch):
     configure_sso(found)
     advanced = signed_in_as(app_for(found), monkeypatch, ["BAS_Users"])
     assert advanced.get("/map/import").status_code == 200
-    assert post(advanced, "/map/import/find", {"days": "30"}).location == "/map/import"
+    assert post(advanced, "/map/import/find", {"days": "30", "every": "1"}).location == "/map/import"
     assert found.jobs.started[-1][:2] == ("discover", ["--discover-days", "30"])
     r = post(advanced, "/map/import", _form(advanced, pick=["301"],
                                             **{"b.301": "Liberal Arts"}))
@@ -109,3 +109,26 @@ def test_the_room_and_job_pages_lead_here(found):
     c = signed_in_client(found)
     assert 'href="/map/import"' in c.get("/map/rooms").text
     assert 'href="/map/import"' in c.get("/map/buildings").text
+
+
+def test_every_space_is_asked_for_unless_unticked(found):
+    c = signed_in_client(found)
+    post(c, "/map/import/find", {"days": "90", "every": "1"})
+    assert found.jobs.started[-1][1] == ["--discover-days", "90"]
+    post(c, "/map/import/find", {"days": "90"})
+    assert found.jobs.started[-1][1] == ["--discover-days", "90", "--discover-booked-only"]
+
+
+@pytest.mark.parametrize("listing, words, warned", [
+    ("every", "everything 25Live lists, with bookings", False),
+    ("booked-only", "booked\n      in the 60 days", False),
+    ("booked", "booked\n      in the 60 days", False),         # kept by an older version
+    ("booked-fallback", "booked\n      in the 60 days", True),
+])
+def test_the_page_says_what_kind_of_list_it_is(site, listing, words, warned):
+    discovery.save(site.paths.state_dir, 60, FOUND, listing=listing)
+    page = html.unescape(signed_in_client(site).get("/map/import").text)
+    assert words in page
+    assert ("didn't list every space" in page) is warned
+    ticked = 'name="every" value="1" checked' in page
+    assert ticked is (listing != "booked-only")

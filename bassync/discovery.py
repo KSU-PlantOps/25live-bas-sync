@@ -35,13 +35,21 @@ def path_in(state_dir: Path) -> Path:
     return Path(state_dir) / FILE_NAME
 
 
+# What a discovery's list is: every space 25Live let the account see; only
+# those with bookings in the window, because that was asked for, or because
+# listing every space failed (the job's log says why); or "booked", a list
+# kept before discovery could list every space.
+LISTINGS = ("every", "booked-only", "booked-fallback", "booked")
+
+
 def save(state_dir: Path, days: int, spaces: list,
-         now: Optional[datetime] = None) -> Path:
+         now: Optional[datetime] = None, listing: str = "booked") -> Path:
     """Write what a discovery found, atomically, for the web UI to read."""
     path = path_in(state_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
     when = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
-    body = json.dumps({"when": when, "days": days, "spaces": spaces}, indent=1)
+    body = json.dumps({"when": when, "days": days, "listing": listing,
+                       "spaces": list(spaces)}, indent=1)
     fd, tmp = tempfile.mkstemp(prefix=".discovery.", suffix=".tmp", dir=path.parent)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
@@ -55,9 +63,9 @@ def save(state_dir: Path, days: int, spaces: list,
 
 
 def load(state_dir: Path) -> Optional[dict]:
-    """{when, days, spaces} from the last discovery, or None. Each space is
-    cleaned to space_id, space_name, formal_name, building, capacity and
-    bookings, whatever the file holds."""
+    """{when, days, listing, spaces} from the last discovery, or None. Each
+    space is cleaned to space_id, space_name, formal_name, building, capacity
+    and bookings, whatever the file holds."""
     try:
         data = json.loads(path_in(state_dir).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -76,8 +84,9 @@ def load(state_dir: Path) -> Optional[dict]:
             "capacity": _int_or_none(s.get("capacity")),
             "bookings": _int_or_none(s.get("bookings")) or 0,
         })
+    listing = data.get("listing") if data.get("listing") in LISTINGS else "booked"
     return {"when": str(data.get("when") or ""), "days": _int_or_none(data.get("days")),
-            "spaces": spaces}
+            "listing": listing, "spaces": spaces}
 
 
 def _int_or_none(value) -> Optional[int]:
