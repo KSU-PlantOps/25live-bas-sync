@@ -23,7 +23,7 @@ from zoneinfo import available_timezones
 import yaml
 from flask import Response, abort, g, redirect, render_template, request, send_file, url_for
 
-from .. import history, mapedit, secretstore
+from .. import extras, history, mapedit, secretstore
 from ..config import (
     STATE_PARAM_STYLES,
     ConfigError,
@@ -1234,11 +1234,14 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── files ────────────────────────────────────────────────────────────────
 
     FILES = {"config": "config.yaml", "defaults": "defaults.yaml",
-             "map": "space_mapping.yaml"}
+             "map": "space_mapping.yaml", "extras": "extra_bookings.yaml"}
+    # Who may change each file: the extra bookings are an operator's, not IT's.
+    FILE_EDITORS = {"extras": "edit_bookings"}
 
     def _file_path(name: str) -> Path:
         p = files()
-        return {"config": p.config, "defaults": p.defaults, "map": p.space_map}[name]
+        return {"config": p.config, "defaults": p.defaults, "map": p.space_map,
+                "extras": p.extras_file}[name]
 
     @app.route("/files")
     @requires("view_all")
@@ -1252,14 +1255,19 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             except OSError:
                 size, modified = None, None
             rows.append({"name": name, "title": title, "path": path,
-                         "size": size, "modified": modified})
+                         "size": size, "modified": modified,
+                         "editor": FILE_EDITORS.get(name, "edit_settings")})
         return render_template("files.html", files=rows, health=health())
 
     @app.route("/files/<name>", methods=["GET", "POST"])
-    @requires("view_all", "edit_settings")
+    @requires("view_all")
     def file_edit(name):
         if name not in FILES:
             abort(404)
+        editor = FILE_EDITORS.get(name, "edit_settings")
+        if request.method == "POST" and not access.can(g.caps, editor):
+            abort(403, f"Your role ({g.role_label or 'none'}) can't do that: it needs "
+                       f"“{access.CAPABILITY_LABELS[editor]}”.")
         path = _file_path(name)
         errors: list = []
         confirm: list = []
@@ -1293,7 +1301,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                             return redirect(url_for("files_list"))
             version = request.form.get("version") or version
         return render_template("file_edit.html", name=name, title=FILES[name],
-                               path=path, text=text, version=version,
+                               path=path, text=text, version=version, editor=editor,
                                errors=errors, confirm=confirm), (422 if errors or confirm else 200)
 
     def _check_file(name: str, text: str) -> tuple:
@@ -1308,6 +1316,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp) / FILES[name]
             tmp_path.write_text(text, encoding="utf-8")
+            if name == "extras":
+                return _check_extras(tmp_path)
             config_path = tmp_path if name == "config" else p.config
             defaults_path = tmp_path if name == "defaults" else p.defaults
             try:
@@ -1324,6 +1334,21 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             _e, errs, _w = mapedit.validate_before_save(buildings, floors, rooms,
                                                         raw, load_defaults())
             return [], [f"Room map: {e}" for e in errs]
+
+    def _check_extras(path: Path) -> tuple:
+        try:
+            rows = extras.read(path)
+        except ConfigError as exc:
+            return [f"The sync couldn't read it: {exc}"], []
+        problems = []
+        for index, row in enumerate(rows):
+            try:
+                extras.parse(row, index)
+            except extras.BookingError as exc:
+                problems.append(f"Booking {index + 1}: {exc}")
+            for key in extras.unknown_keys(row):
+                problems.append(f"Booking {index + 1}: unknown key `{key}` — ignored.")
+        return [], problems
 
     @app.route("/files/<name>/download")
     @requires("view_all")

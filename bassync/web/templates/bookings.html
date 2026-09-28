@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Extra bookings{% endblock %}
+{% block body %}
+<h1>Extra bookings <span class="count">{{ upcoming | length }}</span></h1>
+<p class="hint">Occupancy the sync schedules that isn't in 25Live: an open house, an evening shift, a building that isn't in
+  25Live at all. Each is written like a 25Live booking — a room's gets the room's run-up and run-down and keeps its floor and
+  building running; a building's or floor's gets the building's. Changes are written at the next sync.</p>
+{% if error %}<div class="flash error">{{ error }} — the sync writes nothing until it's fixed.
+  <a href="{{ url_for('file_edit', name='extras') }}">Edit {{ path.name }}</a></div>{% endif %}
+
+<div class="toolbar">
+  {% if can('edit_bookings') and not error %}<a class="button primary" href="{{ url_for('booking_form') }}">Add booking</a>{% endif %}
+  {% if upcoming %}<input type="search" placeholder="Filter" data-filter="upcoming" class="filter" aria-label="Filter">{% endif %}
+</div>
+{% if upcoming %}
+<table class="list wide" id="upcoming">
+  <thead><tr><th data-sort>Title</th><th data-sort>Where</th><th data-sort>When</th><th data-sort>Next</th>
+    <th>Run-up</th><th data-sort>Added by</th><th></th></tr></thead>
+  <tbody>
+  {% for item in upcoming %}
+    <tr>
+      <td>{{ item.row.title or 'Extra booking' }}{% if item.row.note %}<br><small class="hint">{{ item.row.note }}</small>{% endif %}</td>
+      <td>{{ item.where or '—' }}</td>
+      <td>{% if item.problem and not item.when %}<span class="bad">{{ item.problem }}</span>{% else %}{{ item.when }}
+        {% if item.problem %}<br><span class="bad">{{ item.problem }}</span>{% endif %}{% endif %}</td>
+      <td class="nowrap">{{ item.next.strftime('%a %b %d') if item.next else '' }}</td>
+      <td>{{ 'exact times' if item.exact else 'as the room' if item.row.space_id else 'as the building' if item.when else '' }}</td>
+      <td>{{ item.row.added_by or '' }}</td>
+      <td class="row-actions">{% if can('edit_bookings') %}
+        <a href="{{ url_for('booking_form', index=item.index) }}">Edit</a>
+        <a href="{{ url_for('booking_form', index=item.index) }}/copy">Copy</a>
+        <form method="post" action="{{ url_for('booking_delete', index=item.index) }}" class="inline"
+              data-confirm="Delete “{{ item.row.title or 'this booking' }}”?">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="version" value="{{ version }}">
+          <button class="link danger">Delete</button>
+        </form>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% elif not error %}
+  <p class="hint">None yet.{% if can('edit_bookings') %} <em>Add booking</em> to schedule something 25Live doesn't know about.{% endif %}</p>
+{% endif %}
+
+{% if ended %}
+<details class="card">
+  <summary>{{ ended | length }} ended</summary>
+  <table class="list wide">
+    <thead><tr><th>Title</th><th>Where</th><th>When</th><th></th></tr></thead>
+    <tbody>
+    {% for item in ended %}
+      <tr class="muted"><td>{{ item.row.title or 'Extra booking' }}</td><td>{{ item.where or '—' }}</td><td>{{ item.when }}</td>
+        <td class="row-actions">{% if can('edit_bookings') %}<a href="{{ url_for('booking_form', index=item.index) }}/copy">Copy</a>{% endif %}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% if can('edit_bookings') %}
+  <form method="post" action="{{ url_for('bookings_delete_ended') }}" data-confirm="Delete every ended booking?">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="version" value="{{ version }}">
+    <button>Delete ended bookings</button>
+  </form>
+  {% endif %}
+</details>
+{% endif %}
+{% endblock %}

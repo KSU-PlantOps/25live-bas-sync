@@ -175,3 +175,6 @@ table.matrix tr.group th, table.matrix tr.group td { text-align: left; color: va
 table.matrix tr.group td.c { text-align: center; text-transform: none; letter-spacing: 0; font-size: .9rem; }
 .split { display: flex; flex-wrap: wrap; gap: .4rem 1.5rem; align-items: center; margin-top: .8rem; }
 .inline-label { display: inline-flex; gap: .4rem; align-items: center; font-weight: 400; }
+.form > span.label { padding-top: .45rem; font-weight: 600; }
+tr.muted td { color: var(--muted); }
+[hidden] { display: none !important; }

@@ -12,7 +12,7 @@ as <code>.bak</code>.</p>
     <tr><td><strong>{{ f.title }}</strong></td><td><code>{{ f.path }}</code></td>
       <td>{{ f.size if f.size is not none else 'not created yet' }}</td>
       <td>{{ local_time(f.modified) if f.modified else '' }}</td>
-      <td class="row-actions"><a href="{{ url_for('file_edit', name=f.name) }}">{{ 'Edit' if can('edit_settings') else 'View' }}</a>
+      <td class="row-actions"><a href="{{ url_for('file_edit', name=f.name) }}">{{ 'Edit' if can(f.editor) else 'View' }}</a>
         {% if f.size is not none %}<a href="{{ url_for('file_download', name=f.name) }}">Download</a>{% endif %}</td></tr>
   {% endfor %}
   </tbody>

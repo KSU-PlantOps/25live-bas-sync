@@ -73,10 +73,15 @@ class Paths:
     state_dir: Path
     log_file: Path
     web: Optional[Path] = None             # web.yaml; default beside config.yaml
+    extras: Optional[Path] = None          # extra_bookings.yaml; ditto
 
     @property
     def web_file(self) -> Path:
         return self.web or self.config.parent / "web.yaml"
+
+    @property
+    def extras_file(self) -> Path:
+        return self.extras or self.config.parent / "extra_bookings.yaml"
 
     @property
     def secrets_file(self) -> Path:
@@ -100,19 +105,22 @@ def resolve_paths() -> Paths:
     space_map = os.environ.get("BAS_SPACE_MAP") or ""
     state_dir = paths.state_dir()
     log_file = Path(paths.log_file())
+    extras = os.environ.get("BAS_EXTRA_BOOKINGS") or ""
     try:
         cfg = load_config(str(config), str(defaults))
     except ConfigError:
         cfg = None
     if cfg is not None:
         space_map = space_map or cfg.get("space_map_file") or ""
+        extras = extras or cfg.get("extra_bookings_file") or ""
         if (cfg.get("safety") or {}).get("state_file"):
             state_dir = Path(cfg["safety"]["state_file"]).parent
         if cfg.get("log_file"):
             log_file = Path(cfg["log_file"])
     web = os.environ.get("BAS_WEB_CONFIG") or ""
     return Paths(config, defaults, Path(space_map or paths.space_map_file()),
-                 state_dir, log_file, Path(web) if web else None)
+                 state_dir, log_file, Path(web) if web else None,
+                 Path(extras) if extras else None)
 
 
 class Service:

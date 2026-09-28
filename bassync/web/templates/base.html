@@ -14,6 +14,7 @@
 {% set nav_sections = [
   ('Status', url_for('dashboard'), 'view_basic', ['dashboard']),
   ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
+  ('Bookings', url_for('bookings'), 'view_all', ['bookings', 'booking_form']),
   ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
   ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
   ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults',
