@@ -36,6 +36,7 @@ until the row is fixed.
 
 import difflib
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -164,13 +165,24 @@ def _unknown_keys(row: dict, known: tuple, where: str, warnings: list) -> None:
         warnings.append(f"{where}: unknown key `{key}` — ignored.{suggestion}")
 
 
+@dataclass(frozen=True)
+class BuildingSchedule:
+    """A building's roll-up schedule, with the run-up and run-down a booking
+    on the building itself gets (its own, or the global default)."""
+    destination: Destination
+    name: str
+    pre_condition_minutes: int
+    post_buffer_minutes: int
+
+
 class SpaceMap:
     """The loaded room map, plus whatever was wrong with it."""
 
     def __init__(self, spaces: dict, errors: list, warnings: list,
                  building_count: int = 0, floor_count: int = 0,
                  labels: Optional[dict] = None, fatal: bool = False,
-                 held: Optional[set] = None):
+                 held: Optional[set] = None, buildings: Optional[dict] = None,
+                 floors: Optional[dict] = None):
         self.spaces = spaces              # { space_id: SpaceConfig }
         self.errors = errors              # rows left out, or the whole file
         self.warnings = warnings          # worth saying, not worth stopping for
@@ -185,6 +197,11 @@ class SpaceMap:
         # Roll-ups a broken row feeds. They are still managed schedules, but
         # a run must not rewrite them without that row's bookings.
         self.held = held or set()
+        # Every building's and floor's schedule, canonical, by id and by
+        # (building id, level) — what an extra booking (bassync/extras.py)
+        # can name besides a room.
+        self.buildings: dict = buildings or {}     # { id: BuildingSchedule }
+        self.floors: dict = floors or {}           # { (id, level): Destination }
 
     def __bool__(self) -> bool:
         return bool(self.spaces)
@@ -199,11 +216,15 @@ class SpaceMap:
 
         This is the set that gets cleared when a space has no bookings, so a
         roll-up missing from here is a schedule that would silently keep running
-        last week's occupancy forever.
+        last week's occupancy forever. Every building and floor entry is in it,
+        whether or not any room rolls up into it: the entry names a schedule
+        the sync owns, and extra bookings can drive one with no rooms at all.
         """
         out = set()
         for sc in self.spaces.values():
             out.update(sc.all_destinations())
+        out.update(b.destination for b in self.buildings.values())
+        out.update(self.floors.values())
         return out
 
     def systems_used(self) -> set:
@@ -288,6 +309,21 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
             else:
                 building_dest[bid] = Destination(system=system, target=target)
                 _label(building_dest[bid], f"Building {b.get('name') or bid}")
+
+    # A booking on the building itself (a bookable atrium, or an extra
+    # booking) gets the building's own run-up and run-down.
+    building_buffers: dict = {}
+    for bid, dest in building_dest.items():
+        b = buildings[bid]
+        try:
+            building_buffers[bid] = (
+                _minutes_or_default(b.get("pre_condition_minutes"), default_pre,
+                                    "pre_condition_minutes", f"Building {bid}"),
+                _minutes_or_default(b.get("post_buffer_minutes"), default_post,
+                                    "post_buffer_minutes", f"Building {bid}"))
+        except RowError as exc:
+            errors.append(str(exc))
+            held.add(dest)
 
     # ── 1b) Index floor corridor schedules by (building id, level) ───────────
     floor_dest: dict = {}
@@ -514,7 +550,16 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     #     builder unions their bookings and the schedule is written once —
     #     instead of twice, with the second write erasing the first. It is
     #     also where malformed targets are caught, before any run.
-    space_map, held = _canonicalize(space_map, cfg, labels, errors, held)
+    standalone: dict = {("building", bid): dest for bid, dest in building_dest.items()
+                        if bid in building_buffers}
+    standalone.update({("floor", key): dest for key, dest in floor_dest.items()})
+    space_map, held, standalone = _canonicalize(space_map, cfg, labels, errors, held,
+                                                standalone)
+    building_schedules = {
+        key[1]: BuildingSchedule(dest, str(buildings[key[1]].get("name") or key[1]),
+                                 *building_buffers[key[1]])
+        for key, dest in standalone.items() if key[0] == "building"}
+    floor_schedules = {key[1]: dest for key, dest in standalone.items() if key[0] == "floor"}
 
     # ── 5) Two rooms pointing at one schedule ────────────────────────────────
     #     Legal and sometimes intentional (an air-wall room split into A/B in
@@ -543,15 +588,16 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         logging.warning("%s", w)
     return SpaceMap(space_map, errors, warnings,
                     building_count=len(buildings), floor_count=len(floor_dest),
-                    labels=labels, held=held)
+                    labels=labels, held=held, buildings=building_schedules,
+                    floors=floor_schedules)
 
 
 def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
-                  held: set) -> tuple:
+                  held: set, standalone: Optional[dict] = None) -> tuple:
     """
     Rewrite every destination to its driver's canonical form, and drop what a
-    driver says is unusable. Returns (space map, held destinations), both
-    canonical.
+    driver says is unusable. Returns (space map, held destinations, the
+    `standalone` building and floor schedules), all canonical.
 
     Every unusable target is reported once. A room whose own target is bad
     still feeds its floor and building — only its own schedule is left alone;
@@ -561,10 +607,13 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
     from .drivers import DriverError, load_driver_class
 
     systems = cfg.get("systems") or {}
+    standalone = standalone or {}
     by_system: dict = {}
     for sc in space_map.values():
         for dest in sc.all_destinations():
             by_system.setdefault(dest.system, set()).add(dest.target)
+    for dest in standalone.values():
+        by_system.setdefault(dest.system, set()).add(dest.target)
 
     canon: dict = {}
     invalid: dict = {}
@@ -615,4 +664,7 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
         if original in labels and canonical not in labels:
             labels[canonical] = labels[original]
     held_out = {canon.get(d, d) for d in held if d not in invalid}
-    return out, held_out
+    standalone_out = {key: fixed for key, fixed in
+                      ((key, _fix(dest)) for key, dest in standalone.items())
+                      if fixed is not None}
+    return out, held_out, standalone_out

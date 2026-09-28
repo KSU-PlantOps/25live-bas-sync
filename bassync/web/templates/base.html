@@ -14,10 +14,12 @@
 {% set nav_sections = [
   ('Status', url_for('dashboard'), 'view_basic', ['dashboard']),
   ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
+  ('Bookings', url_for('bookings'), 'view_all', ['bookings', 'booking_form']),
   ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
   ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
-  ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults',
-                                                    'files_list', 'file_edit', 'access_page', 'appearance']),
+  ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults', 'safety_page',
+                                                    'files_list', 'file_edit', 'access_page', 'appearance',
+                                                    'service_page']),
   ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
 {% set args = request.view_args or {} %}
 <header class="top">
@@ -48,14 +50,16 @@
   {% set nav_sub = [('Rooms', url_for('map_list', kind='rooms'), 'view_all', args.get('kind') == 'rooms'),
                    ('Buildings', url_for('map_list', kind='buildings'), 'view_all', args.get('kind') == 'buildings'),
                    ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors')] %}
-{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'files_list', 'file_edit', 'access_page', 'appearance'] %}
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page'] %}
   {% set nav_sub = [('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
                    ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
                    ('Schedule', url_for('schedule'), 'view_all', request.endpoint == 'schedule'),
                    ('Defaults', url_for('defaults'), 'view_all', request.endpoint == 'defaults'),
+                   ('Safety', url_for('safety_page'), 'view_all', request.endpoint == 'safety_page'),
                    ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
-                   ('Access', url_for('access_page'), 'admin', request.endpoint == 'access_page'),
-                   ('Appearance', url_for('appearance'), 'admin', request.endpoint == 'appearance')] %}
+                   ('Access', url_for('access_page'), 'manage_access', request.endpoint == 'access_page'),
+                   ('Appearance', url_for('appearance'), 'manage_access', request.endpoint == 'appearance'),
+                   ('Service', url_for('service_page'), 'view_all', request.endpoint == 'service_page')] %}
 {% endif %}
 <main>
   {% if nav_sub %}

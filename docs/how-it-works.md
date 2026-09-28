@@ -26,7 +26,9 @@ flowchart LR
 
 1. **Fetch** the next *N* days (`lookahead_days`) of confirmed events for the
    rooms in the room map, from Series25 WebServices. Individually cancelled
-   occurrences of a recurring event are skipped.
+   occurrences of a recurring event are skipped. Any
+   [extra bookings](configuration.md#extra-bookings) — occupancy that isn't in
+   25Live — join them here.
 2. **Buffer** each booking: start it `pre_condition_minutes` early so the room
    is comfortable when people arrive, and hold it `post_buffer_minutes` after.
    Each is set per room, per building or globally (**room > building >

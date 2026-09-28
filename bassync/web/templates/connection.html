@@ -41,7 +41,7 @@ on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retr
     settings it doesn't show: {{ error }} — <a href="{{ url_for('file_edit', name='config') }}">fix it here</a>.</div>
 {% endif %}
 {% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
-{% if not can('admin') %}<p class="flash warn">Read-only: changing these needs the Admin role.</p>{% endif %}
+{% if not can('edit_settings') %}<p class="flash warn">Read-only: your role can't change these settings.</p>{% endif %}
 
 <section class="card">
   <h2>BAS systems</h2>
@@ -54,7 +54,7 @@ on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retr
   {% else %}
     <p class="hint">No BAS systems yet. Add one — most campuses need one <code>bacnet</code> system.</p>
   {% endif %}
-  {% if can('admin') %}
+  {% if can('edit_settings') %}
   <form method="post" action="{{ url_for('system_add') }}" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input name="name" placeholder="new system name, e.g. campus" pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" required aria-label="New system name">
@@ -68,7 +68,7 @@ on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retr
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="version" value="{{ version }}">
   <input type="hidden" name="system" value="{{ selected }}">
-  <fieldset class="plain full-form" {{ 'disabled' if not can('admin') }}>
+  <fieldset class="plain full-form" {{ 'disabled' if not can('edit_settings') }}>
   {% for title, fields in sections %}
     <h2 class="full">{{ title }}</h2>
     {% if selected and title.startswith('BAS system') %}
@@ -100,7 +100,7 @@ on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retr
       <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
       <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label></div>
   {% endif %}
-  {% if can('admin') %}
+  {% if can('edit_settings') %}
   <div class="buttons full">
     <button class="primary" {{ 'disabled' if error }}>Save</button>
     <a class="button" href="{{ url_for('connection', system=selected) }}">Discard changes</a>
@@ -121,7 +121,7 @@ on the <a href="{{ url_for('alerts') }}">Alerts</a> page; safety limits and retr
     <span class="hint">checks 25Live and this system — its reachability and every target — using the saved settings; writes nothing</span>
   </form>
   {% endif %}
-  {% if can('admin') %}
+  {% if can('edit_settings') %}
   <form method="post" action="{{ url_for('system_delete', name=selected) }}" class="inline"
         data-confirm="Remove the system '{{ selected }}' from config.yaml?">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">

@@ -25,8 +25,9 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
-from . import __version__, safety
+from . import __version__, extras, safety
 from .collegenet import CollegeNetClient, CollegeNetError
+from .config import ConfigError
 from .drivers import build_driver
 from .lock import RunLock
 from .model import Destination
@@ -181,8 +182,23 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
         return _done(report, EXIT_FETCH_FAILED, "25Live fetch failed")
     report.event_count = len(events)
 
+    try:
+        extra = extras.expand(cfg.get("extra_bookings_file"), space_map, tz,
+                              cfg["collegenet"]["lookahead_days"])
+    except ConfigError as exc:
+        # Which schedules its rows drive is unknowable, so nothing is safe to
+        # write: leaving them out would stand those rooms down.
+        logging.error("Extra bookings can't be read — %s. Nothing will be written "
+                      "until the file is fixed.", exc)
+        return _done(report, EXIT_NO_MAP, "extra bookings file unreadable; nothing written")
+    extras.log_expansion(extra)
+    report.extra_bookings = extra.occurrences
+    report.extra_errors = list(extra.errors)
+    report.map_warnings.extend(extra.warnings)
+    map_problem = map_problem or bool(extra.errors)
+
     builder = ScheduleBuilder(cfg["collegenet"]["merge_gap_minutes"])
-    schedule = builder.build(events, space_map)
+    schedule = builder.build(events + extra.events, space_map, extra.windows)
 
     # Every schedule this map owns — including roll-ups and rooms with no
     # bookings this week, which must be actively cleared rather than left
@@ -201,18 +217,20 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     # them now would drop that room's bookings from its corridor and building.
     # Reported even when no healthy room still feeds one, so the email says
     # which buildings were left alone.
-    held = {d for d in space_map.held if not only_system or d.system == only_system}
+    held = {d for d in space_map.held | extra.held
+            if not only_system or d.system == only_system}
     if held:
         logging.warning(
-            "Not writing %d roll-up schedule(s) this run because a broken room "
-            "row feeds them; they keep their current schedule: %s", len(held),
+            "Not writing %d schedule(s) this run because a broken room-map row "
+            "or extra booking feeds them; they keep their current schedule: %s",
+            len(held),
             ", ".join(sorted(str(d) for d in held)[:10])
             + (f" (+{len(held) - 10} more)" if len(held) > 10 else ""))
         for dest in sorted(held, key=str):
             report.add_schedule(
                 dest.system, dest.target, space_map.labels.get(dest, dest.target),
                 schedule.get(dest, []), "not written",
-                "held: a room that rolls up into it has a broken row "
+                "held: a broken room-map row or extra booking feeds it "
                 "(see Problems); its current schedule is left as it is")
         all_destinations = all_destinations - held
         schedule = {d: w for d, w in schedule.items() if d not in held}
@@ -266,9 +284,13 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
         return _done(report, code, f"{c['failed']} write failure(s), "
                                    f"{c['written']} schedule(s) written")
     if map_problem:
-        return _done(report, EXIT_NO_MAP,
-                     f"{len(space_map.errors)} broken room-map row(s) left out; "
-                     f"{c['written']} schedule(s) written")
+        broken = []
+        if space_map.errors:
+            broken.append(f"{len(space_map.errors)} broken room-map row(s)")
+        if extra.errors:
+            broken.append(f"{len(extra.errors)} broken extra booking(s)")
+        return _done(report, EXIT_NO_MAP, f"{' and '.join(broken)} left out; "
+                                          f"{c['written']} schedule(s) written")
     return _done(report, EXIT_OK, f"{c['written']} schedule(s) written")
 
 
@@ -461,6 +483,21 @@ def run_validate(cfg: dict, config_warnings: Optional[list] = None) -> int:
             detail += f" (+{len(space_map.errors) - 5} more)"
     checks.append(("Room map loads", map_ok, detail))
     notes.extend(space_map.warnings)
+
+    extra_path = cfg.get("extra_bookings_file")
+    if extra_path and Path(extra_path).exists():
+        try:
+            extra = extras.expand(extra_path, space_map, tz,
+                                  cfg["collegenet"]["lookahead_days"])
+        except ConfigError as exc:
+            checks.append(("Extra bookings load", False, str(exc)))
+        else:
+            detail = (f"{extra.occurrences} occurrence(s) in the next "
+                      f"{cfg['collegenet']['lookahead_days']} day(s)")
+            if extra.errors:
+                detail = "; ".join(extra.errors[:5])
+            checks.append(("Extra bookings load", not extra.errors, detail))
+            notes.extend(extra.warnings)
 
     base_url = cfg["collegenet"].get("base_url")
     checks.append(("25Live base_url configured", bool(base_url),

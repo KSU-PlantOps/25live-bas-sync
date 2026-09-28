@@ -14,11 +14,17 @@
   <div class="flash error"><strong>The sync would refuse to start:</strong> {{ health.config_error }}
     <a href="{{ url_for('connection') }}">Connection</a> · <a href="{{ url_for('file_edit', name='config') }}">Edit config.yaml</a></div>
 {% endif %}
+{% if updates and updates.available %}
+  <div class="flash info"><strong>{{ updates.latest.name }}</strong> is available (this is {{ updates.current }}).
+    <a href="{{ updates.latest.url }}">What's new</a> · <a href="{{ url_for('service_page') }}">How to update</a></div>
+{% endif %}
 {% set missing = secrets | rejectattr(2) | list %}
 {% if missing %}
   <div class="flash warn">Not set in the service's environment:
     {% for var, purpose, _ in missing %}<code>{{ var }}</code> ({{ purpose }}){{ ", " if not loop.last }}{% endfor %}.
-    Passwords are never stored in the settings files — put them in <code>.env</code> and restart the container.</div>
+    Set them on the {% if can('edit_passwords') %}<a href="{{ url_for('connection') }}">Connection</a> and
+    <a href="{{ url_for('alerts') }}">Alerts</a>{% else %}Connection and Alerts{% endif %} pages, or in <code>.env</code>
+    (then <code>docker compose up -d</code>).</div>
 {% endif %}
 {% if health.map_errors %}
   <div class="flash warn"><strong>{{ health.map_errors | length }} room map problem(s).</strong>
@@ -28,7 +34,7 @@
   </div>
 {% endif %}
 
-{% if can('admin') and (not health.config_exists or not health.counts.systems or not health.counts.rooms) %}
+{% if can('edit_settings') and (not health.config_exists or not health.counts.systems or not health.counts.rooms) %}
 <section class="card">
   <h2>Getting started</h2>
   <ol class="steps">
@@ -69,7 +75,7 @@
     {% endif %}
     {% if service.pending_since %}<p class="hint">A sync is due and will start when the running job finishes.</p>{% endif %}
     {% if service.schedule.error %}<p class="bad">{{ service.schedule.error }}</p>{% endif %}
-    {% if can('view_all') %}<p><a href="{{ url_for('schedule') }}">{{ 'Change' if can('admin') else 'See' }} the schedule</a></p>{% endif %}
+    {% if can('view_all') %}<p><a href="{{ url_for('schedule') }}">{{ 'Change' if can('edit_settings') else 'See' }} the schedule</a></p>{% endif %}
   </section>
   <section class="card">
     <h2>Room map</h2>

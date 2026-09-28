@@ -24,11 +24,11 @@
 <p class="hint">Who hears about each run: the run report by email, a short message by webhook, and a
 dead-man's-switch ping. <code>alerts:</code> and <code>monitoring:</code> in config.yaml.</p>
 {% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
-{% if not can('admin') %}<p class="flash warn">Read-only: changing these needs the Admin role.</p>{% endif %}
+{% if not can('edit_settings') %}<p class="flash warn">Read-only: your role can't change these settings.</p>{% endif %}
 <form method="post" class="card form">
   <input type="hidden" name="csrf" value="{{ csrf_token }}">
   <input type="hidden" name="version" value="{{ version }}">
-  <fieldset class="plain full-form" {{ 'disabled' if not can('admin') }}>
+  <fieldset class="plain full-form" {{ 'disabled' if not can('edit_settings') }}>
   <h2 class="full">Alerts</h2>
   {{ check('alerts.enabled', 'Send alerts', alerts.enabled, 'on — nothing is sent while this is off') }}
   {{ check('alerts.notify_on_success', 'Every run', alerts.notify_on_success, 'also after a successful run, not only on failure') }}
@@ -59,7 +59,7 @@ dead-man's-switch ping. <code>alerts:</code> and <code>monitoring:</code> in con
 
   <h2 class="full">Webhook (Slack, Teams, …)</h2>
   {% if webhook_env %}<p class="full hint">The URL comes from <code>BAS_ALERT_WEBHOOK_URL</code> in the environment, which wins.</p>{% endif %}
-  {{ text('alerts.webhook_url', 'URL', alerts.webhook_url if can('admin') else ('(set)' if alerts.webhook_url else ''),
+  {{ text('alerts.webhook_url', 'URL', alerts.webhook_url if can('edit_settings') else ('(set)' if alerts.webhook_url else ''),
           'anyone with this URL can post to the channel — treat it as a password') }}
   {{ choice('alerts.webhook_format', 'Format', alerts.webhook_format or 'slack',
             [('slack', 'Slack'), ('teams', 'Microsoft Teams (Workflows)'), ('generic', 'generic JSON')]) }}
@@ -74,7 +74,7 @@ dead-man's-switch ping. <code>alerts:</code> and <code>monitoring:</code> in con
       <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
       <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label></div>
   {% endif %}
-  {% if can('admin') %}<div class="buttons full"><button class="primary">Save</button></div>{% endif %}
+  {% if can('edit_settings') %}<div class="buttons full"><button class="primary">Save</button></div>{% endif %}
   </fieldset>
 </form>
 

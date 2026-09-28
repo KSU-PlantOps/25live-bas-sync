@@ -73,13 +73,16 @@ covers:
 - the merge/roll-up logic, and the loader and its inheritance rules
 - config validation, the safety rail and its state file
 - the 25Live client's paging, cancellation and fetch-window handling
+- extra bookings: reading them, their occurrences and buffers, and a whole
+  run with them
 - the email/webhook reports, the service's scheduler (DST included), its job
-  runner and run history
-- the web UI: sign-in and lockout, Entra sign-in and roles, CSRF, every editing
-  page, concurrent-edit and confirmation handling, branding, and the sandboxed
-  report view
+  runner, run history, restarting in place, and the update check
+- the web UI: sign-in and lockout, Entra sign-in, roles and capabilities,
+  CSRF, every editing page, concurrent-edit and confirmation handling,
+  branding, and the sandboxed report view
 - the editors' shared save logic
-- the release helper (`.github/scripts/release_info.py`)
+- the release helper (`.github/scripts/release_info.py`), and every link in
+  the documentation
 
 With BACpypes3 installed it also runs the **BACnet driver against simulated
 controllers** over real BACnet/IP on loopback. Those tests cover value types,
@@ -96,8 +99,10 @@ check.
 | `main.py` | CLI entry point from a checkout (the CLI itself is `bassync/cli.py`). |
 | `bassync/` | The sync engine (importable, unit-tested). |
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
-| `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI), its job runner, and the run history. |
-| `bassync/web/` | The web UI (Flask): pages, templates and static files; `access.py` (roles and branding) and `entra.py` (Microsoft sign-in). |
+| `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI, restarting in place), its job runner, and the run history. |
+| `bassync/extras.py` | Extra bookings: occupancy that isn't in 25Live. |
+| `bassync/updates.py` | Whether a newer release is out (GitHub's releases API). |
+| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
 | `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
 | `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
 | `bassync/editor.py` · `editor.py` · `Edit-Rooms.bat` | The desktop editor (Tkinter), its launcher, and a double-click launcher for Windows. |
@@ -106,6 +111,7 @@ check.
 | `pyproject.toml` | Package metadata (`pip install .`) and tool settings. |
 | `tests/` · `Test.py` | The pytest suite, and a `python Test.py` shortcut to it. |
 | `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` · `.env.example` | The container image, the compose service, its entrypoint (`serve` or one-shot `sync`), and the secrets template. |
+| `contrib/systemd/` | A host-side timer that keeps the container on the newest patch release. |
 | `docs/` | The documentation. `docs/images/` holds the screenshots, taken from a demo site, and `social-preview.png`, the repository's social preview (Settings → General). |
 | `.github/` | CI and release workflows, the release helper script, Dependabot, and the issue and pull request templates. |
 

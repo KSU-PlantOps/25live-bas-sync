@@ -6,7 +6,43 @@ semantic versioning from 1.0 onward.
 
 ## [Unreleased]
 
+### Added
+- **Extra bookings**: occupancy the sync schedules that isn't in 25Live — an
+  open house, an evening shift, a building 25Live doesn't have. One day, or
+  every week on chosen days between optional dates, on a room, a floor or a
+  whole building, with or without the run-up and run-down. They're added on
+  the web UI's new **Bookings** page (or in `extra_bookings.yaml`), written
+  like 25Live bookings, never counted as 25Live bookings by the safety check,
+  counted in the run report and checked by `--validate`. A broken one is
+  left out and holds the schedules it would drive, like a broken room-map row.
+- **Roles you can change**: the Access page shows the roles as a table of
+  capabilities — see the basics, see everything, sync, run the tools, stop a
+  job, force, edit the room map, edit extra bookings, edit settings, set
+  passwords, see the activity log, restart, manage access. Change what each
+  role may do, rename, add and delete roles, or restore the built-in three,
+  which stay the defaults. Someone in several groups gets every capability of
+  every role they're in.
+- **Settings → Safety**: the mass-clear check (on or off, the share of
+  schedules one run may clear, the fewest 25Live bookings), what a broken row
+  does, and retries, with the current baseline.
+- **Settings → Service**: restart the service from the web UI — in place, in
+  a few seconds, nobody signed out, and not while a job runs or a scheduled
+  sync is due; the version and whether a newer release is out (checked on
+  GitHub twice a day, and can be turned off), with a note for Admins on the
+  status page; what's running, where the web UI listens, and when the HTTPS
+  certificate expires.
+- `contrib/systemd/`: a host-side timer that keeps the container on the
+  newest patch release (docs/docker.md, "Updating automatically"). The
+  container can't safely update itself.
+
 ### Changed
+- **Every building and floor in the room map is managed**, whether or not any
+  room rolls up into it: with no bookings its schedule is cleared, like any
+  other, and `--validate` checks its target. Before, a building with no rooms
+  was never written.
+- Every web UI page and action checks a specific capability instead of the
+  role, and a refusal says which capability was missing. The local password
+  still has every capability.
 - **Documentation**: the README is now a short landing page with screenshots,
   and the full documentation lives in `docs/` — running with Docker, the web
   UI, configuration, BAS setup by vendor, networking, 25Live, reports and
@@ -18,6 +54,8 @@ semantic versioning from 1.0 onward.
 ### Fixed
 - Web UI: a contact email address or phone number no longer breaks across two
   lines on the sign-in page and in the footer.
+- The status page said missing passwords go in `.env` only; they can be set
+  on the Connection and Alerts pages too.
 
 ## [1.3.0rc1] — 2026-09-27 — Web UI, and Docker as the way to run it
 

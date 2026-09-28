@@ -263,6 +263,8 @@ def main(argv=None) -> int:
     space_map_path = args.space_map or os.environ.get("BAS_SPACE_MAP")
     if space_map_path:
         cfg["space_map_file"] = space_map_path
+    if os.environ.get("BAS_EXTRA_BOOKINGS"):
+        cfg["extra_bookings_file"] = os.environ["BAS_EXTRA_BOOKINGS"]
     if cfg["log_file"] is None:
         cfg["log_file"] = default_log_file()
 

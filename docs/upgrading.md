@@ -6,10 +6,25 @@ Read the section for the version you're coming from, and each one after it.
 Run `--validate` and `--dry-run` after upgrading, as always. Every release's
 changes are in [CHANGELOG.md](../CHANGELOG.md).
 
+- [From 1.3.0rc1](#from-130rc1)
 - [From 1.2](#from-12)
 - [From 1.1](#from-11)
 - [Moving off the niagara driver](#moving-off-the-niagara-driver)
 - [From a pre-1.0 release](#from-a-pre-10-release)
+
+## From 1.3.0rc1
+
+Nothing to edit. Two things behave differently:
+
+1. **A building or floor with no rooms rolling up into it is now written** —
+   cleared when nothing books it, and checked by `--validate` — so that extra
+   bookings can drive a building that isn't in 25Live. Before, such an entry
+   was never touched. Run `--validate` and make sure each one points at a
+   booking schedule the sync may own.
+2. **Roles are capabilities now.** Basic, Advanced and Admin do what they did,
+   plus the new pages: Advanced can edit extra bookings; Admin can use the
+   Safety and Service pages. Someone in several groups gets every capability
+   of every role they're in — with the built-in roles, the same as before.
 
 ## From 1.2
 

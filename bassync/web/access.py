@@ -4,20 +4,21 @@
 """
 Roles, what each may do, and the web UI's access settings.
 
-Three roles, each including the one before:
+A role is a name and a set of capabilities (CAPABILITY_LIST). Three come
+built in, and are what a site gets until it changes them on the Access page:
 
     basic     the status page and sync history; Sync now (every system)
     advanced  everything visible; the tools (dry run, validate, discover,
               test alert), a sync of one system, stopping a job; adding and
-              editing rooms, buildings and floors
-    admin     full control: connection, systems, passwords, alerts, defaults,
-              schedule, the raw files, access and sign-in settings, and
-              Force (overriding the mass-clear safety check)
+              editing rooms, buildings, floors and extra bookings
+    admin     everything, including capabilities added in later versions
 
 Who gets which role is `web.yaml`, beside config.yaml, edited on the Access
-page: Microsoft Entra ID sign-in, and which Entra groups may sign in with
-which role. The local password (BAS_WEB_PASSWORD) is Admin, for setting SSO up
-and for getting back in when it breaks; it can be switched off once SSO works.
+page: the roles, Microsoft Entra ID sign-in, and which Entra groups may sign
+in with which role. Someone in several groups gets every capability of every
+role they're in. The local password (BAS_WEB_PASSWORD) has every capability,
+for setting SSO up and for getting back in when it breaks; it can be switched
+off once SSO works.
 """
 
 import re
@@ -28,13 +29,43 @@ import yaml
 
 from .. import mapedit
 
-ROLES = ("basic", "advanced", "admin")
-ROLE_LABELS = {"basic": "Basic", "advanced": "Advanced", "admin": "Admin"}
+# (capability, what it allows, heading), in the order the Access page shows.
+CAPABILITY_LIST = (
+    ("view_basic", "See the status page and the sync history", "See"),
+    ("view_all", "See everything else: jobs, the room map, extra bookings, "
+                 "settings and logs (read-only)", "See"),
+    ("sync", "Sync now, every system", "Run"),
+    ("run_tools", "Dry run, Validate, Discover and Test alert; sync one system", "Run"),
+    ("stop_job", "Stop a running job", "Run"),
+    ("force", "Force a sync past the mass-clear safety check", "Run"),
+    ("edit_map", "Add and edit rooms, buildings and floors", "Change"),
+    ("edit_bookings", "Add and edit extra bookings", "Change"),
+    ("edit_settings", "Change the connection, systems, alerts, schedule, defaults, "
+                      "safety limits and the settings files", "Administer"),
+    ("edit_passwords", "Set and clear stored passwords", "Administer"),
+    ("view_activity", "See the activity log: who did what", "Administer"),
+    ("restart", "Restart the service, and check for updates", "Administer"),
+    ("manage_access", "Change sign-in, roles and appearance — which can grant "
+                      "any capability, so give it only to administrators", "Administer"),
+)
+ALL_CAPABILITIES = tuple(c for c, _label, _heading in CAPABILITY_LIST)
+CAPABILITY_LABELS = {c: label for c, label, _heading in CAPABILITY_LIST}
+# What a capability is no use without, added whenever a role is saved: every
+# page but the status page needs view_all, and Force is a kind of sync.
+NEEDS: dict = {c: ("view_basic", "view_all") for c in ALL_CAPABILITIES}
+NEEDS.update({"view_basic": (), "view_all": ("view_basic",),
+              "sync": ("view_basic",), "force": ("view_basic", "sync")})
 
-_BASIC = {"view_basic", "sync"}
-_ADVANCED = _BASIC | {"view_all", "run_tools", "stop_job", "edit_map"}
-_ADMIN = _ADVANCED | {"force", "admin"}
-CAPABILITIES = {"basic": _BASIC, "advanced": _ADVANCED, "admin": _ADMIN}
+DEFAULT_ROLES = (
+    {"id": "basic", "name": "Basic", "capabilities": ["view_basic", "sync"]},
+    {"id": "advanced", "name": "Advanced",
+     "capabilities": ["view_basic", "view_all", "sync", "run_tools", "stop_job",
+                      "edit_map", "edit_bookings"]},
+    # "all" also grants capabilities added by later versions.
+    {"id": "admin", "name": "Admin", "capabilities": "all"},
+)
+EVERYTHING = frozenset(ALL_CAPABILITIES)
+_ROLE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
 
 AUTHORITY_HOSTS = {
     "login.microsoftonline.com": "Global (commercial and education tenants)",
@@ -51,8 +82,59 @@ WEB_HEADER = """\
 """
 
 
-def can(role: Optional[str], capability: str) -> bool:
-    return capability in CAPABILITIES.get(role or "", set())
+def can(capabilities, capability: str) -> bool:
+    return capability in (capabilities or ())
+
+
+def complete(capabilities) -> list:
+    """The capabilities, with what each needs, in CAPABILITY_LIST order."""
+    have = {c for c in capabilities if c in CAPABILITY_LABELS}
+    for c in list(have):
+        have.update(NEEDS[c])
+    return [c for c in ALL_CAPABILITIES if c in have]
+
+
+def role_capabilities(role: dict) -> frozenset:
+    caps = role.get("capabilities")
+    return EVERYTHING if caps == "all" else frozenset(caps or ())
+
+
+def default_roles() -> list:
+    return [dict(r, capabilities=r["capabilities"] if r["capabilities"] == "all"
+                 else list(r["capabilities"])) for r in DEFAULT_ROLES]
+
+
+def clean_roles(data) -> list:
+    """The roles section, checked: unique ids, a name each, known capabilities
+    (plus what they need). Missing or unusable, it's the built-in three."""
+    if not isinstance(data, list):
+        return default_roles()
+    out: list = []
+    for row in data:
+        if not isinstance(row, dict):
+            continue
+        rid = str(row.get("id") or "").strip().lower()
+        if not _ROLE_ID.match(rid) or any(r["id"] == rid for r in out):
+            continue
+        name = str(row.get("name") or rid).strip()[:40] or rid
+        caps = row.get("capabilities")
+        out.append({"id": rid, "name": name,
+                    "capabilities": "all" if caps == "all" else complete(
+                        caps if isinstance(caps, list) else [])})
+    return out or default_roles()
+
+
+def role_names(settings: dict) -> dict:
+    return {r["id"]: r["name"] for r in settings["roles"]}
+
+
+def new_role_id(name: str, settings: dict) -> str:
+    base = re.sub(r"[^a-z0-9]+", "_", name.strip().lower()).strip("_")[:30] or "role"
+    taken = {r["id"] for r in settings["roles"]}
+    rid, n = base, 2
+    while rid in taken:
+        rid, n = f"{base}_{n}", n + 1
+    return rid
 
 
 def is_guid(value) -> bool:
@@ -63,7 +145,8 @@ def empty() -> dict:
     return {"sso": {"enabled": False, "tenant_id": "", "client_id": "",
                     "authority_host": "login.microsoftonline.com",
                     "public_url": ""},
-            "groups": [], "local_password": True, "branding": empty_branding()}
+            "groups": [], "local_password": True, "roles": default_roles(),
+            "updates": {"check": True}, "branding": empty_branding()}
 
 
 # ── branding (the Appearance page) ───────────────────────────────────────────
@@ -151,12 +234,17 @@ def load(path: Path) -> tuple:
     out["sso"]["enabled"] = sso.get("enabled") is True
     out["local_password"] = data.get("local_password", True) is not False
     out["branding"] = branding_from(data.get("branding"))
+    out["roles"] = clean_roles(data.get("roles"))
+    updates = data["updates"] if isinstance(data.get("updates"), dict) else {}
+    out["updates"]["check"] = updates.get("check", True) is not False
     for row in data.get("groups") or []:
-        if not isinstance(row, dict) or row.get("role") not in ROLES:
+        # A group whose role doesn't exist is kept (and shown as such on the
+        # Access page) but grants nothing.
+        if not isinstance(row, dict) or not str(row.get("role") or "").strip():
             continue
         group = clean_group(row.get("group"))
         if group:
-            out["groups"].append({"group": group, "role": row["role"],
+            out["groups"].append({"group": group, "role": str(row["role"]).strip().lower(),
                                   "note": str(row.get("note") or "").strip()})
     return out, ""
 
@@ -170,6 +258,11 @@ def clean_group(value) -> str:
 
 
 def save(path: Path, settings: dict) -> bool:
+    settings = dict(settings)
+    # The built-in roles aren't written out while they're unchanged, so a
+    # later version's new capabilities reach them.
+    if settings.get("roles") == default_roles():
+        settings.pop("roles")
     body = yaml.safe_dump(settings, sort_keys=False, default_flow_style=False,
                           allow_unicode=True)
     return mapedit.write_if_changed(path, WEB_HEADER + "\n" + body)
@@ -199,15 +292,20 @@ def matching(groups, settings: dict) -> list:
     return [row["group"] for row in settings["groups"] if row["group"].lower() in mine]
 
 
-def role_for(groups, settings: dict) -> Optional[str]:
-    """The highest role any of the user's groups has; None if none may sign in."""
+def roles_for(groups, settings: dict) -> list:
+    """The roles (ids, in the roles' order) the user's groups give them."""
     mine = {str(g).strip().lower() for g in groups or ()}
-    best = None
-    for row in settings["groups"]:
-        if row["group"].lower() in mine and (
-                best is None or ROLES.index(row["role"]) > ROLES.index(best)):
-            best = row["role"]
-    return best
+    wanted = {row["role"] for row in settings["groups"] if row["group"].lower() in mine}
+    return [r["id"] for r in settings["roles"] if r["id"] in wanted]
+
+
+def capabilities_of(role_ids, settings: dict) -> frozenset:
+    """Every capability of every one of the roles."""
+    out: set = set()
+    for role in settings["roles"]:
+        if role["id"] in role_ids:
+            out |= role_capabilities(role)
+    return frozenset(out)
 
 
 def lockout_problem(settings: dict, sso_ready: bool) -> Optional[str]:
@@ -217,7 +315,10 @@ def lockout_problem(settings: dict, sso_ready: bool) -> Optional[str]:
     if not (settings["sso"]["enabled"] and sso_ready):
         return ("The local password can only be turned off once single sign-on "
                 "is on and working.")
-    if not any(row["role"] == "admin" for row in settings["groups"]):
-        return ("With the local password off, at least one group must have the "
-                "Admin role, or nobody could change these settings again.")
+    managers = {r["id"] for r in settings["roles"]
+                if "manage_access" in role_capabilities(r)}
+    if not any(row["role"] in managers for row in settings["groups"]):
+        return ("With the local password off, at least one group must have a role "
+                "that can change sign-in and roles, or nobody could change these "
+                "settings again.")
     return None

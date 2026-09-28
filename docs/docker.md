@@ -10,8 +10,10 @@ schedule and serves the [web UI](web-ui.md).
 - [BACnet needs host networking](#bacnet-needs-host-networking)
 - [The config folder](#the-config-folder)
 - [State, logs and the schedule](#state-logs-and-the-schedule)
+- [Restarting](#restarting)
 - [Using a published image](#using-a-published-image)
 - [Updating](#updating)
+- [Updating automatically](#updating-automatically)
 - [Environment variables](#environment-variables)
 
 ## Quick start
@@ -86,8 +88,8 @@ it — see [Security](web-ui.md#security).
 ## The config folder
 
 `./config` is mounted read-write at `/config`: the web UI saves `config.yaml`,
-`defaults.yaml`, `space_mapping.yaml` and `web.yaml` there (and an uploaded
-logo). The container starts as root only long enough to sort out file
+`defaults.yaml`, `space_mapping.yaml`, `extra_bookings.yaml` and `web.yaml`
+there (and an uploaded logo). The container starts as root only long enough to sort out file
 ownership, then runs as **whoever owns that folder on the host**, so the files
 stay yours and you can still edit them there.
 
@@ -134,6 +136,19 @@ Passwords are never baked into the image. They come from the environment
 (`.env`), or from the web UI, which keeps them in the state volume
 (`state/secrets.json`, readable only by the service).
 
+## Restarting
+
+**Settings → Service → Restart the service** (the *restart* capability — Admin
+by default) stops the service and starts it again in place, in a few
+seconds, with nobody signed out. Settings made on the web UI apply without it;
+restart to load a renewed HTTPS certificate, after changing where logs or
+state are kept, or if something seems stuck. It isn't offered while a job is
+running or a scheduled sync is minutes away.
+
+It doesn't re-read the container's environment. After changing `.env`, run
+`docker compose up -d` on the host, which recreates the container with the
+new values; `docker compose restart` keeps the old ones.
+
 ## Using a published image
 
 Each [release](https://github.com/KSU-PlantOps/25live-bas-sync/releases) is
@@ -165,7 +180,38 @@ docker compose pull
 docker compose up -d
 ```
 
-The config folder and the volumes carry over.
+The config folder and the volumes carry over. **Settings → Service** says
+when a newer release is out: the service asks GitHub's releases API twice a
+day (turn it off there if the host shouldn't reach GitHub), and Admins see a
+note on the status page.
+
+## Updating automatically
+
+The container can't update itself: replacing its own image would need the
+Docker socket mounted inside it, which is root on the host — a poor trade for
+a service on a controls network. The host can do it on a timer instead.
+
+With a published image on a **minor-version tag** (`:1.3`), a timer that runs
+`docker compose pull` and `docker compose up -d` picks up each patch release —
+fixes only, no settings to change — and recreates the container only when the
+image has changed. A sync that is writing gets to finish first. Minor and
+major releases (`1.4`, `2.0`) stay a deliberate change of tag, after reading
+[Upgrading](upgrading.md); don't point a timer at `:latest`.
+
+`contrib/systemd/` has the units, for Linux hosts with systemd:
+
+```bash
+sudo cp contrib/systemd/25live-bas-sync-update.* /etc/systemd/system/
+# If docker-compose.yml isn't in /opt/25live-bas-sync, set WorkingDirectory=:
+sudo systemctl edit 25live-bas-sync-update.service
+sudo systemctl enable --now 25live-bas-sync-update.timer
+systemctl list-timers 25live-bas-sync-update.timer     # when it runs next
+journalctl -u 25live-bas-sync-update.service            # what it did
+```
+
+The timer runs mid-morning on Tuesdays, away from the nightly sync and when
+someone is around to notice; change `OnCalendar=` in the timer to suit.
+Without systemd, the same two commands from cron do the job.
 
 ## Environment variables
 
@@ -184,6 +230,7 @@ Set these in `.env`; every variable in it is passed into the container.
 | `BAS_SYS_<NAME>_PASSWORD` | One per BAS system that logs in (the `rest` driver) — see [Secrets](configuration.md#secrets). |
 | `BAS_SMTP_PASSWORD` | The alert email account's password. |
 | `BAS_ALERT_WEBHOOK_URL` | The alert webhook, instead of keeping it in `config.yaml`. |
+| `BAS_EXTRA_BOOKINGS` | Where the extra bookings are, if not `extra_bookings.yaml` beside `config.yaml`. |
 | `TZ` | The container's clock and log timestamps. The sync and its schedule use `timezone:` in `config.yaml`. |
 | `PUID` · `PGID` | Run as this user and group instead of the config folder's owner. |
 | `SYNC_AT` · `SYNC_ON_START=1` | 1.x settings, still honoured: override the schedule's times with one `HH:MM`, and run once at start. |

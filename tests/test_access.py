@@ -252,7 +252,7 @@ def test_settings_that_would_lock_everyone_out_are_refused(site):
     configure_sso(site, groups=[GROUPS[0]])
     r = post(c, "/settings/access", {"enabled": "1", "tenant_id": TENANT, "client_id": CLIENT,
                                      "authority_host": "login.microsoftonline.com"})
-    assert r.status_code == 422 and "Admin role" in r.text
+    assert r.status_code == 422 and "can change sign-in and roles" in r.text
     assert access.load(site.paths.web_file)[0]["local_password"] is True
 
 

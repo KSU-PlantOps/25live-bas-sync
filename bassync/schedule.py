@@ -19,6 +19,7 @@ Two merges happen, and the distinction matters when tuning:
 
 import logging
 from collections import defaultdict
+from typing import Optional
 
 from .model import Destination, OccupancyWindow
 
@@ -29,8 +30,12 @@ class ScheduleBuilder:
         # fallback when a space doesn't override merge_gap_minutes.
         self.default_merge_gap = default_merge_gap_minutes
 
-    def build(self, events: list, space_map) -> dict:
-        """Returns { Destination: [OccupancyWindow, ...] }."""
+    def build(self, events: list, space_map, extra_windows: Optional[dict] = None) -> dict:
+        """Returns { Destination: [OccupancyWindow, ...] }.
+
+        `extra_windows` are occupancy put straight onto building and floor
+        schedules (extra bookings, bassync/extras.py); they merge like any
+        other roll-up input."""
         spaces = getattr(space_map, "spaces", space_map)
 
         by_space: dict = defaultdict(list)
@@ -72,6 +77,9 @@ class ScheduleBuilder:
             elif sc.space_type == "building":
                 # A directly-booked common area (e.g. an atrium).
                 rollup_windows[sc.destination].extend(windows)
+
+        for dest, windows in (extra_windows or {}).items():
+            rollup_windows[dest].extend(windows)
 
         # Roll-ups: rooms plus any direct common-area bookings, merged across
         # spaces with the global default gap. A room's own gap override shapes

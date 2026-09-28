@@ -84,6 +84,41 @@
     };
     setTimeout(poll, 800);
   }
+  // Radio groups that show one set of fields or another (the booking form's
+  // one day / every week). Without script every field shows, which still works.
+  document.querySelectorAll("input[data-toggles]").forEach(function (radio) {
+    var name = radio.getAttribute("data-toggles");
+    var apply = function () {
+      var picked = document.querySelector("input[data-toggles='" + name + "']:checked");
+      document.querySelectorAll("[data-show-for^='" + name + "=']").forEach(function (el) {
+        el.hidden = !picked || el.getAttribute("data-show-for") !== name + "=" + picked.value;
+      });
+    };
+    radio.addEventListener("change", apply);
+    apply();
+  });
+  // The restart page: wait for the service to come back as a new process
+  // (its boot id changes), then return.
+  var restarting = document.getElementById("restarting");
+  if (restarting) {
+    var oldBoot = restarting.getAttribute("data-boot");
+    var began = Date.now();
+    var check = function () {
+      fetch(restarting.getAttribute("data-health"), {cache: "no-store", credentials: "same-origin"})
+        .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+        .then(function (data) {
+          if (data.boot && data.boot !== oldBoot) {
+            window.location.href = restarting.getAttribute("data-next");
+          } else { setTimeout(check, 1000); }
+        })
+        .catch(function () { setTimeout(check, 1000); });
+      if (Date.now() - began > 45000) {
+        var slow = restarting.querySelector("[data-restart-slow]");
+        if (slow) { slow.hidden = false; }
+      }
+    };
+    setTimeout(check, 1500);
+  }
   document.querySelectorAll("pre[data-scroll-end]").forEach(function (p) { p.scrollTop = p.scrollHeight; });
 
   // The status page refreshes itself when a job starts or finishes.

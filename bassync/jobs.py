@@ -186,6 +186,15 @@ class JobManager:
                 return
         job.process.kill()
 
+    def close_if_idle(self) -> Optional[str]:
+        """Refuse new jobs from now on — if none is running. Returns the
+        running job's label instead, changing nothing, if one is."""
+        with self._lock:
+            if self._current is not None:
+                return self._current.label
+            self._stopping = True
+            return None
+
     # ── reading ──────────────────────────────────────────────────────────────
 
     @property
@@ -256,33 +265,51 @@ class JobManager:
         finally:
             if log is not None:
                 log.close()
-        job.exit_code = code
-        job.finished = datetime.now(timezone.utc).isoformat()
+        # Recorded and tidied up under the lock, and only then shown as
+        # finished: nothing can start, or see this job done, half-way through.
         with self._lock:
-            self._write_meta(job)
+            finished = datetime.now(timezone.utc).isoformat()
+            self._write_meta(job, dict(job.summary(), exit_code=code, finished=finished,
+                                       running=False))
+            self._prune(keep=job.id)
             self._recent.append(job)
+            job.exit_code = code
+            job.finished = finished
             self._current = None
         logging.info("[jobs] %s finished with exit code %d", job.label, code)
-        self._prune()
 
-    def _write_meta(self, job: Job) -> None:
+    def _write_meta(self, job: Job, summary: Optional[dict] = None) -> None:
         try:
             self.dir.mkdir(parents=True, exist_ok=True)
             tmp = self.dir / f".{job.id}.json.tmp"
-            tmp.write_text(json.dumps(job.summary()), encoding="utf-8")
+            tmp.write_text(json.dumps(summary or job.summary()), encoding="utf-8")
             os.replace(tmp, self.dir / f"{job.id}.json")
         except (OSError, TypeError, ValueError) as exc:
             logging.warning("[jobs] could not record job %s in %s: %s",
                             job.id, self.dir, exc)
 
-    def _prune(self) -> None:
+    def _prune(self, keep: str = "") -> None:
+        """Keep the newest KEEP_JOBS records and their output, and `keep`'s.
+        Oldest first by when each was last written: ids only go down to the
+        second, and the rest of an id is random."""
         try:
-            old = sorted(self.dir.glob("*.json"))[:-KEEP_JOBS]
+            records = []
+            for path in self.dir.glob("*.json"):
+                try:
+                    records.append((path.stat().st_mtime, path.name, path))
+                except FileNotFoundError:
+                    continue
+            logs = list(self.dir.glob("*.log"))
         except OSError:
             return
-        for path in old:
-            path.unlink(missing_ok=True)
-            path.with_suffix(".log").unlink(missing_ok=True)
+        records.sort()
+        kept = {path.stem for _mtime, _name, path in records[-KEEP_JOBS:]} | {keep}
+        for _mtime, _name, path in records:
+            if path.stem not in kept:
+                path.unlink(missing_ok=True)
+        for path in logs:                      # and output whose record is gone
+            if path.stem not in kept:
+                path.unlink(missing_ok=True)
 
     def _recover_interrupted(self) -> None:
         """A job still marked running from before a restart didn't finish."""

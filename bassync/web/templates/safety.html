@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block title %}Safety{% endblock %}
+{% block body %}
+<h1>Safety</h1>
+<p class="hint">The checks that stop a bad night from standing the campus down: <code>safety:</code> and <code>retry:</code>
+  in config.yaml.</p>
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+{% if not can('edit_settings') %}<p class="flash warn">Read-only: your role can't change these settings.</p>{% endif %}
+<form method="post" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="version" value="{{ version }}">
+  <fieldset class="plain full-form" {{ 'disabled' if not can('edit_settings') }}>
+  <h2>Mass-clear check</h2>
+  <p class="hint full">An expired 25Live account or a changed query returns no bookings, not an error. Each run compares
+    itself with the last, and refuses to write when too much would be cleared at once — <em>Force</em> gets past it when the
+    drop is real, at semester break.</p>
+  <label for="s-enabled">Check</label>
+  <div class="field"><label class="check"><input type="checkbox" id="s-enabled" name="enabled" value="1" {{ 'checked' if form.enabled }}> on</label></div>
+  <label for="s-max">Most schedules cleared at once</label>
+  <div class="field"><span class="inline-label"><input id="s-max" name="max_cleared" value="{{ form.max_cleared }}" inputmode="decimal" size="5"> %</span>
+    <small>of the schedules that had bookings last run; more than this and the run stops — default 34</small></div>
+  <label for="s-min">Fewest 25Live bookings</label>
+  <div class="field"><input id="s-min" name="min_events" value="{{ form.min_events }}" inputmode="numeric">
+    <small>fewer than this from 25Live and the run stops (extra bookings don't count) — default 1</small></div>
+
+  <h2>Broken rows</h2>
+  <span class="label">A row that won't read</span>
+  <div class="field">
+    <label class="check"><input type="radio" name="on_map_errors" value="skip" {{ 'checked' if form.on_map_errors == 'skip' }}>
+      Leave it out, and the schedules it feeds; sync the rest and alert (recommended)</label><br>
+    <label class="check"><input type="radio" name="on_map_errors" value="abort" {{ 'checked' if form.on_map_errors == 'abort' }}>
+      Write nothing anywhere until it's fixed</label>
+    <small>A row of the room map or of the extra bookings.</small>
+  </div>
+
+  <h2>Retries</h2>
+  <label for="s-attempts">Retries</label>
+  <div class="field"><input id="s-attempts" name="attempts" value="{{ form.attempts }}" inputmode="numeric">
+    <small>for a timeout or server error reading 25Live or the BAS; writes are never repeated — default 3</small></div>
+  <label for="s-backoff">Wait between retries</label>
+  <div class="field"><span class="inline-label"><input id="s-backoff" name="backoff" value="{{ form.backoff }}" inputmode="decimal" size="5"> seconds</span>
+    <small>doubling each time — default 2</small></div>
+
+  {% if confirm %}
+    <div class="flash warn full">
+      <ul class="compact">{% for p in confirm %}<li>{{ p }}</li>{% endfor %}</ul>
+      <label class="check"><input type="checkbox" name="confirm" value="1"> Save anyway</label>
+    </div>
+  {% endif %}
+  {% if can('edit_settings') %}<div class="buttons full"><button class="primary">Save</button></div>{% endif %}
+  </fieldset>
+</form>
+
+<section class="card">
+  <h2>Baseline</h2>
+  {% if baseline.status in ('ok', 'backup', 'legacy') %}
+    <p>From the run at {{ local_time(baseline.written_at) if baseline.written_at else '?' }}
+      <span class="hint">{{ relative(baseline.written_at) if baseline.written_at else '' }}</span>:
+      {{ baseline.occupied }} of {{ baseline.schedules }} schedule(s) had bookings, from {{ baseline.event_count }} 25Live booking(s).</p>
+    {% if baseline.status == 'backup' %}<p class="warn">The state file couldn't be read; this is its previous copy.</p>{% endif %}
+  {% elif baseline.status == 'corrupt' %}
+    <p class="bad">{{ baseline.path }} can't be read, so the next run has nothing to compare with.</p>
+  {% else %}
+    <p class="hint">None yet — the first live run is let through and sets it.</p>
+  {% endif %}
+  <p class="hint">Kept in <code>{{ baseline.path }}</code>. In Docker that's the <code>state</code> volume — keep it.</p>
+</section>
+{% endblock %}

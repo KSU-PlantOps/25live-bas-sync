@@ -12,7 +12,9 @@ import copy
 import hashlib
 import io
 import os
+import platform
 import re
+import ssl
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -23,7 +25,9 @@ from zoneinfo import available_timezones
 import yaml
 from flask import Response, abort, g, redirect, render_template, request, send_file, url_for
 
-from .. import history, mapedit, secretstore
+from .. import extras, history, mapedit, safety, secretstore
+from .. import updates as updates_mod
+from ..config import DEFAULTS as CONFIG_DEFAULTS
 from ..config import (
     STATE_PARAM_STYLES,
     ConfigError,
@@ -309,8 +313,11 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         service = svc()
         raw, _err = load_config_raw()
         runs = history.list_runs(files().runs_dir, limit=6)
+        updates = None
+        if access.can(g.caps, "restart"):
+            updates = service.updates.status(load_access()["updates"]["check"])
         return render_template(
-            "dashboard.html", health=health(), runs=runs,
+            "dashboard.html", health=health(), runs=runs, updates=updates,
             last_run=runs[0] if runs else None,
             jobs=service.jobs.recent(6), service=service,
             secrets=secret_status(raw),
@@ -347,9 +354,9 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             needed = "run_tools"
         if kind == "sync" and request.form.get("force"):
             needed = "force"
-        if not access.can(g.role, needed):
-            abort(403, "Your role can't start that. Basic users can sync every system; "
-                       "the tools need Advanced, and Force needs Admin.")
+        if not access.can(g.caps, needed):
+            abort(403, f"Your role ({g.role_label or 'none'}) can't start that: it needs "
+                       f"“{access.CAPABILITY_LABELS[needed]}”.")
         args: list = []
         system = (request.form.get("system") or "").strip()
         if system and kind in ("sync", "dry-run", "validate"):
@@ -630,7 +637,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             version=version_of(files().config), secrets=secret_status(raw)), status
 
     @app.route("/settings/connection", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def connection_save():
         system = request.form.get("system", "")
         driver = request.form.get("driver", "")
@@ -686,7 +693,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=system))
 
     @app.route("/settings/systems", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def system_add():
         name = (request.form.get("name") or "").strip()
         driver = request.form.get("driver") or "bacnet"
@@ -721,7 +728,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=name))
 
     @app.route("/settings/systems/<name>/delete", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def system_delete(name):
         with ctx()["write_lock"]:
             raw, error = load_config_raw()
@@ -755,7 +762,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── settings: defaults and schedule ──────────────────────────────────────
 
     @app.route("/settings/defaults", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def defaults():
         values = load_defaults()
         errors: list = []
@@ -788,7 +795,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                fields=mapedit.DEFAULTS_FIELDS, errors=errors)
 
     @app.route("/settings/schedule", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def schedule():
         service = svc()
         raw, error = load_config_raw()
@@ -842,10 +849,168 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                service=service, upcoming=upcoming,
                                sync_at=os.environ.get("SYNC_AT", ""))
 
+    # ── settings: safety ─────────────────────────────────────────────────────
+
+    @app.route("/settings/safety", methods=["GET", "POST"])
+    @requires("view_all", "edit_settings")
+    def safety_page():
+        raw, error = load_config_raw()
+        section = raw.get("safety") if isinstance(raw.get("safety"), dict) else {}
+        retry = raw.get("retry") if isinstance(raw.get("retry"), dict) else {}
+        builtin = CONFIG_DEFAULTS["safety"]
+        form = {"enabled": section.get("enabled", builtin["enabled"]) is not False,
+                "min_events": section.get("min_events", builtin["min_events"]),
+                "max_cleared": _percent(section.get("max_cleared_fraction",
+                                                    builtin["max_cleared_fraction"])),
+                "on_map_errors": section.get("on_map_errors", builtin["on_map_errors"]),
+                "attempts": retry.get("attempts", CONFIG_DEFAULTS["retry"]["attempts"]),
+                "backoff": retry.get("backoff_seconds",
+                                     CONFIG_DEFAULTS["retry"]["backoff_seconds"])}
+        errors: list = []
+        confirm: list = []
+        if request.method == "POST" and not error:
+            f = request.form
+            form = {"enabled": "enabled" in f, "min_events": f.get("min_events", "").strip(),
+                    "max_cleared": f.get("max_cleared", "").strip(),
+                    "on_map_errors": f.get("on_map_errors", ""),
+                    "attempts": f.get("attempts", "").strip(),
+                    "backoff": f.get("backoff", "").strip()}
+            numbers = {}
+            for key, label, kind, low, high in (
+                    ("min_events", "Fewest 25Live bookings", int, 0, 100000),
+                    ("max_cleared", "Most schedules cleared at once", float, 0, 100),
+                    ("attempts", "Retries", int, 0, 20),
+                    ("backoff", "Wait between retries", float, 0, 300)):
+                try:
+                    numbers[key] = kind(form[key])
+                except ValueError:
+                    errors.append(f"{label} must be a number.")
+                    continue
+                if not low <= numbers[key] <= high:
+                    errors.append(f"{label} must be between {low} and {high}.")
+            if form["on_map_errors"] not in ("skip", "abort"):
+                errors.append("Pick what a broken row does.")
+            if not errors:
+                new = copy.deepcopy(raw)
+                safety_new = new.setdefault("safety", {})
+                if not isinstance(safety_new, dict):
+                    safety_new = new["safety"] = {}
+                safety_new.update(enabled=form["enabled"], min_events=numbers["min_events"],
+                                  max_cleared_fraction=round(numbers["max_cleared"] / 100, 4),
+                                  on_map_errors=form["on_map_errors"])
+                retry_new = new.setdefault("retry", {})
+                if not isinstance(retry_new, dict):
+                    retry_new = new["retry"] = {}
+                retry_new.update(attempts=numbers["attempts"], backoff_seconds=numbers["backoff"])
+                confirm = _config_change_problems(raw, new)
+                if not form["enabled"] and section.get("enabled", True) is not False:
+                    confirm.insert(0, "With the mass-clear check off, nothing stops a run from "
+                                      "clearing every schedule when 25Live returns nothing.")
+                if not confirm or f.get("confirm"):
+                    if f.get("version") != version_of(files().config):
+                        errors.append("config.yaml changed since this page was opened. "
+                                      "Reload it and redo your change.")
+                    else:
+                        try:
+                            with ctx()["write_lock"]:
+                                mapedit.save_config(files().config, new)
+                        except OSError as exc:
+                            errors.append(_write_error(exc))
+                        else:
+                            audit("saved the safety settings (check %s, max %s%% cleared, "
+                                  "min %s bookings, broken rows: %s)",
+                                  "on" if form["enabled"] else "OFF", form["max_cleared"],
+                                  numbers["min_events"], form["on_map_errors"])
+                            notice("Saved the safety settings.")
+                            return redirect(url_for("safety_page"))
+        elif error:
+            errors.append(f"config.yaml can't be read: {error}. Fix it under Files first.")
+        state_path = Path(str(section.get("state_file") or "") or files().state_dir / "last_run.json")
+        state, status = safety.load_state_with_status(str(state_path))
+        windows = state.get("windows") if isinstance(state.get("windows"), dict) else {}
+        baseline = {"status": status, "path": state_path,
+                    "written_at": state.get("written_at"),
+                    "event_count": state.get("event_count"),
+                    "schedules": len(windows),
+                    "occupied": sum(1 for n in windows.values() if n)}
+        return render_template("safety.html", form=form, errors=errors, confirm=confirm,
+                               version=version_of(files().config), baseline=baseline), (
+            422 if errors or confirm else 200)
+
+    # ── settings: the service (restart, updates) ─────────────────────────────
+
+    @app.route("/settings/service")
+    @requires("view_all")
+    def service_page():
+        service = svc()
+        conf = load_access()
+        web = dict(service.web)
+        cert = _certificate(web.get("cert", ""))
+        try:
+            import pwd
+            user = pwd.getpwuid(os.getuid()).pw_name
+        except (ImportError, KeyError, AttributeError):
+            user = ""
+        about = {"pid": os.getpid(), "python": platform.python_version(),
+                 "platform": platform.platform(terse=True), "user": user,
+                 "uid": getattr(os, "getuid", lambda: None)(),
+                 "gid": getattr(os, "getgid", lambda: None)(),
+                 "container": Path("/.dockerenv").exists()}
+        p = files()
+        places = [("Settings", p.config.parent), ("Room map", p.space_map),
+                  ("Extra bookings", p.extras_file), ("Web UI settings", p.web_file),
+                  ("State (baseline, history, stored passwords)", p.state_dir),
+                  ("Logs", p.log_file.parent)]
+        return render_template(
+            "service.html", service=service, web=web, cert=cert, about=about,
+            places=places, blocker=service.restart_blocker(),
+            updates=service.updates.status(conf["updates"]["check"]),
+            check_updates=conf["updates"]["check"])
+
+    @app.route("/settings/service/restart", methods=["POST"])
+    @requires("restart")
+    def service_restart():
+        service = svc()
+        problem = service.request_restart()
+        if problem:
+            notice(problem, "error")
+            return redirect(url_for("service_page"))
+        audit("restarted the service")
+        return render_template("restarting.html", boot=service.boot)
+
+    @app.route("/settings/service/updates", methods=["POST"])
+    @requires("restart")
+    def service_updates():
+        service = svc()
+        if request.form.get("action") == "check":
+            service.updates.refresh()
+            status = service.updates.status(False)
+            if status["error"]:
+                notice(f"Couldn't reach GitHub to check: {status['error']}", "error")
+            elif status["latest"] and (updates_mod.parse_version(status["latest"]["version"])
+                                       or ()) > (updates_mod.parse_version(status["current"])
+                                                 or ()):
+                notice(f"{status['latest']['name']} is available.")
+            else:
+                notice("This is the newest release.")
+            return redirect(url_for("service_page"))
+        conf = load_access()
+        conf["updates"]["check"] = request.form.get("check") == "1"
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+        else:
+            audit("turned %s checking for updates", "on" if conf["updates"]["check"] else "off")
+            notice("Checking GitHub for new releases is "
+                   + ("on." if conf["updates"]["check"] else "off."))
+        return redirect(url_for("service_page"))
+
     # ── settings: passwords, alerts, access ──────────────────────────────────
 
     @app.route("/settings/passwords", methods=["POST"])
-    @requires("admin")
+    @requires("edit_passwords")
     def password_set():
         name = request.form.get("name", "")
         back = {"alerts": "alerts", "access": "access_page"}.get(
@@ -879,7 +1044,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                       ("alerts", "webhook_notify_on_success")]
 
     @app.route("/settings/alerts", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def alerts():
         raw, error = load_config_raw()
         errors: list = []
@@ -953,7 +1118,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             422 if errors or confirm else 200)
 
     @app.route("/settings/access", methods=["GET", "POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_page():
         conf = load_access()
         path = files().web_file
@@ -1007,7 +1172,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         secret_source = secretstore.source(SSO_SECRET_NAME, files().secrets_file)
         return render_template(
             "access.html", conf=conf, errors=errors, file_error=file_error,
-            roles=access.ROLES, role_labels=access.ROLE_LABELS,
+            role_names=access.role_names(conf),
+            capability_groups=_capability_groups(),
+            role_use={r["id"]: sum(1 for row in conf["groups"] if row["role"] == r["id"])
+                      for r in conf["roles"]},
+            deletable=[r["id"] for r in conf["roles"]
+                       if not any(row["role"] == r["id"] for row in conf["groups"])],
             hosts=access.AUTHORITY_HOSTS, secret_source=secret_source,
             problems=access.sso_problems(conf, bool(secret_source)),
             redirect=redirect_uri(conf), path=path,
@@ -1015,7 +1185,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             last_refusal=ctx().get("last_refusal")), 422 if errors else 200
 
     @app.route("/settings/appearance", methods=["GET", "POST"])
-    @requires("admin")
+    @requires("manage_access")
     def appearance():
         conf = load_access()
         brand = conf["branding"]
@@ -1074,12 +1244,13 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             422 if errors else 200)
 
     @app.route("/settings/access/groups", methods=["POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_group_add():
         conf = load_access()
         group = access.clean_group(request.form.get("group"))
         role = request.form.get("role", "")
-        if not group or role not in access.ROLES:
+        names = access.role_names(conf)
+        if not group or role not in names:
             notice("Give the group's object ID or name, and pick a role.", "error")
             return redirect(url_for("access_page"))
         if any(row["group"].lower() == group.lower() for row in conf["groups"]):
@@ -1094,11 +1265,11 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             notice(_write_error(exc), "error")
             return redirect(url_for("access_page"))
         audit("gave group %s the %s role", group, role)
-        notice(f"{group} may now sign in as {access.ROLE_LABELS[role]}.")
+        notice(f"{group} may now sign in as {names[role]}.")
         return redirect(url_for("access_page"))
 
     @app.route("/settings/access/groups/<int:index>/delete", methods=["POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_group_delete(index):
         conf = load_access()
         if not 0 <= index < len(conf["groups"]):
@@ -1121,14 +1292,121 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                "signed out.")
         return redirect(url_for("access_page"))
 
+    # ── settings: roles ──────────────────────────────────────────────────────
+
+    def _save_roles(conf: dict, message: str, *args) -> bool:
+        """Save web.yaml with changed roles, unless that locks everyone out."""
+        secret = secretstore.get(SSO_SECRET_NAME, files().secrets_file)
+        problem = access.lockout_problem(
+            conf, conf["sso"]["enabled"] and not access.sso_problems(conf, bool(secret)))
+        if problem:
+            notice(problem, "error")
+            return False
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+            return False
+        audit(message, *args)
+        return True
+
+    @app.route("/settings/access/roles", methods=["POST"])
+    @requires("manage_access")
+    def access_roles_save():
+        conf = load_access()
+        form = request.form
+        changed = []
+        for role in conf["roles"]:
+            rid = role["id"]
+            before = (role["name"], role["capabilities"])
+            name = (form.get(f"name:{rid}") or "").strip()[:40]
+            if name:
+                role["name"] = name
+            if f"all:{rid}" in form:
+                role["capabilities"] = "all"
+            else:
+                role["capabilities"] = access.complete(form.getlist(f"cap:{rid}"))
+            if not role["capabilities"]:
+                notice(f"{role['name']} would be able to do nothing; give it something, "
+                       "or delete it.", "error")
+                return redirect(url_for("access_page"))
+            if (role["name"], role["capabilities"]) != before:
+                caps = role["capabilities"]
+                changed.append(f"{role['name']}: "
+                               + ("everything" if caps == "all" else ", ".join(caps)))
+        lowered = [r["name"].lower() for r in conf["roles"]]
+        if len(set(lowered)) != len(lowered):
+            notice("Two roles have the same name.", "error")
+            return redirect(url_for("access_page"))
+        if not changed:
+            notice("Nothing had changed.")
+        elif _save_roles(conf, "changed roles — %s", "; ".join(changed)):
+            notice("Saved the roles. They apply to people already signed in.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/add", methods=["POST"])
+    @requires("manage_access")
+    def access_role_add():
+        conf = load_access()
+        name = (request.form.get("name") or "").strip()[:40]
+        if not name:
+            notice("Give the new role a name.", "error")
+            return redirect(url_for("access_page"))
+        if name.lower() in (r["name"].lower() for r in conf["roles"]):
+            notice(f"There's already a role called {name}.", "error")
+            return redirect(url_for("access_page"))
+        source = next((r for r in conf["roles"] if r["id"] == request.form.get("copy")), None)
+        caps = source["capabilities"] if source else ["view_basic"]
+        conf["roles"].append({"id": access.new_role_id(name, conf), "name": name,
+                              "capabilities": caps if caps == "all" else list(caps)})
+        if _save_roles(conf, "added the role %s", name):
+            notice(f"Added {name}. Tick what it may do, save, then give it to a group.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/delete", methods=["POST"])
+    @requires("manage_access")
+    def access_role_delete():
+        conf = load_access()
+        rid = request.form.get("role", "")
+        role = next((r for r in conf["roles"] if r["id"] == rid), None)
+        if role is None:
+            abort(404)
+        used = [row["group"] for row in conf["groups"] if row["role"] == rid]
+        if used:
+            notice(f"{role['name']} is given to {', '.join(used)}; change or remove "
+                   "those groups first.", "error")
+        elif len(conf["roles"]) == 1:
+            notice("That's the only role.", "error")
+        else:
+            conf["roles"] = [r for r in conf["roles"] if r["id"] != rid]
+            if _save_roles(conf, "deleted the role %s", role["name"]):
+                notice(f"Deleted {role['name']}.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/reset", methods=["POST"])
+    @requires("manage_access")
+    def access_roles_reset():
+        conf = load_access()
+        builtin = {r["id"] for r in access.DEFAULT_ROLES}
+        conf["roles"] = access.default_roles() + [r for r in conf["roles"]
+                                                  if r["id"] not in builtin]
+        if _save_roles(conf, "restored the built-in roles"):
+            notice("Restored Basic, Advanced and Admin to what they do out of the box. "
+                   "Other roles are as they were.")
+        return redirect(url_for("access_page"))
+
     # ── files ────────────────────────────────────────────────────────────────
 
     FILES = {"config": "config.yaml", "defaults": "defaults.yaml",
-             "map": "space_mapping.yaml"}
+             "map": "space_mapping.yaml", "extras": "extra_bookings.yaml"}
+    # Who may change each file: the extra bookings are an operator's, not IT's.
+    FILE_EDITORS = {"extras": "edit_bookings"}
 
     def _file_path(name: str) -> Path:
         p = files()
-        return {"config": p.config, "defaults": p.defaults, "map": p.space_map}[name]
+        return {"config": p.config, "defaults": p.defaults, "map": p.space_map,
+                "extras": p.extras_file}[name]
 
     @app.route("/files")
     @requires("view_all")
@@ -1142,14 +1420,19 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             except OSError:
                 size, modified = None, None
             rows.append({"name": name, "title": title, "path": path,
-                         "size": size, "modified": modified})
+                         "size": size, "modified": modified,
+                         "editor": FILE_EDITORS.get(name, "edit_settings")})
         return render_template("files.html", files=rows, health=health())
 
     @app.route("/files/<name>", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all")
     def file_edit(name):
         if name not in FILES:
             abort(404)
+        editor = FILE_EDITORS.get(name, "edit_settings")
+        if request.method == "POST" and not access.can(g.caps, editor):
+            abort(403, f"Your role ({g.role_label or 'none'}) can't do that: it needs "
+                       f"“{access.CAPABILITY_LABELS[editor]}”.")
         path = _file_path(name)
         errors: list = []
         confirm: list = []
@@ -1183,7 +1466,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                             return redirect(url_for("files_list"))
             version = request.form.get("version") or version
         return render_template("file_edit.html", name=name, title=FILES[name],
-                               path=path, text=text, version=version,
+                               path=path, text=text, version=version, editor=editor,
                                errors=errors, confirm=confirm), (422 if errors or confirm else 200)
 
     def _check_file(name: str, text: str) -> tuple:
@@ -1198,6 +1481,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp) / FILES[name]
             tmp_path.write_text(text, encoding="utf-8")
+            if name == "extras":
+                return _check_extras(tmp_path)
             config_path = tmp_path if name == "config" else p.config
             defaults_path = tmp_path if name == "defaults" else p.defaults
             try:
@@ -1214,6 +1499,21 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             _e, errs, _w = mapedit.validate_before_save(buildings, floors, rooms,
                                                         raw, load_defaults())
             return [], [f"Room map: {e}" for e in errs]
+
+    def _check_extras(path: Path) -> tuple:
+        try:
+            rows = extras.read(path)
+        except ConfigError as exc:
+            return [f"The sync couldn't read it: {exc}"], []
+        problems = []
+        for index, row in enumerate(rows):
+            try:
+                extras.parse(row, index)
+            except extras.BookingError as exc:
+                problems.append(f"Booking {index + 1}: {exc}")
+            for key in extras.unknown_keys(row):
+                problems.append(f"Booking {index + 1}: unknown key `{key}` — ignored.")
+        return [], problems
 
     @app.route("/files/<name>/download")
     @requires("view_all")
@@ -1254,8 +1554,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         if which not in ("sync", "service", "activity"):
             abort(404)
         if which == "activity":
-            if not access.can(g.role, "admin"):
-                abort(403, "The activity log needs the Admin role.")
+            if not access.can(g.caps, "view_activity"):
+                abort(403, "Your role can't see the activity log.")
             return render_template("logs.html", which=which, lines=0,
                                    activity=_activity(_log_path("service")),
                                    text="", path=_log_path("service"))
@@ -1309,6 +1609,44 @@ def _config_change_problems(raw: dict, new: dict) -> list:
         problems.append(f"The sync would refuse to start: {after_cfg}")
     problems += [f"Room map: {p}" for p in new_problems(before, after)]
     return problems
+
+
+def _certificate(path: str) -> Optional[dict]:
+    """The HTTPS certificate's subject and expiry, or None. The ssl module's
+    own decoder (the one its tests use) is the only one in the standard
+    library; if a Python ever drops it, the page just leaves this out."""
+    decode = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
+    if not path or decode is None:
+        return None
+    try:
+        info = decode(path)
+        expires = datetime.fromtimestamp(ssl.cert_time_to_seconds(info["notAfter"]),
+                                         timezone.utc)
+    except (OSError, ssl.SSLError, ValueError, KeyError):
+        return None
+    subject = dict(item for rdn in info.get("subject", ()) for item in rdn)
+    names = [value for kind, value in info.get("subjectAltName", ()) if kind == "DNS"]
+    return {"name": subject.get("commonName") or (names[0] if names else "?"),
+            "names": names, "expires": expires,
+            "days_left": (expires - datetime.now(timezone.utc)).days}
+
+
+def _percent(fraction) -> str:
+    """0.34 -> "34"; a fraction that isn't a number is shown as it is."""
+    try:
+        return f"{float(fraction) * 100:g}"
+    except (TypeError, ValueError):
+        return str(fraction)
+
+
+def _capability_groups() -> list:
+    """[(heading, [(capability, label), ...]), ...] for the roles table."""
+    out: list = []
+    for cap, label, heading in access.CAPABILITY_LIST:
+        if not out or out[-1][0] != heading:
+            out.append((heading, []))
+        out[-1][1].append((cap, label))
+    return out
 
 
 def _times_text(times) -> list:
