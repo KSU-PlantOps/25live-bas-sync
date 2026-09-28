@@ -20,7 +20,7 @@ is saved. It follows the browser's light or dark setting.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
-  <img alt="The status page: last sync, next sync, room map summary, and the Sync now, Dry run, Validate, Test alert and Discover buttons" src="images/dashboard-light.png">
+  <img alt="The status page: last sync, next sync, room map summary, and Sync now with a choice of everything, one system or one building, then the Dry run, Validate, Test alert and Discover buttons" src="images/dashboard-light.png">
 </picture>
 
 ## Pages
@@ -31,7 +31,7 @@ is saved. It follows the browser's light or dark setting.
 | **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
 | **Bookings** | [Extra bookings](configuration.md#extra-bookings): occupancy that isn't in 25Live — one day or every week, on a room, a floor or a whole building; add, edit, copy and delete, and clear out the ones that have ended. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
-| **Room map** → Rooms · Buildings · Floors · Equipment | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. [Equipment](configuration.md#the-room-map) — an AHU several rooms share, or a room's second VAV — is ticked on each room's form. Renaming a building or equipment repoints what uses it; deleting a building takes its floors and equipment and won't leave rooms driving nothing, and equipment in use can't be deleted. |
+| **Room map** → Rooms · Buildings · Floors · Equipment | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. [Equipment](configuration.md#the-room-map) — an AHU several rooms share, or a room's second VAV — is ticked on each room's form. Renaming a building or equipment repoints what uses it; deleting a building takes its floors and equipment and won't leave rooms driving nothing, and equipment in use can't be deleted. Each building has a *Sync* link, for anyone who may sync it. |
 | **Room map** → From 25Live | The spaces in 25Live, booked or not, [grouped by building](#adding-rooms-from-25live), to add a building at a time. |
 | **Settings** → Setup guide | A new install's [walk through setup](#the-setup-guide): 25Live, the campus, a BAS system, rooms found in 25Live, each building's schedule, and the checks before the schedule goes on. |
 | **Settings** → Connection | 25Live, BAS systems (add, remove, change driver), timezone and default system; the passwords, set or cleared here. *Validate* per system. |
@@ -39,18 +39,18 @@ is saved. It follows the browser's light or dark setting.
 | **Settings** → Schedule · Defaults | When the sync runs; the run-up/run-down/merge-gap/lookahead defaults. |
 | **Settings** → Safety | The [mass-clear check](safety.md) (on or off, the share of schedules one run may clear, the fewest 25Live bookings), what a broken row does, and retries; the current baseline. |
 | **Settings** → Files | `config.yaml`, `defaults.yaml`, `space_mapping.yaml` and `extra_bookings.yaml` as text, for anything the forms don't cover; a zip of them all. |
-| **Settings** → Access | The roles and what each may do, signing in with Microsoft Entra ID, and which Entra groups get which role. |
+| **Settings** → Access | The roles, what each may do and what each may sync, signing in with Microsoft Entra ID, and which Entra groups get which role. |
 | **Settings** → Appearance | Your site name, logo and accent colour, and a notice and contact details on the sign-in page and at the foot of every page. |
 | **Settings** → Service | The version, and whether a newer release is out; *Restart the service*; what's running — since when, as whom, where the web UI listens, the HTTPS certificate's expiry, and where each file is. |
 | **Logs** | The sync's and the service's logs, and **Activity**: who did what — sign-ins, refused sign-ins, every change and every job. |
 
 | Room map | A sync's report |
 |---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="images/rooms-dark.png"><img alt="The rooms list, with building, campus, floor, system and target columns" src="images/rooms-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/report-dark.png"><img alt="A sync's report: its result, the safety check, and every schedule with the windows written" src="images/report-light.png"></picture> |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="images/rooms-dark.png"><img alt="The rooms list, with building, campus, floor, equipment, system and target columns" src="images/rooms-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/report-dark.png"><img alt="A sync's report: its result, the safety check, and every schedule with the windows written" src="images/report-light.png"></picture> |
 | **Extra bookings** | **Adding one** |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="images/bookings-dark.png"><img alt="The Extra bookings list: title, where, when, the next occurrence, run-up and who added it" src="images/bookings-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/booking-form-dark.png"><img alt="The extra booking form: title, where, one day or every week, date, times, exact times and a note" src="images/booking-form-light.png"></picture> |
-| **A job's live output** | **Roles, as a table of capabilities** |
-| <picture><source media="(prefers-color-scheme: dark)" srcset="images/job-dark.png"><img alt="A sync's output as it runs" src="images/job-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/access-dark.png"><img alt="The Access page: a column per role, a row per capability" src="images/access-light.png"></picture> |
+| **A job's live output** | **Roles: what each may do, and may sync** |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="images/job-dark.png"><img alt="A sync's output as it runs" src="images/job-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/access-dark.png"><img alt="The Access page: a column per role, a row per capability, then what each role may sync" src="images/access-light.png"></picture> |
 
 ## The setup guide
 
@@ -91,7 +91,7 @@ run a live sync. Only whether it was finished or skipped is kept, in
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/setup-rooms-dark.png">
-  <img alt="The setup guide's Rooms step: the steps down the side, and the spaces 25Live has bookings for, grouped by building with an Add button for each, each room with its capacity, number of bookings and a building filled in from 25Live or guessed from the name" src="images/setup-rooms-light.png">
+  <img alt="The setup guide's Rooms step: the steps down the side, and every space 25Live lists, booked or not, grouped by building with an Add button for each, each room with its capacity, number of bookings and a building filled in from 25Live or guessed from the name" src="images/setup-rooms-light.png">
 </picture>
 
 ## Adding rooms from 25Live
@@ -110,10 +110,11 @@ guessed from the name — "Science Hall 204 (Chem lab)" is in *Science Hall*, an
 editable box: change a room's building to move it to another group when you add
 it.
 
-- **One building at a time:** each building's *Add* button adds its ticked rooms,
-  and nothing else. Rooms with bookings start ticked; tick the building's own
-  box to take all of them, bookings or not. A building the room map doesn't have yet is created, and
-  you go straight to its form to give it its schedule.
+- **One building at a time:** each building's *Add* button adds its ticked
+  rooms, and nothing else. Rooms with bookings start ticked; tick the
+  building's own box to take all of them, bookings or not. A building the room
+  map doesn't have yet is created, and you go straight to its form to give it
+  its schedule.
 - **Or all at once:** tick rooms anywhere, and *Add the ticked rooms*.
 
 Rooms go into the room map's building of that name (or id). A new building
@@ -143,7 +144,7 @@ Out of the box there are three roles, each including the one before:
 | Role | Can |
 |---|---|
 | **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
-| **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), stop a job; add and edit rooms, buildings, floors and extra bookings. |
+| **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), stop a job; add rooms from 25Live; add and edit rooms, buildings, floors, equipment and extra bookings. |
 | **Admin** | Everything: connection, systems and passwords, alerts, defaults, schedule, safety, the files, access and appearance, the activity log, restarting the service — and *Force*, which overrides the mass-clear safety check. |
 
 They can be changed, and more added — see [Changing the roles](#changing-the-roles).
@@ -190,7 +191,7 @@ Advanced and Admin back as they came.
 | Run the tools | Dry run, Validate, Discover and Test alert. |
 | Stop a job | Stop a running sync or tool. |
 | Force | Sync past the mass-clear safety check. |
-| Edit the room map | Add and edit rooms, buildings and floors. |
+| Edit the room map | Add and edit rooms, buildings, floors and equipment, and add rooms found in 25Live (finding them needs *Run the tools*). |
 | Edit extra bookings | Add and edit extra bookings. |
 | Edit settings | Change the connection, systems, alerts, schedule, defaults, safety limits and the settings files; use the setup guide (adding its rooms also needs *Edit the room map*, and finding them *Run the tools*). |
 | Set passwords | Set and clear the stored passwords. |
@@ -225,8 +226,9 @@ and *Save roles*. A role with nothing picked syncs everything.
   without limits means everything.
 - The scheduled sync always covers everything, and Dry run and Validate, which
   write nothing, aren't limited.
-- Renaming a building on the room map keeps it in the roles that may sync it.
-  A system or building that's gone is shown, so it can be taken off.
+- Renaming a building on its Room map form keeps it in the roles that may
+  sync it; renaming one by editing `space_mapping.yaml` doesn't. A system or
+  building that's gone is shown, so it can be taken off.
 
 In `web.yaml` it's the role's `sync_only`:
 

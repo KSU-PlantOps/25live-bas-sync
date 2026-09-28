@@ -4,7 +4,7 @@
 <h1>{{ spec.title }} <span class="count">{{ rows | length }}</span></h1>
 {% if kind == 'rooms' %}
   <p class="hint">Each 25Live room, the schedule it drives (its <em>target</em>), and the building — and optionally
-  floor — it rolls up into. A room with no target of its own still keeps its building and floor running.</p>
+  floor and equipment — it rolls up into. A room with no target of its own still keeps those running.</p>
 {% elif kind == 'buildings' %}
   <p class="hint">Each building's common-area schedule. It runs whenever any of its rooms is booked.</p>
 {% elif kind == 'equipment' %}

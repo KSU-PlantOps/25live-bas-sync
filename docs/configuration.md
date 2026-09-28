@@ -11,9 +11,9 @@ the repository. With Docker they're in `./config` and the
 |---|---|---|
 | `config.yaml` | Your 25Live instance, BAS systems, accounts, timezone, safety limits, alerting and the schedule. Usually IT-managed. | `config.example.yaml` |
 | `defaults.yaml` | The operator-tunable defaults: run-up, run-down, merge gap, lookahead. | `defaults.example.yaml` |
-| `space_mapping.yaml` | The room map: buildings, floors and rooms, and the schedule each one drives. | `space_mapping.example.yaml` |
+| `space_mapping.yaml` | The room map: buildings, floors, equipment and rooms, and the schedule each one drives. | `space_mapping.example.yaml` |
 | `extra_bookings.yaml` | Bookings that aren't in 25Live — see [Extra bookings](#extra-bookings). | written by the web UI (optional) |
-| `web.yaml` | The web UI's sign-in, roles and branding — see [The web UI](web-ui.md). | written by the web UI |
+| `web.yaml` | The web UI's sign-in, roles (and what each may sync) and branding — see [The web UI](web-ui.md). | written by the web UI |
 
 Each example documents every setting it takes. Passwords are **never** in any
 of them — see [Secrets](#secrets).
@@ -169,7 +169,8 @@ Each entry carries:
   room that lists it is booked, merged across rooms like a floor; a room can
   list several, with or without a `target:` of its own. Equipment no room lists
   yet is still managed, and cleared. In the web UI it's **Room map →
-  Equipment**, and ticked on each room's form.
+  Equipment**, and ticked on each room's form; the desktop editor keeps it
+  but doesn't edit it.
 - **`campus:`** (buildings) — an optional label. The web UI shows it on every
   room-map list, filters by it and counts rooms per campus; the sync ignores
   it, as 25Live has no campus to match it against.
@@ -184,11 +185,12 @@ any room rolls up into it: with no bookings it's cleared, like any other. A
 building with no rooms at all — one that isn't in 25Live — can still be driven
 by [extra bookings](#extra-bookings).
 
-`space_mapping.example.yaml` documents every field and shows all three
-granularity patterns side by side. Find a room's `space_id` with *Discover
-spaces* in the web UI or `--discover` on the command line. The web UI's
-[setup guide](web-ui.md#the-setup-guide) adds rooms found in 25Live with their
-buildings in one go.
+`space_mapping.example.yaml` documents every field and shows all four
+granularity patterns side by side. The web UI's
+[Room map → From 25Live](web-ui.md#adding-rooms-from-25live) (and its setup
+guide) lists every space in 25Live, grouped by building, and adds them a
+building at a time. On the command line, `--discover` prints them as YAML to
+paste in.
 
 ## Targets
 
@@ -212,9 +214,10 @@ of a building that no longer exists — is reported and left out, the rest of
 the campus syncs, and the run exits `2` so the alert fires.
 
 Nothing the broken row affects is touched that night: not its own schedule,
-and not the floor or building schedules it rolls up into, which keep their
-current schedule rather than being rewritten without its bookings. A room
-whose own target is malformed still feeds its floor and building.
+and not the equipment, floor or building schedules it rolls up into, which
+keep their current schedule rather than being rewritten without its bookings.
+A room whose own target is malformed still feeds its equipment, floor and
+building.
 
 Set `safety.on_map_errors: abort` to write nothing until the map is fixed
 instead.
@@ -252,8 +255,9 @@ bookings:
 
 Each run treats them like 25Live bookings:
 
-- **A room's** gets the room's run-up and run-down, and keeps its floor and
-  building running too. **A building's or floor's** gets the building's.
+- **A room's** gets the room's run-up and run-down, and keeps its equipment,
+  floor and building running too. **A building's or floor's** gets the
+  building's.
   `exact: true` leaves the run-up and run-down off.
 - An `end` at or before the `start` runs past midnight; `"24:00"` is midnight
   at the end of the day. Times are in the campus `timezone:`.

@@ -325,7 +325,8 @@ alerts:
 # (healthchecks.io, Uptime Kuma "push" monitors, Cronitor, …) can alarm when
 # the pings STOP arriving.
 monitoring:
-  ping_url: ""                  # after every successful live run
+  ping_url: ""                  # after every successful live run of the whole
+                                #   campus (not one limited to a system or building)
   ping_fail_url: ""             # after a failed one (e.g. <ping_url>/fail)
 
 # ─────────────────────────────────────────────────────────────────────────────

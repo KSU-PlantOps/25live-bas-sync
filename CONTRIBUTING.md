@@ -72,15 +72,17 @@ covers:
 
 - the merge/roll-up logic (equipment included), and the loader and its
   inheritance rules
-- config validation, the safety rail and its state file
+- config validation, the safety rail and its state file, and a sync limited
+  to one system or building
 - the 25Live client's paging, cancellation and fetch-window handling, and
-  what discovery collects and guesses
+  what discovery collects (every space, or the booked ones) and guesses
 - extra bookings: reading them, their occurrences and buffers, and a whole
   run with them
 - the email/webhook reports, the service's scheduler (DST included), its job
   runner, run history, restarting in place, and the update check
-- the web UI: sign-in and lockout, Entra sign-in, roles and capabilities,
-  CSRF, every editing page, the setup guide from nothing to a schedule,
+- the web UI: sign-in and lockout, Entra sign-in, roles, capabilities and
+  sync limits, CSRF, every editing page (equipment included), the setup guide
+  from nothing to a schedule, adding rooms from 25Live a building at a time,
   concurrent-edit and confirmation handling, branding, and the sandboxed
   report view
 - the editors' shared save logic
@@ -104,7 +106,7 @@ check.
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
 | `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI, restarting in place), its job runner, and the run history. |
 | `bassync/extras.py` | Extra bookings: occupancy that isn't in 25Live. |
-| `bassync/discovery.py` | What `--discover` found, kept for the setup guide, and its guesses at each room's building. |
+| `bassync/discovery.py` | What `--discover` found, kept for Room map → From 25Live and the setup guide, and its guesses at each room's building. |
 | `bassync/updates.py` | Whether a newer release is out (GitHub's releases API). |
 | `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, the setup guide in `setup.py`, and adding rooms from 25Live in `importer.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
 | `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
@@ -153,7 +155,7 @@ reaches `main`; nobody tags or uploads anything by hand.
    the top of `CHANGELOG.md`:
 
    ```markdown
-   ## [1.3.0] — 2026-10-15 — A short title for the release
+   ## [1.5.0] — 2026-12-01 — A short title for the release
    ```
 
    If the changelog has an `## [Unreleased]` section, that becomes it. The

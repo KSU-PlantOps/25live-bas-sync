@@ -101,7 +101,8 @@
 #
 # ── spaces: (room) fields ──
 #   space_id              (required)  25Live numeric space id, from the space's
-#                                     URL in 25Live → Locations, or `--discover`
+#                                     URL in 25Live → Locations, `--discover`, or
+#                                     the web UI's Room map → From 25Live
 #   space_name            (optional)  label for logs; defaults to the id
 #   building              (optional)  id of the building this room rolls into
 #   floor                 (optional)  floor number; with a matching `floors:`

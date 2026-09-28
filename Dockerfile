@@ -12,7 +12,7 @@
 #     --env-file .env \
 #     -v "$(pwd)/config:/config" \
 #     -v bas-sync-state:/app/state \
-#     ghcr.io/ksu-plantops/25live-bas-sync:1.3 serve
+#     ghcr.io/ksu-plantops/25live-bas-sync:1.4 serve
 #
 # `sync --validate`, `sync --dry-run` or plain `sync` instead of `serve` runs
 # once and exits (host cron, a Kubernetes CronJob). See docker-entrypoint.sh.
