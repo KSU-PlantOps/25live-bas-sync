@@ -178,3 +178,30 @@ table.matrix tr.group td.c { text-align: center; text-transform: none; letter-sp
 .form > span.label { padding-top: .45rem; font-weight: 600; }
 tr.muted td { color: var(--muted); }
 [hidden] { display: none !important; }
+/* The setup guide: its steps down the side, or across the top on a phone. */
+.setup { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: var(--gap); align-items: start; }
+.setup-body, .stepper { min-width: 0; }
+.stepper ol { list-style: none; margin: 0; padding: 0; position: sticky; top: 4.5rem; }
+.stepper li a { display: flex; gap: .6rem; align-items: flex-start; padding: .45rem .6rem; border-radius: 6px;
+  color: var(--text); text-decoration: none; position: relative; }
+.stepper li a:hover { background: var(--code-bg); }
+.stepper li a[aria-current] { background: var(--surface); border: 1px solid var(--border); font-weight: 600; }
+.stepper .num { flex: none; width: 1.6rem; height: 1.6rem; border-radius: 50%; display: inline-flex;
+  align-items: center; justify-content: center; font-size: .85rem; border: 1px solid var(--border);
+  background: var(--surface); }
+.stepper li.done .num { background: var(--ok); border-color: var(--ok); color: #fff; }
+.stepper li a[aria-current] .num { border-color: var(--accent); }
+.stepper small { font-weight: 400; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#found-rooms td input:not([type=checkbox]) { min-width: 12rem; }
+@media (max-width: 900px) {
+  .setup { grid-template-columns: minmax(0, 1fr); }
+  .stepper ol { position: static; display: flex; overflow-x: auto; gap: .2rem; }
+  .stepper li a { white-space: nowrap; }
+  .stepper small { display: none; }
+}
+/* Rooms found in 25Live, a group per building. */
+table.grouped tr.group th { background: var(--code-bg); font-weight: 400; color: var(--text); font-size: 1rem;
+  white-space: normal; vertical-align: middle; }
+table.grouped tr.group .hint { margin-left: .4rem; }
+table.hide-added tr.muted, table.hide-added tbody.all-added { display: none; }

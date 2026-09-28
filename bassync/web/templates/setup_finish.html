@@ -1,0 +1,52 @@
+<h1>Check and finish</h1>
+<p class="hint">Neither check writes anything. <em>Validate</em> tries the 25Live account, every BAS system and every
+schedule; a <em>dry run</em> fetches the bookings and shows exactly what each schedule would get.</p>
+
+{% if not room_count %}
+  <div class="flash warn">There are no rooms yet, so a sync would have nothing to do.
+    <a href="{{ url_for('setup_step', step='rooms') }}">Add rooms</a></div>
+{% elif staged %}
+  <div class="flash info">{{ staged }} building{{ ' is' if staged == 1 else 's are' }} still staged: the sync
+    shows what {{ 'it' if staged == 1 else 'they' }} would get but writes nothing for {{ 'it' if staged == 1 else 'them' }}
+    until {{ 'it has' if staged == 1 else 'they have' }} a <a href="{{ url_for('setup_step', step='schedules') }}">schedule</a>.</div>
+{% endif %}
+
+<section class="card">
+  <table class="list">
+    {% for kind, label, job in [('validate', 'Validate', validate), ('dry-run', 'Dry run', dry_run)] %}
+      <tr>
+        <td>{% if job %}<span class="dot {{ 'run' if job.running else ('ok' if job.exit_code == 0 else 'bad') }}"></span>{% endif %}</td>
+        <td><strong>{{ label }}</strong></td>
+        <td>{% if job %}<a href="{{ url_for('job', job_id=job.id) }}">{{ 'running…' if job.running else ('passed' if job.exit_code == 0 else 'failed — exit ' ~ job.exit_code) }}</a>
+              <span class="hint">{{ relative(job.started) }}</span>
+            {% else %}<span class="hint">not run yet</span>{% endif %}</td>
+        <td>{% if can('run_tools') %}
+          <form method="post" action="{{ url_for('jobs') }}" class="inline">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <input type="hidden" name="kind" value="{{ kind }}">
+            <button {{ 'disabled' if current_job }}>Run {{ label | lower }}</button>
+          </form>{% endif %}</td>
+      </tr>
+    {% endfor %}
+  </table>
+  <p class="hint">A failed check says why in its output. Fix it on the step it names (or the settings pages), then run it
+    again.</p>
+</section>
+
+<form method="post" action="{{ url_for('setup_finish') }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2>The schedule</h2>
+  {% if sync_at %}
+    <p class="flash warn full"><code>SYNC_AT={{ sync_at }}</code> is set in the container's environment and overrides the
+      times below.</p>
+  {% endif %}
+  <label for="i-times">Sync at</label>
+  <div class="field"><input id="i-times" name="times" value="{{ times }}" placeholder="02:00, 12:00">
+    <small>24-hour times, in the campus timezone. A second, midday run picks up same-day bookings sooner.
+      {% if not schedule_on %}The schedule is off until you finish.{% endif %}</small></div>
+  <div class="buttons full">
+    <button class="primary" name="action" value="on"
+            data-confirm="Turn the schedule on? From now on the sync writes to the BAS at these times.">Turn the schedule on and finish</button>
+    <button name="action" value="off">Finish, and leave the schedule {{ 'as it is' if schedule_on else 'off' }}</button>
+  </div>
+</form>

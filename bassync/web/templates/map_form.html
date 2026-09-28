@@ -28,6 +28,23 @@
         {% else %}
           <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" placeholder="no systems yet — see Connection">
         {% endif %}
+      {% elif ftype == 'equipment' %}
+        {% set picked = value if value is iterable and value is not string else ([value] if value else []) %}
+        {% if choices.equipment %}
+          {% for bid, bname, items in choices.equipment %}
+            <div class="checks" data-equipment-of="{{ bid }}">
+              {% if choices.equipment | length > 1 %}<span class="hint">{{ bname }}:</span>{% endif %}
+              {% for eid, ename in items %}
+                <label class="check"><input type="checkbox" name="{{ key }}" value="{{ eid }}" {{ 'checked' if eid in picked }}>
+                  {{ ename }}{% if ename != eid %} <code>{{ eid }}</code>{% endif %}</label>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          <p class="hint" data-equipment-none hidden>No equipment in this building yet.</p>
+        {% else %}
+          <p class="hint">No equipment yet. Add it on the <a href="{{ url_for('map_list', kind='equipment') }}">Equipment</a> page,
+            then list it here.</p>
+        {% endif %}
       {% elif ftype == 'campus' %}
         <input id="f-{{ key }}" name="{{ key }}" value="{{ value }}" list="campuses">
         <datalist id="campuses">{% for c in choices.campuses %}<option value="{{ c }}">{% endfor %}</datalist>
@@ -55,7 +72,7 @@
     <a class="button" href="{{ url_for('map_list', kind=kind) }}">Cancel</a>
   </div>
 </form>
-{% if kind == 'rooms' %}
+{% if kind in ('rooms', 'equipment') %}
 <details class="card hint">
   <summary>Targets, by driver</summary>
   <ul>

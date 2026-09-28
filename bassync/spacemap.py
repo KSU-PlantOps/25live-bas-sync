@@ -21,6 +21,12 @@ so occupancy rolls up room -> floor -> building. That is what keeps a single
 evening booking on the third floor from conditioning the whole tower while
 still lighting and tempering the corridor someone has to walk down.
 
+Equipment — an AHU that serves several rooms, or a second VAV in a big room —
+is defined once, under its building's `equipment:`, and each room lists what
+serves it (`equipment: [ahu_3]`). Its schedule is the union of every room that
+lists it, like a floor's, so a room can drive any number of schedules and a
+schedule can be driven by any number of rooms.
+
 Inheritance, all with the same precedence — room > building > global:
     pre_condition_minutes   HVAC run-up before a booking
     post_buffer_minutes     run-down after it
@@ -52,11 +58,12 @@ TOP_LEVEL_KEYS = ("buildings", "floors", "spaces")
 # sync doesn't use it — 25Live has no campus to match it against.
 BUILDING_KEYS = ("id", "name", "campus", "system", "target", "niagara_path",
                  "pre_condition_minutes", "post_buffer_minutes",
-                 "merge_gap_minutes", "space_id", "note")
+                 "merge_gap_minutes", "space_id", "equipment", "note")
 FLOOR_KEYS = ("building", "level", "name", "system", "target", "niagara_path",
               "note")
-ROOM_KEYS = ("space_id", "space_name", "building", "floor", "system", "target",
-             "niagara_path", "pre_condition_minutes", "post_buffer_minutes",
+EQUIPMENT_KEYS = ("id", "name", "system", "target", "note")
+ROOM_KEYS = ("space_id", "space_name", "building", "floor", "equipment", "system",
+             "target", "niagara_path", "pre_condition_minutes", "post_buffer_minutes",
              "merge_gap_minutes", "note")
 
 
@@ -182,7 +189,7 @@ class SpaceMap:
                  building_count: int = 0, floor_count: int = 0,
                  labels: Optional[dict] = None, fatal: bool = False,
                  held: Optional[set] = None, buildings: Optional[dict] = None,
-                 floors: Optional[dict] = None):
+                 floors: Optional[dict] = None, equipment: Optional[dict] = None):
         self.spaces = spaces              # { space_id: SpaceConfig }
         self.errors = errors              # rows left out, or the whole file
         self.warnings = warnings          # worth saying, not worth stopping for
@@ -202,6 +209,7 @@ class SpaceMap:
         # can name besides a room.
         self.buildings: dict = buildings or {}     # { id: BuildingSchedule }
         self.floors: dict = floors or {}           # { (id, level): Destination }
+        self.equipment: dict = equipment or {}     # { (id, equipment id): Destination }
 
     def __bool__(self) -> bool:
         return bool(self.spaces)
@@ -211,20 +219,22 @@ class SpaceMap:
 
     def destinations(self) -> set:
         """
-        Every distinct schedule the sync manages — rooms, floor corridors and
-        building roll-ups.
+        Every distinct schedule the sync manages — rooms, equipment, floor
+        corridors and building roll-ups.
 
         This is the set that gets cleared when a space has no bookings, so a
         roll-up missing from here is a schedule that would silently keep running
         last week's occupancy forever. Every building and floor entry is in it,
         whether or not any room rolls up into it: the entry names a schedule
         the sync owns, and extra bookings can drive one with no rooms at all.
+        Equipment no room lists yet is managed the same way.
         """
         out = set()
         for sc in self.spaces.values():
             out.update(sc.all_destinations())
         out.update(b.destination for b in self.buildings.values())
         out.update(self.floors.values())
+        out.update(self.equipment.values())
         return out
 
     def systems_used(self) -> set:
@@ -378,6 +388,53 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         _label(floor_dest[key], f.get("name") or
                f"Floor {level} of {bld.get('name') or building_id}")
 
+    # ── 1c) Equipment, by (building id, equipment id) ────────────────────────
+    #     An AHU several rooms share, or one of several VAVs in a room. Defined
+    #     once under its building; rooms in that building list it by id.
+    equipment_dest: dict = {}
+    broken_equipment: set = set()
+    for bid, b in buildings.items():
+        items = b.get("equipment")
+        if items in (None, "", []):
+            continue
+        if not isinstance(items, list):
+            errors.append(f"Building {bid}: `equipment:` must be a list of entries, "
+                          f"got {items!r}.")
+            continue
+        for item in items:
+            if not isinstance(item, dict):
+                errors.append(f"Building {bid}: an `equipment:` entry is not a "
+                              f"mapping: {item!r}")
+                continue
+            eid = str(item.get("id") or "").strip()
+            if not eid:
+                errors.append(f"Building {bid}: an equipment entry has no `id:`.")
+                continue
+            where = f"Equipment {eid} of '{bid}'"
+            _unknown_keys(item, EQUIPMENT_KEYS, where, warnings)
+            if (bid, eid) in equipment_dest or (bid, eid) in broken_equipment:
+                errors.append(f"{where} is defined more than once.")
+                continue
+            target = _target_of(item)
+            system = str(_resolve(item.get("system"), b.get("system"),
+                                  default_system) or "")
+            problem = None
+            if target is None:
+                problem = (f"{where}: no `target:` — an equipment entry exists to "
+                           "name its schedule.")
+            elif not system:
+                problem = f"{where}: no `system:` and no default."
+            elif known_systems and system not in known_systems:
+                problem = (f"{where}: system '{system}' is not defined under "
+                           "`systems:` in config.yaml.")
+            if problem:
+                errors.append(problem)
+                broken_equipment.add((bid, eid))
+                continue
+            equipment_dest[(bid, eid)] = Destination(system=system, target=str(target))
+            _label(equipment_dest[(bid, eid)],
+                   f"{item.get('name') or eid} ({b.get('name') or bid})")
+
     space_map: dict = {}
 
     def _register(space_id: str, sc: SpaceConfig, label: str) -> bool:
@@ -443,10 +500,32 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                             f"'{room_building}' with no matching floors: entry — "
                             "it will NOT drive a corridor schedule.")
 
+        # The equipment that serves it: an AHU it shares, or more VAVs.
+        edests: list = []
+        raw_equipment = row.get("equipment")
+        if raw_equipment not in (None, "", []):
+            wanted = raw_equipment if isinstance(raw_equipment, list) else [raw_equipment]
+            if not room_building:
+                warnings.append(
+                    f"{where} lists equipment but no building, so there is "
+                    "nothing to look it up against — it will NOT drive it.")
+            else:
+                for item in wanted:
+                    eid = str(item).strip()
+                    edest = equipment_dest.get((room_building, eid))
+                    if edest is None:
+                        why = ("is broken (see the errors)" if (room_building, eid)
+                               in broken_equipment else "isn't defined")
+                        warnings.append(
+                            f"{where} lists equipment '{eid}', which {why} under "
+                            f"building '{room_building}' — it will NOT drive it.")
+                    elif edest not in edests:
+                        edests.append(edest)
+
         bld = building or {}
         # From here on the row's roll-ups are known. If the row turns out to
         # be broken, those schedules must not be rewritten without it.
-        rollups = [d for d in (fdest, bdest) if d is not None]
+        rollups = [d for d in (*edests, fdest, bdest) if d is not None]
         system = str(_resolve(row.get("system"), bld.get("system"),
                               default_system) or "")
         if not system:
@@ -469,11 +548,12 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         # all — that room's bookings would vanish silently, so say so.
         target = _target_of(row)
         rdest = Destination(system=system, target=target) if target else None
-        if rdest is None and bdest is None and fdest is None:
+        if rdest is None and not rollups:
             errors.append(
                 f"{where}: no `target:` and no roll-up to contribute to, so its "
                 "bookings would drive nothing. Give it a `target:`, or a "
-                "`building:` (and optionally `floor:`) to roll up into.")
+                "`building:` (and optionally `floor:` or `equipment:`) to roll "
+                "up into.")
             continue
 
         name = str(row.get("space_name") or space_id)
@@ -501,6 +581,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                     "merge_gap_minutes", where),
                 floor=floor,
                 floor_destination=fdest,
+                equipment_destinations=tuple(edests),
             )
         except RowError as exc:
             errors.append(str(exc))
@@ -553,6 +634,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     standalone: dict = {("building", bid): dest for bid, dest in building_dest.items()
                         if bid in building_buffers}
     standalone.update({("floor", key): dest for key, dest in floor_dest.items()})
+    standalone.update({("equipment", key): dest for key, dest in equipment_dest.items()})
     space_map, held, standalone = _canonicalize(space_map, cfg, labels, errors, held,
                                                 standalone)
     building_schedules = {
@@ -560,12 +642,14 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                                  *building_buffers[key[1]])
         for key, dest in standalone.items() if key[0] == "building"}
     floor_schedules = {key[1]: dest for key, dest in standalone.items() if key[0] == "floor"}
+    equipment_schedules = {key[1]: dest for key, dest in standalone.items()
+                           if key[0] == "equipment"}
 
     # ── 5) Two rooms pointing at one schedule ────────────────────────────────
     #     Legal and sometimes intentional (an air-wall room split into A/B in
     #     25Live but served by one AHU). The builder unions them rather than
     #     letting one overwrite the other, but say so — more often it is a
-    #     copy-paste slip.
+    #     copy-paste slip. Equipment is the way to say it on purpose.
     seen: dict = {}
     for sc in space_map.values():
         if sc.space_type != "room" or sc.destination is None:
@@ -575,21 +659,24 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         if len(ids) > 1:
             warnings.append(
                 f"Schedule {dest} is the target of {len(ids)} rooms "
-                f"({', '.join(sorted(ids))}). Their bookings are unioned — "
-                "intended for a divisible room, a mistake otherwise.")
+                f"({', '.join(sorted(ids))}). Their bookings are unioned. If "
+                "they share one VAV or AHU, define it once under their building's "
+                "`equipment:` and list it on each room instead; otherwise this is "
+                "probably a copy-paste slip.")
 
     rooms = [s for s in space_map.values() if s.space_type == "room"]
     rollup_only = sum(1 for s in rooms if s.destination is None)
     logging.info(
         "Loaded %d rooms (%d roll-up only) across %d buildings, %d floor "
-        "schedules, from %s",
-        len(rooms), rollup_only, len(buildings), len(floor_dest), path)
+        "schedules, %d equipment schedules, from %s",
+        len(rooms), rollup_only, len(buildings), len(floor_dest),
+        len(equipment_dest), path)
     for w in warnings:
         logging.warning("%s", w)
     return SpaceMap(space_map, errors, warnings,
                     building_count=len(buildings), floor_count=len(floor_dest),
                     labels=labels, held=held, buildings=building_schedules,
-                    floors=floor_schedules)
+                    floors=floor_schedules, equipment=equipment_schedules)
 
 
 def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
@@ -652,6 +739,8 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
             merge_gap_minutes=sc.merge_gap_minutes,
             floor=sc.floor,
             floor_destination=_fix(sc.floor_destination),
+            equipment_destinations=tuple(dict.fromkeys(
+                d for d in (_fix(e) for e in sc.equipment_destinations) if d is not None)),
         )
         if not fixed.all_destinations():
             errors.append(f"Room {space_id}: every schedule it would write or "

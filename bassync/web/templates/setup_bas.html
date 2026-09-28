@@ -1,0 +1,54 @@
+<h1>Your BAS</h1>
+<p class="hint">Where the schedules go. Most campuses need one <code>bacnet</code> system: WebCTRL, EcoStruxure,
+Niagara and every other BTL-listed controller take the same standard BACnet schedule writes.</p>
+
+{% if systems %}
+<section class="card">
+  <h2>Systems so far</h2>
+  <table class="list">
+    {% for name, drv in systems %}
+      <tr><td><a href="{{ url_for('connection', system=name) }}">{{ name }}</a></td><td><code>{{ drv or '?' }}</code></td>
+        <td class="hint">{% if name == staging and drv == 'preview' %}where buildings wait until they have a schedule; writes nothing{% endif %}</td></tr>
+    {% endfor %}
+  </table>
+  {% if real %}<p><a class="button primary" href="{{ url_for('setup_step', step='rooms') }}">Next: rooms</a></p>{% endif %}
+</section>
+{% endif %}
+
+<form method="post" action="{{ url_for('setup_bas_save') }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2>{{ 'Add another BACnet system' if real else 'Add a BACnet system' }}</h2>
+  {% if not bacnet_installed %}
+    <p class="flash warn full">The BACnet library (<code>bacpypes3</code>) isn't installed where this service runs, so
+      a bacnet system can be set up but not used yet. The Docker image includes it.</p>
+  {% endif %}
+  <label for="i-name">Name</label>
+  <div class="field"><input id="i-name" name="name" value="{{ form.name }}" pattern="[A-Za-z0-9][A-Za-z0-9_\-]*" spellcheck="false">
+    <small>Yours to choose, e.g. <code>campus</code>, or one per network or vendor.</small></div>
+  <label for="i-addr">This host's address</label>
+  <div class="field"><input id="i-addr" name="local_address" value="{{ form.local_address }}" spellcheck="false" placeholder="10.4.1.55/24">
+    <small>The address of this host on the controls network, with its prefix length.
+      {% if form.local_address %}Filled in from this host's main network — check the <code>/24</code> is right.{% endif %}
+      In Docker this needs host networking (the compose file sets it).</small></div>
+  <label for="i-device">BACnet device ID</label>
+  <div class="field"><input id="i-device" name="device_id" value="{{ form.device_id }}" inputmode="numeric">
+    <small>How the sync identifies itself on BACnet. It must not be used by anything else on campus.</small></div>
+  <label for="i-bbmd">BBMD</label>
+  <div class="field"><input id="i-bbmd" name="bbmd_address" value="{{ form.bbmd_address }}" spellcheck="false" placeholder="optional">
+    <small>Only when this host isn't on the same subnet as the controllers: the BBMD that forwards between them.</small></div>
+  <div class="buttons full">
+    <button class="primary">Add it</button>
+  </div>
+</form>
+
+<section class="card">
+  <h2>Not ready yet?</h2>
+  <p>Carry on without one: the buildings you add wait on a preview system that writes nothing, and a dry run
+    shows what each would get. Add the BAS here, or on the <a href="{{ url_for('connection') }}">Connection</a> page,
+    when you have the details. Other kinds of system — a REST API, or a preview that exports a CSV — are set up there too.</p>
+  <form method="post" action="{{ url_for('setup_bas_save') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="action" value="later">
+    <button>Carry on without one</button>
+  </form>
+</section>

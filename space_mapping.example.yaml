@@ -9,9 +9,11 @@
 # space_mapping.yaml is gitignored so your real room list stays local.
 #
 # Three sections:
-#   buildings:  each building's roll-up schedule, defined ONCE.
+#   buildings:  each building's roll-up schedule, defined ONCE — and, inside
+#               it, any `equipment:` its rooms share (an AHU, extra VAVs).
 #   floors:     optional per-floor corridor schedules (building + level).
-#   spaces:     the rooms; each names its building and optionally its floor.
+#   spaces:     the rooms; each names its building and optionally its floor
+#               and the equipment that serves it.
 #
 #
 # HOW OCCUPANCY ROLLS UP:  room  →  floor  →  building
@@ -42,6 +44,12 @@
 #     PER BUILDING The oldest wings: one air handler for the whole building.
 #                  Give the room a `building:` and no `floor:` or `target:`.
 #                  Its bookings drive the building schedule.
+#
+#     PER EQUIPMENT  One AHU serves a group of rooms, or a big room has two
+#                  VAVs. Define each piece of equipment once, under its
+#                  building's `equipment:`, and list it on every room it
+#                  serves: `equipment: [ahu_2]`. It runs whenever any of
+#                  those rooms is booked. Mix it freely with the above.
 #
 #   A room with no `target:` is a normal, supported mapping — it contributes
 #   its bookings to whatever roll-ups it belongs to and writes no schedule of
@@ -77,6 +85,13 @@
 #   space_id      (optional)  ONLY if the building common area is itself
 #                             bookable in 25Live (e.g. an atrium); its own
 #                             events then also count toward the building schedule
+#   equipment     (optional)  a list of the building's equipment, below
+#
+# ── equipment: fields (inside a building) ──
+#   id            (required)  short key its rooms list (unique in the building)
+#   name          (optional)  label for logs and reports, e.g. "AHU-2"
+#   system        (optional)  defaults to the building's system
+#   target        (required)  the equipment's schedule address
 #
 # ── floors: fields ──
 #   building      (required)  the building id these floors belong to
@@ -91,6 +106,8 @@
 #   building              (optional)  id of the building this room rolls into
 #   floor                 (optional)  floor number; with a matching `floors:`
 #                                     entry the room also drives that corridor
+#   equipment             (optional)  ids of its building's equipment that
+#                                     serve it; the room drives each of them
 #   system                (optional)  overrides the building's system
 #   target                (optional)  this room's own schedule address. OMIT for
 #                                     a building scheduled per floor or per
@@ -134,6 +151,13 @@ buildings:
                                    #   ignores it
     system: webctrl
     target: "12100:100"
+    equipment:
+      - id: ahu_2                  # one air handler for the teaching labs
+        name: "AHU-2 (labs)"
+        target: "12100:200"
+      - id: vav_1021b              # the lecture hall's second VAV
+        name: "VAV 1021-B"
+        target: "12100:51"
 
   # ── PER-FLOOR building ──
   # Brought online with floor-level air handling: the corridor AHU is the
@@ -187,7 +211,8 @@ spaces:
   - space_id: 1234
     space_name: "Science Hall 1021"
     building: science_hall
-    target: "12100:5"
+    target: "12100:5"              # VAV 1021-A, its own schedule...
+    equipment: [vav_1021b]         # ...and the second VAV, both driven
     pre_condition_minutes: 45      # large lecture hall — longer warm-up
 
   - space_id: 1235
@@ -195,12 +220,19 @@ spaces:
     building: science_hall
     target: "12100:6"
 
+  # ── PER EQUIPMENT: the labs share AHU-2, which runs if either is booked. ──
   - space_id: 1240
     space_name: "Science Hall 210 Lab"
     building: science_hall
     target: "12100:12"
+    equipment: [ahu_2]
     pre_condition_minutes: 60      # fume-hood lab — long pre-conditioning
     merge_gap_minutes: 30          # keep HVAC on between closely-spaced labs
+
+  - space_id: 1241
+    space_name: "Science Hall 212 Lab"
+    building: science_hall
+    equipment: [ahu_2]             # no schedule of its own: just the AHU
 
   # ── PER FLOOR: no `target:`. These drive 12200:120 and 12200:100. ──
   - space_id: 2201

@@ -45,11 +45,15 @@ finely as that building actually supports.
 - **Runs itself.** One Docker container runs the sync on its schedule and
   serves a web UI for status, history, *Sync now*, and editing the room map and
   settings.
+- **Set up in the browser.** A setup guide connects 25Live, finds the rooms
+  booked there, and imports them with their buildings, then points each building
+  at its BAS schedule.
 - **Mixed-vendor campus in one run.** Every building names the BAS it lives on,
   and its rooms inherit it.
-- **Per-room, per-floor or per-building scheduling**, mixed freely. Occupancy
-  rolls up **room → floor → building**, so a booked room also runs its corridor
-  and its building's common areas.
+- **Per-room, per-floor, per-building or per-equipment scheduling**, mixed
+  freely. Occupancy rolls up **room → floor → building**, so a booked room also
+  runs its corridor and its building's common areas. One AHU can serve many
+  rooms, and one room can drive several VAVs.
 - **Pre-conditioning and run-down buffers**, set per room, per building or
   globally. Back-to-back bookings merge into clean occupancy windows.
 - **Extra bookings** for what isn't in 25Live — an open house, an evening
@@ -95,16 +99,18 @@ mkdir -p config             # your settings will live here
 docker compose up -d
 ```
 
-Browse to **`http://<host>:8080`**, sign in with `BAS_WEB_PASSWORD`, and follow
-*Getting started* on the status page:
+Browse to **`http://<host>:8080`** and sign in with `BAS_WEB_PASSWORD`. The
+**setup guide** opens:
 
-1. **Connection**: your 25Live instance and account, the timezone, and a BAS
-   system (usually `bacnet`, with this host's address).
-2. **Buildings**, then **Rooms**. *Discover spaces* lists the 25Live rooms with
-   bookings, each with an *Add as a room* link.
-3. **Validate**, then **Dry run**. Neither writes anything.
-4. **Schedule**: nightly at 02:00 by default. Add a midday time to pick up
-   same-day bookings sooner.
+1. **25Live**: your instance and service account, tested as you save.
+2. **Campus**: the timezone, and how early rooms start conditioning.
+3. **BAS**: a `bacnet` system, with this host's address filled in.
+4. **Rooms**: it lists your 25Live spaces, booked or not, grouped by building,
+   filled in from 25Live or guessed from the room names. Add a building at a time.
+5. **Schedules**: each building's BACnet schedule.
+6. **Check and finish**: *Validate* and a *Dry run*, then turn the schedule on.
+
+Nothing is written to the BAS until the last step. → [The setup guide](docs/web-ui.md#the-setup-guide)
 
 → [Running with Docker](docs/docker.md) covers host networking, the config
 folder, volumes and published images. If the host isn't on the controls
@@ -128,13 +134,14 @@ To run it from Task Scheduler or cron instead, see
 ## Schedule as finely as each building allows
 
 How granular you can be is decided by how each building was built out. All
-three patterns are first-class, and they mix freely in one map:
+four patterns are first-class, and they mix freely in one map:
 
 | Pattern | When | Map the room with |
 |---|---|---|
 | **Per room** | The room has its own schedulable VAV or FCU, typical of WebCTRL sites | its own `target:` |
 | **Per floor** | Floor-level air handling: the corridor AHU is the finest real control | a `building:` and a `floor:` |
 | **Per building** | One air handler for the whole building | a `building:` only |
+| **Per equipment** | One AHU for a group of rooms, or two VAVs in one room | the building's `equipment:` it's served by |
 
 → [How finely can you schedule?](docs/how-it-works.md#how-finely-can-you-schedule) ·
 [The room map](docs/configuration.md#the-room-map)

@@ -225,3 +225,147 @@ def test_campus_is_a_label_the_sync_accepts_quietly():
                    "spaces:\n  - {space_id: 1, building: A}\n",
                    lambda path: load_space_map(path, cfg))
     assert sm.errors == [] and sm.warnings == []
+
+
+# ── equipment: one schedule for many rooms, many schedules for one room ──────
+
+EQUIPMENT_MAP = """
+buildings:
+  - id: sci
+    name: Science
+    target: "B/Occ"
+    equipment:
+      - id: ahu_3
+        name: AHU-3
+        target: "B/AHU3"
+      - id: vav_1b
+        target: "B/VAV1B"
+spaces:
+  - space_id: 1
+    building: sci
+    target: "B/VAV1A"
+    equipment: [ahu_3, vav_1b]
+  - space_id: 2
+    building: sci
+    equipment: ahu_3
+  - space_id: 3
+    building: sci
+"""
+
+
+def test_rooms_share_equipment_and_a_room_drives_several():
+    sm = with_yaml(EQUIPMENT_MAP, lambda p: load_space_map(p, base_config()))
+    assert not sm.errors and not sm.warnings, (sm.errors, sm.warnings)
+    one, two, three = sm.spaces["1"], sm.spaces["2"], sm.spaces["3"]
+    assert one.all_destinations() == [dest("B/VAV1A"), dest("B/AHU3"), dest("B/VAV1B"),
+                                      dest("B/Occ")]
+    assert two.destination is None                      # roll-up only, through the AHU
+    assert two.rollup_destinations() == [dest("B/AHU3"), dest("B/Occ")]
+    assert three.equipment_destinations == ()
+    assert sm.equipment == {("sci", "ahu_3"): dest("B/AHU3"),
+                            ("sci", "vav_1b"): dest("B/VAV1B")}
+    assert {dest("B/AHU3"), dest("B/VAV1B")} <= sm.destinations()
+    assert sm.labels[dest("B/AHU3")] == "AHU-3 (Science)"
+
+
+def test_equipment_no_room_lists_yet_is_still_managed():
+    text = EQUIPMENT_MAP.replace("    equipment: [ahu_3, vav_1b]\n", "").replace(
+        "    equipment: ahu_3\n", "")
+    sm = with_yaml(text, lambda p: load_space_map(p, base_config()))
+    assert not sm.errors, sm.errors
+    assert dest("B/AHU3") in sm.destinations()          # cleared when nothing books it
+
+
+def test_equipment_problems_are_reported_and_its_rooms_still_sync():
+    text = """
+buildings:
+  - id: sci
+    target: "B/Occ"
+    equipment:
+      - id: ahu_3
+        target: "B/AHU3"
+      - id: ahu_3
+        target: "B/AHU3-again"
+      - id: no_target
+      - id: odd
+        target: "B/X"
+        system: nowhere
+        colour: blue
+  - id: art
+    target: "A/Occ"
+    equipment: "not a list"
+spaces:
+  - space_id: 1
+    building: sci
+    equipment: [ahu_3, no_target, missing]
+  - space_id: 2
+    equipment: [ahu_3]
+    target: "B/Rm2"
+  - space_id: 3
+    building: art
+    equipment: [ahu_3]
+"""
+    sm = with_yaml(text, lambda p: load_space_map(p, base_config()))
+    joined = "\n".join(sm.errors)
+    assert "Equipment ahu_3 of 'sci' is defined more than once" in joined
+    assert "Equipment no_target of 'sci': no `target:`" in joined
+    assert "system 'nowhere'" in joined and "must be a list" in joined
+    warned = "\n".join(sm.warnings)
+    assert "unknown key `colour`" in warned
+    assert "lists equipment 'no_target', which is broken" in warned
+    assert "lists equipment 'missing', which isn't defined under building 'sci'" in warned
+    assert "Room 2 lists equipment but no building" in warned
+    assert "lists equipment 'ahu_3', which isn't defined under building 'art'" in warned
+    # Each room keeps what it can still drive.
+    assert sm.spaces["1"].equipment_destinations == (dest("B/AHU3"),)
+    assert sm.spaces["2"].destination == dest("B/Rm2")
+    assert sm.spaces["3"].equipment_destinations == ()
+
+
+def test_a_room_with_only_broken_equipment_drives_nothing_and_holds_nothing_wrongly():
+    text = """
+buildings: []
+spaces:
+  - space_id: 1
+    equipment: [ahu]
+"""
+    sm = with_yaml(text, lambda p: load_space_map(p, base_config()))
+    assert any("drive nothing" in e for e in sm.errors), sm.errors
+    assert "1" not in sm.spaces
+
+
+def test_equipment_targets_are_canonicalised_with_the_rest():
+    """Two spellings of one BACnet schedule — on a room and on equipment — are
+    one schedule, written once."""
+    text = """
+buildings:
+  - id: sci
+    target: "12001:1"
+    equipment:
+      - id: ahu
+        target: "12001:5@10.0.0.9"
+spaces:
+  - space_id: 1
+    building: sci
+    target: "12001:5"
+    equipment: [ahu]
+"""
+    cfg = base_config()
+    cfg["systems"] = {"sys": {"driver": "bacnet", "local_address": "10.0.0.5/24"}}
+    sm = with_yaml(text, lambda p: load_space_map(p, cfg))
+    assert not sm.errors, sm.errors
+    room = sm.spaces["1"]
+    assert room.destination == room.equipment_destinations[0]
+
+
+def test_shared_room_targets_point_at_equipment():
+    text = """
+buildings: []
+spaces:
+  - space_id: 1
+    target: "B/AHU"
+  - space_id: 2
+    target: "B/AHU"
+"""
+    sm = with_yaml(text, lambda p: load_space_map(p, base_config()))
+    assert any("`equipment:`" in w for w in sm.warnings), sm.warnings

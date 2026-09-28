@@ -31,16 +31,12 @@ mkdir -p config             # your settings will live here
 docker compose up -d
 ```
 
-Then browse to **`http://<host>:8080`**, sign in with `BAS_WEB_PASSWORD`, and
-follow *Getting started* on the status page:
-
-1. **Connection** — your 25Live instance and account, the timezone, and a BAS
-   system (usually `bacnet`, with this host's `local_address`).
-2. **Buildings**, then **Rooms** — *Discover spaces* lists the 25Live rooms
-   with bookings, each with an *Add as a room* link.
-3. **Validate**, then **Dry run**. Neither writes anything.
-4. **Schedule** — nightly at 02:00 by default; add a midday time to pick up
-   same-day bookings sooner.
+Then browse to **`http://<host>:8080`** and sign in with `BAS_WEB_PASSWORD`.
+On a new install the [setup guide](web-ui.md#the-setup-guide) opens. It covers
+25Live, the campus timezone, a BAS system (usually `bacnet`, with this host's
+`local_address`), and the rooms, found in 25Live and imported with their
+buildings. Then each building's schedule, then *Validate* and a *Dry run*,
+before it turns the schedule on. Nothing is written to the BAS until then.
 
 Passwords can be set on the web UI (Connection and Alerts pages), or in `.env`
 — which wins — followed by `docker compose up -d` to restart with them. The web

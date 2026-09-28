@@ -112,11 +112,12 @@ desktop editor's **Defaults** tab, or by hand.
 cp space_mapping.example.yaml space_mapping.yaml
 ```
 
-Three sections: `buildings:` (each roll-up schedule, defined once), `floors:`
-(optional per-floor corridor schedules) and `spaces:` (the rooms). Each room
-names its `building:` by id, and **every room in a building is automatically
-unioned into that building's schedule** — you never repeat the building's
-address on a room, so you can't forget to wire one up.
+Three sections: `buildings:` (each roll-up schedule, defined once, with any
+equipment its rooms share), `floors:` (optional per-floor corridor schedules)
+and `spaces:` (the rooms). Each room names its `building:` by id, and **every
+room in a building is automatically unioned into that building's schedule** —
+you never repeat the building's address on a room, so you can't forget to wire
+one up.
 
 ```yaml
 buildings:
@@ -126,6 +127,10 @@ buildings:
     system: webctrl
     target: "12200:100"           # the building's common-area schedule
     pre_condition_minutes: 40     # bigger air handler, longer run-up
+    equipment:
+      - id: ahu_3                 # rooms list it by this
+        name: "AHU-3"
+        target: "12200:300"       # runs whenever any room listing it is booked
 
 floors:
   - building: liberal_arts
@@ -138,6 +143,7 @@ spaces:
     building: liberal_arts
     floor: 2                      # drives the floor 2 corridor too
     target: "12200:5"             # its own schedule; omit to drive only the roll-ups
+    equipment: [ahu_3]            # and the AHU it shares with other rooms
 ```
 
 Each entry carries:
@@ -154,6 +160,16 @@ Each entry carries:
   `level`, the room also drives that floor's corridor schedule. Occupancy rolls
   up **room → floor → building**: a corridor runs if any room off it is booked,
   and the building runs if any floor is.
+- **`equipment:`** — on a building, a list of the equipment in it that has a
+  schedule of its own: an air handler that serves several rooms, or a second VAV
+  in a big room. Each entry has an `id` (unique in the building), an optional
+  `name`, a `target`, and optionally a `system` (else the building's). On a
+  room, the ids of the building's equipment that serve it, e.g.
+  `equipment: [ahu_3, vav_2_14b]`. Each piece of equipment runs whenever any
+  room that lists it is booked, merged across rooms like a floor; a room can
+  list several, with or without a `target:` of its own. Equipment no room lists
+  yet is still managed, and cleared. In the web UI it's **Room map →
+  Equipment**, and ticked on each room's form.
 - **`campus:`** (buildings) — an optional label. The web UI shows it on every
   room-map list, filters by it and counts rooms per campus; the sync ignores
   it, as 25Live has no campus to match it against.
@@ -170,7 +186,9 @@ by [extra bookings](#extra-bookings).
 
 `space_mapping.example.yaml` documents every field and shows all three
 granularity patterns side by side. Find a room's `space_id` with *Discover
-spaces* in the web UI or `--discover` on the command line.
+spaces* in the web UI or `--discover` on the command line. The web UI's
+[setup guide](web-ui.md#the-setup-guide) adds rooms found in 25Live with their
+buildings in one go.
 
 ## Targets
 

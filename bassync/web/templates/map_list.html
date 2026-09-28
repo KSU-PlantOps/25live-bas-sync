@@ -7,6 +7,10 @@
   floor — it rolls up into. A room with no target of its own still keeps its building and floor running.</p>
 {% elif kind == 'buildings' %}
   <p class="hint">Each building's common-area schedule. It runs whenever any of its rooms is booked.</p>
+{% elif kind == 'equipment' %}
+  <p class="hint">Air handlers, VAVs and other equipment with a schedule of their own, each in a building. A room lists the
+  equipment that serves it: one AHU can serve many rooms, and a room can have several. Each runs whenever any room that
+  lists it is booked.</p>
 {% else %}
   <p class="hint">Optional per-floor corridor schedules. A floor runs whenever a room on it is booked.</p>
 {% endif %}
@@ -23,6 +27,7 @@
 
 <div class="toolbar">
   {% if can('edit_map') %}<a class="button primary" href="{{ url_for('map_form', kind=kind) }}">Add {{ spec.one }}</a>{% endif %}
+  {% if kind in ('rooms', 'buildings') %}<a class="button" href="{{ url_for('map_import') }}">From 25Live</a>{% endif %}
   <input type="search" placeholder="Filter" data-filter="rows" class="filter" aria-label="Filter">
   {% if campuses %}
     <select data-campus-filter="rows" aria-label="Campus">
@@ -42,6 +47,8 @@
     <tr data-campus="{{ campus or '' }}">
       {% for key, label in spec.columns %}
         <td>{% if key == '_campus' %}{{ campus or '' }}
+            {% elif key == '_rooms' %}{{ users.get((row.get('building') | string, row.get('id') | string), 0) }}
+            {% elif key == 'equipment' %}{{ ([row.get(key)] if row.get(key) is string else (row.get(key) or [])) | join(', ') }}
             {% elif key == 'target' and row.get(key) %}<code>{{ row.get(key) }}</code>
             {% elif key == 'system' and not row.get(key) %}<span class="hint">{{ 'default' if kind == 'buildings' else 'inherit' }}</span>
             {% else %}{{ row.get(key, '') if row.get(key) is not none else '' }}{% endif %}</td>

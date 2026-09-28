@@ -25,7 +25,7 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
-from . import __version__, extras, safety
+from . import __version__, discovery, extras, safety
 from .collegenet import CollegeNetClient, CollegeNetError
 from .config import ConfigError
 from .drivers import build_driver
@@ -625,9 +625,11 @@ def _bookings_check(cfg: dict, client: CollegeNetClient, space_map) -> tuple:
     return name, False, detail
 
 
-def run_discover(cfg: dict, days: int) -> int:
-    """List 25Live spaces with events in the next `days` days, as a starter for
-    space_mapping.yaml. Read-only."""
+def run_discover(cfg: dict, days: int, every_space: bool = True) -> int:
+    """List the 25Live spaces — every one the account can see, or only those
+    with bookings in the next `days` days — as a starter for
+    space_mapping.yaml, and keep them in state/discovery.json for the web UI.
+    Read-only as far as 25Live and the BAS are concerned."""
     tz = ZoneInfo(cfg["timezone"])
     if not cfg["collegenet"].get("base_url"):
         logging.error("25Live base_url is not set — configure "
@@ -636,15 +638,21 @@ def run_discover(cfg: dict, days: int) -> int:
 
     client = CollegeNetClient(cfg["collegenet"], tz, cfg.get("retry"))
     try:
-        spaces = client.discover_spaces(days)
+        spaces, listed_every = client.discover_spaces(days, every_space=every_space)
     except (requests.RequestException, CollegeNetError) as exc:
         logging.error("Discovery failed: %s", exc)
         return EXIT_FETCH_FAILED
     finally:
         client.close()
 
-    logging.info("Discovered %d space(s) with events in the next %d days:",
-                 len(spaces), days)
+    listing = ("every" if listed_every else
+               "booked-fallback" if every_space else "booked-only")
+    if listed_every:
+        logging.info("Discovered %d space(s), %d with bookings in the next %d days:",
+                     len(spaces), sum(1 for s in spaces if s["bookings"]), days)
+    else:
+        logging.info("Discovered %d space(s) with bookings in the next %d days:",
+                     len(spaces), days)
     rows = [{"space_id": int(s["space_id"]) if str(s["space_id"]).isdigit()
              else s["space_id"],
              "space_name": s["space_name"],
@@ -656,4 +664,10 @@ def run_discover(cfg: dict, days: int) -> int:
           "target for each ---")
     print(yaml.safe_dump({"spaces": rows}, sort_keys=False, allow_unicode=True,
                          default_flow_style=False), end="")
+    # Kept for the web UI's setup guide, which offers them for import.
+    try:
+        discovery.save(Path(cfg["safety"]["state_file"]).parent, days, spaces,
+                       listing=listing)
+    except OSError as exc:
+        logging.warning("Couldn't keep the discovered spaces for the web UI: %s", exc)
     return EXIT_OK

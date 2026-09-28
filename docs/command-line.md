@@ -19,7 +19,7 @@ the same `bas-sync` command. In Docker, run it with
 python main.py --list-drivers   # what BAS integrations are available
 python main.py --validate       # pre-flight: config, auth, bookings, targets
 python main.py --test-alert     # prove the reports/alerts actually reach you
-python main.py --discover       # list 25Live spaces with upcoming events
+python main.py --discover       # list 25Live spaces and their upcoming bookings
 python main.py --dry-run        # fetch + build, print what WOULD be written
 python main.py                  # live run
 python main.py --system ebo_campus   # limit to one BAS (commissioning)
@@ -36,8 +36,14 @@ python main.py --force          # override the mass-clear safety check
 - **`--dry-run`** contacts no BAS at all, shows each driver's *actual*
   encoding — for BACnet, the per-date special events that would go on the
   wire — and says whether the safety check would let a live run through.
-- **`--discover`** (optionally `--discover-days N`, default 30) prints spaces
-  with bookings as ready-to-paste YAML for `space_mapping.yaml`.
+- **`--discover`** prints every space 25Live lists for the service account,
+  booked or not, as ready-to-paste YAML for `space_mapping.yaml`
+  (`--discover-booked-only` lists just the ones with bookings in the window;
+  `--discover-days N`, default 30, sets the window bookings are counted over).
+  It also keeps what it found — each space's name, capacity, building where
+  25Live gives one, and number of bookings — in `state/discovery.json`, which
+  the web UI [offers for import](web-ui.md#adding-rooms-from-25live). If
+  25Live won't list every space, it lists the booked ones and says why.
 - **`--test-alert`** sends a test through every configured channel — email
   gets a sample run report — and reports each one. Worth running the day you
   set alerting up: alerting only matters when something has already gone

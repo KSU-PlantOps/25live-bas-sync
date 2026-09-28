@@ -365,9 +365,11 @@ def create_app(service, settings: dict) -> Flask:
     def _unauthorised(exc):
         return {"error": "sign in again"}, 401
 
-    from . import bookings, views
+    from . import bookings, importer, setup, views
     views.register(app)
     bookings.register(app)
+    importer.register(app)
+    setup.register(app)
     return app
 
 

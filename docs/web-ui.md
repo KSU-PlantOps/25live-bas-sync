@@ -8,6 +8,8 @@ map and every setting — checked by the sync's own validation before anything
 is saved. It follows the browser's light or dark setting.
 
 - [Pages](#pages)
+- [The setup guide](#the-setup-guide)
+- [Adding rooms from 25Live](#adding-rooms-from-25live)
 - [How it runs things](#how-it-runs-things)
 - [Sign-in and roles](#sign-in-and-roles)
 - [Changing the roles](#changing-the-roles)
@@ -29,7 +31,9 @@ is saved. It follows the browser's light or dark setting.
 | **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
 | **Bookings** | [Extra bookings](configuration.md#extra-bookings): occupancy that isn't in 25Live — one day or every week, on a room, a floor or a whole building; add, edit, copy and delete, and clear out the ones that have ended. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
-| **Room map** → Rooms · Buildings · Floors | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. Renaming a building repoints its rooms and floors; deleting one takes its floors and won't leave rooms driving nothing. |
+| **Room map** → Rooms · Buildings · Floors · Equipment | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. [Equipment](configuration.md#the-room-map) — an AHU several rooms share, or a room's second VAV — is ticked on each room's form. Renaming a building or equipment repoints what uses it; deleting a building takes its floors and equipment and won't leave rooms driving nothing, and equipment in use can't be deleted. |
+| **Room map** → From 25Live | The spaces in 25Live, booked or not, [grouped by building](#adding-rooms-from-25live), to add a building at a time. |
+| **Settings** → Setup guide | A new install's [walk through setup](#the-setup-guide): 25Live, the campus, a BAS system, rooms found in 25Live, each building's schedule, and the checks before the schedule goes on. |
 | **Settings** → Connection | 25Live, BAS systems (add, remove, change driver), timezone and default system; the passwords, set or cleared here. *Validate* per system. |
 | **Settings** → Alerts | Email (SMTP server, security, account and password, recipients, full or summary report, CSV), webhooks (Slack, Teams, generic) and the dead-man's-switch pings; *Send a test*. |
 | **Settings** → Schedule · Defaults | When the sync runs; the run-up/run-down/merge-gap/lookahead defaults. |
@@ -47,6 +51,77 @@ is saved. It follows the browser's light or dark setting.
 | <picture><source media="(prefers-color-scheme: dark)" srcset="images/bookings-dark.png"><img alt="The Extra bookings list: title, where, when, the next occurrence, run-up and who added it" src="images/bookings-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/booking-form-dark.png"><img alt="The extra booking form: title, where, one day or every week, date, times, exact times and a note" src="images/booking-form-light.png"></picture> |
 | **A job's live output** | **Roles, as a table of capabilities** |
 | <picture><source media="(prefers-color-scheme: dark)" srcset="images/job-dark.png"><img alt="A sync's output as it runs" src="images/job-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="images/access-dark.png"><img alt="The Access page: a column per role, a row per capability" src="images/access-light.png"></picture> |
+
+## The setup guide
+
+On a new install — no `config.yaml` yet — signing in opens the setup guide, for
+anyone whose role can change settings. It walks through what a site needs, in
+order, and each step shows as done once the files say so:
+
+1. **25Live** — the instance (or a self-hosted base URL), the service account
+   and its password, and which kinds of booking to include. *Save and test*
+   makes one small request, and says why if 25Live refuses it.
+2. **Campus** — the timezone (this browser's is suggested), the lookahead, and
+   the run-up, run-down and merge-gap defaults.
+3. **BAS system** — a `bacnet` system: this host's address (filled in from its
+   main network; check the prefix), a device ID nothing else uses, and a BBMD
+   if the controllers are on another subnet. Other kinds of system are set up on
+   the Connection page, and *Carry on without one* is fine too.
+4. **Rooms** — *Find rooms in 25Live*, then add them a building at a time or
+   all at once: the same page as [Room map → From 25Live](#adding-rooms-from-25live).
+5. **Schedules** — each building's schedule in the BAS (for BACnet,
+   `device:instance`), checked against its system as you save. Floors, and rooms
+   with schedules of their own, are on the Room map pages.
+6. **Check and finish** — *Validate* and a *Dry run*, then the times the sync
+   runs; *Turn the schedule on and finish*.
+
+**Nothing reaches the BAS until you finish.** The guide creates `config.yaml`
+with the schedule off. Buildings imported from 25Live wait on a `preview` system
+called `staging`, which writes nothing, until the Schedules step gives each one
+a real schedule. A dry run shows what they'd get. A building left staged at the
+end stays that way until it has a schedule, and the guide says so.
+
+The guide is a view over the ordinary settings files, not a store of its own,
+so it can be left and picked up again, and anything it sets can be changed on
+the other pages. It's under **Settings → Setup guide**. *Skip the guide* (or
+*Hide this* on the status page's *Getting started* card) stops it opening; the
+status page stops showing that card once the guide is finished, or the site has
+run a live sync. Only whether it was finished or skipped is kept, in
+`state/setup.json`.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/setup-rooms-dark.png">
+  <img alt="The setup guide's Rooms step: the steps down the side, and the spaces 25Live has bookings for, grouped by building with an Add button for each, each room with its capacity, number of bookings and a building filled in from 25Live or guessed from the name" src="images/setup-rooms-light.png">
+</picture>
+
+## Adding rooms from 25Live
+
+**Room map → From 25Live** (and the setup guide's Rooms step) lists every space
+25Live lets the service account see, booked or not, grouped by building, with
+each room's capacity and its number of bookings over a window you choose — 30 to
+180 days. Untick *include spaces with no bookings* to list only the booked ones.
+If 25Live won't list every space for the account, the page says so and shows
+the booked ones. *Find rooms in 25Live* runs [`--discover`](command-line.md);
+it needs *Run the tools*, and adding rooms needs *Edit the room map*.
+
+Each room's building comes from 25Live where your instance says; otherwise it's
+guessed from the name — "Science Hall 204 (Chem lab)" is in *Science Hall*, and
+"Student Center Ballroom" goes with "Student Center 204". Every guess is an
+editable box: change a room's building to move it to another group when you add
+it.
+
+- **One building at a time:** each building's *Add* button adds its ticked rooms,
+  and nothing else. Rooms with bookings start ticked; tick the building's own
+  box to take all of them, bookings or not. A building the room map doesn't have yet is created, and
+  you go straight to its form to give it its schedule.
+- **Or all at once:** tick rooms anywhere, and *Add the ticked rooms*.
+
+Rooms go into the room map's building of that name (or id). A new building
+waits on the `staging` preview system, which writes nothing, with a placeholder
+target, until it's given its real schedule — so adding rooms never writes to a
+BAS by itself. Rooms already in the map are marked *added*; a room with no
+building isn't ticked until you type one. Floors, equipment and rooms' own
+targets are set on the Room map pages afterwards.
 
 ## How it runs things
 
@@ -117,7 +192,7 @@ Advanced and Admin back as they came.
 | Force | Sync past the mass-clear safety check. |
 | Edit the room map | Add and edit rooms, buildings and floors. |
 | Edit extra bookings | Add and edit extra bookings. |
-| Edit settings | Change the connection, systems, alerts, schedule, defaults, safety limits and the settings files. |
+| Edit settings | Change the connection, systems, alerts, schedule, defaults, safety limits and the settings files; use the setup guide (adding its rooms also needs *Edit the room map*, and finding them *Run the tools*). |
 | Set passwords | Set and clear the stored passwords. |
 | See the activity log | See who did what. |
 | Restart | Restart the service, and check for updates. |

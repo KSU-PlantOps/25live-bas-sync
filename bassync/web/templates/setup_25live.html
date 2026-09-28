@@ -1,0 +1,52 @@
+<h1>Connect to 25Live</h1>
+<p class="hint">The sync only ever reads from 25Live. It asks Series25 WebServices for the bookings in the rooms
+you map, a few times a day.</p>
+
+<form method="post" action="{{ url_for('setup_25live_save') }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label for="i-instance">Instance name</label>
+  <div class="field"><input id="i-instance" name="instance" value="{{ form.instance }}" spellcheck="false"
+                            autocomplete="off" placeholder="your-instance">
+    <small>For 25Live hosted by CollegeNET: your instance's name, as CollegeNET gave it to you. The address is
+      built from it.</small></div>
+  <label for="i-base">Or a base URL</label>
+  <div class="field"><input id="i-base" name="base_url" value="{{ form.base_url }}" spellcheck="false"
+                            autocomplete="off" placeholder="https://">
+    <small>Only for a self-hosted Series25: its WebServices address, ending before <code>/events.xml</code>.
+      Leave blank otherwise.</small></div>
+  <label for="i-user">Username</label>
+  <div class="field"><input id="i-user" name="username" value="{{ form.username }}" spellcheck="false"
+                            autocomplete="off">
+    <small>A <strong>local</strong> account, not one that signs in through single sign-on.</small></div>
+  <label for="i-password">Password</label>
+  <div class="field">
+    {% if password_source == 'environment' %}
+      <p class="ok">Set in the container's environment (<code>BAS_25LIVE_PASSWORD</code>).</p>
+    {% elif can('edit_passwords') %}
+      <input id="i-password" name="password" type="password" autocomplete="new-password"
+             placeholder="{{ 'stored — leave blank to keep it' if password_source else '' }}">
+      <small>Kept in the state folder, readable only by the service — never in config.yaml.</small>
+    {% else %}
+      <p class="{{ 'ok' if password_source else 'bad' }}">{{ 'Set.' if password_source else 'Not set' }}</p>
+      <small>Your role can't set passwords.</small>
+    {% endif %}
+  </div>
+  <span class="label">Include</span>
+  <div class="field"><div class="checks">
+    {% for state, text in state_labels %}
+      <label class="check"><input type="checkbox" name="state" value="{{ state }}" {{ 'checked' if state in form.states }}>
+        {{ text }} events</label>
+    {% endfor %}
+  </div><small>Most campuses condition rooms for confirmed events only.</small></div>
+  <div class="buttons full">
+    <button class="primary">Save and test</button>
+    <a href="{{ url_for('setup_step', step='campus') }}">Skip for now</a>
+  </div>
+</form>
+
+{% if config_exists %}
+<form method="post" action="{{ url_for('setup_25live_test') }}" class="inline">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <button>Test the saved settings again</button>
+</form>
+{% endif %}

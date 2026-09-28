@@ -23,10 +23,19 @@
     var apply = function () {
       var q = box.value.trim().toLowerCase();
       var c = campus ? campus.value : "";
-      table.querySelectorAll("tbody tr").forEach(function (tr) {
+      table.querySelectorAll("tbody tr:not([data-group-head])").forEach(function (tr) {
         var text = !q || tr.textContent.toLowerCase().indexOf(q) !== -1;
         var place = !c || tr.getAttribute("data-campus") === c;
         tr.hidden = !(text && place);
+      });
+      // A group's heading shows while any of its rows do; typing the
+      // building's name shows all of them.
+      table.querySelectorAll("tr[data-group-head]").forEach(function (head) {
+        var rows = head.parentNode.querySelectorAll("tr:not([data-group-head])");
+        if (q && head.textContent.toLowerCase().indexOf(q) !== -1) {
+          rows.forEach(function (tr) { tr.hidden = false; });
+        }
+        head.hidden = !Array.prototype.some.call(rows, function (tr) { return !tr.hidden; });
       });
     };
     box.addEventListener("input", apply);
@@ -52,6 +61,25 @@
       rows.forEach(function (r) { body.appendChild(r); });
     });
   });
+
+  // A room lists only its own building's equipment: show that building's.
+  var buildingPick = document.querySelector("form select[name=building]");
+  var groups = document.querySelectorAll("[data-equipment-of]");
+  if (buildingPick && groups.length) {
+    var none = document.querySelector("[data-equipment-none]");
+    var showEquipment = function () {
+      var shown = 0;
+      groups.forEach(function (g) {
+        var mine = g.getAttribute("data-equipment-of") === buildingPick.value;
+        var ticked = g.querySelector("input:checked");
+        g.hidden = !(mine || ticked);
+        if (!g.hidden) shown++;
+      });
+      if (none) none.hidden = shown > 0;
+    };
+    buildingPick.addEventListener("change", showEquipment);
+    showEquipment();
+  }
 
   // Picking another driver shows its settings (nothing is saved yet).
   document.querySelectorAll("select[data-driver-switch]").forEach(function (sel) {
@@ -120,6 +148,48 @@
     setTimeout(check, 1500);
   }
   document.querySelectorAll("pre[data-scroll-end]").forEach(function (p) { p.scrollTop = p.scrollHeight; });
+
+  // The setup guide: tick or untick every room the filter leaves showing.
+  document.querySelectorAll("button[data-check-all], button[data-check-none]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var on = btn.hasAttribute("data-check-all");
+      var table = document.getElementById(btn.getAttribute(on ? "data-check-all" : "data-check-none"));
+      if (!table) return;
+      table.querySelectorAll("tbody tr").forEach(function (tr) {
+        if (tr.hidden) return;
+        tr.querySelectorAll("input[type=checkbox]").forEach(function (box) { box.checked = on; });
+      });
+    });
+  });
+  // Tick or untick a whole building's rooms from its heading.
+  document.querySelectorAll("input[data-check-group]").forEach(function (box) {
+    box.addEventListener("change", function () {
+      box.closest("tbody").querySelectorAll("input[name=pick]").forEach(function (pick) {
+        pick.checked = box.checked;
+      });
+    });
+  });
+  document.querySelectorAll("input[data-hide-added]").forEach(function (box) {
+    var table = document.getElementById(box.getAttribute("data-hide-added"));
+    if (!table) return;
+    box.addEventListener("change", function () { table.classList.toggle("hide-added", box.checked); });
+  });
+
+  // On a phone the steps are one row that scrolls: start it at this step.
+  var here = document.querySelector(".stepper [aria-current]");
+  if (here) {
+    var row = here.closest("ol");
+    if (row && row.scrollWidth > row.clientWidth) row.scrollLeft = here.offsetLeft - row.offsetLeft - 16;
+  }
+  // ...and suggest this browser's timezone when none is chosen yet.
+  document.querySelectorAll("select[data-browser-zone]").forEach(function (sel) {
+    if (sel.value) return;
+    var zone = "";
+    try { zone = Intl.DateTimeFormat().resolvedOptions().timeZone || ""; } catch (e) { return; }
+    for (var i = 0; i < sel.options.length; i++) {
+      if (sel.options[i].value === zone) { sel.value = zone; return; }
+    }
+  });
 
   // The status page refreshes itself when a job starts or finishes.
   var status = document.querySelector("[data-status-url]");

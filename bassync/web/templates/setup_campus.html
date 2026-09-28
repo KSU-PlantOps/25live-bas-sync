@@ -1,0 +1,27 @@
+<h1>The campus</h1>
+<p class="hint">Bookings are read and schedules written in the campus's local time.</p>
+
+<form method="post" action="{{ url_for('setup_campus_save') }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <label for="i-tz">Timezone</label>
+  <div class="field">
+    <select id="i-tz" name="timezone" data-browser-zone>
+      <option value="">Choose…</option>
+      {% for z in zones %}<option {{ 'selected' if z == form.timezone }}>{{ z }}</option>{% endfor %}
+    </select>
+    <small>Where the buildings are. With nothing chosen yet, this browser's own timezone is picked.</small>
+  </div>
+  {% for key, label, fallback in fields %}
+    <label for="i-{{ key }}">{{ label }}</label>
+    <div class="field"><input id="i-{{ key }}" name="{{ key }}" value="{{ form[key] }}" inputmode="numeric" class="tiny">
+      <small>{% if key == 'pre_condition_minutes' %}how long before a booking its room starts conditioning
+        {% elif key == 'post_buffer_minutes' %}how long after a booking its room keeps running
+        {% elif key == 'merge_gap_minutes' %}bookings closer together than this run straight through
+        {% else %}how many days of bookings each run schedules{% endif %}
+        (default {{ fallback }}). Rooms and buildings can have their own.</small></div>
+  {% endfor %}
+  <div class="buttons full">
+    <button class="primary">Save</button>
+    <a href="{{ url_for('setup_step', step='bas') }}">Skip for now</a>
+  </div>
+</form>

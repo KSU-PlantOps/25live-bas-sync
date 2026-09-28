@@ -1,0 +1,38 @@
+<h1>Welcome</h1>
+<p>This guide gets the sync running: it connects to 25Live, finds your rooms there, and points each building at
+the BAS schedule its bookings should drive. It takes about fifteen minutes, and you can leave and come back —
+every step saves as you go, and each one is also on the other pages.</p>
+<p><strong>Nothing is written to your BAS until you're done.</strong> The schedule stays off until the last step,
+and buildings found in 25Live wait on a <em>preview</em> system, which writes nothing, until you give each one
+its schedule.</p>
+
+<section class="card">
+  <h2>You'll need</h2>
+  <ul>
+    <li>A <strong>local</strong> 25Live account (not single sign-on) with Series25 WebServices turned on and read
+      access to the events and locations to schedule.</li>
+    <li>For BACnet: this host on the controls network, and a BACnet device ID for the sync that nothing else on
+      campus uses. Your controls team will know both.</li>
+    <li>For each building, the schedule the sync should own — a BACnet schedule set aside for bookings. You can
+      stop before this step and come back when you have them.</li>
+  </ul>
+</section>
+
+<section class="card">
+  <h2>Checks</h2>
+  <table class="list">
+    {% for label, ok, what, hint in checks %}
+      <tr><td><span class="dot {{ 'ok' if ok else 'bad' }}"></span></td>
+        <td>{{ label }}<small>{{ hint }}</small></td><td><code>{{ what }}</code></td>
+        <td class="{{ 'ok' if ok else 'bad' }}">{{ 'Yes' if ok else 'No' }}</td></tr>
+    {% endfor %}
+  </table>
+</section>
+
+<div class="buttons">
+  <a class="button primary" href="{{ url_for('setup_step', step='25live') }}">Start</a>
+  <form method="post" action="{{ url_for('setup_skip') }}" class="inline">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="link">Skip the guide — I'll use the settings pages</button>
+  </form>
+</div>

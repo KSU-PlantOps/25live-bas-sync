@@ -4,6 +4,49 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Added
+- **A setup guide in the web UI.** A new install opens on it: 25Live (saved
+  and tested), the campus timezone and defaults, a BACnet system with this
+  host's address filled in, the rooms, each building's schedule, then
+  *Validate*, a *Dry run* and the schedule. It's a guided view over the usual
+  settings files, so it can be left and picked up again, and it's under
+  Settings. Nothing reaches the BAS before the end: the guide creates
+  `config.yaml` with the schedule off, and imported buildings wait on a
+  `preview` system called `staging` until they have a schedule.
+- **Rooms found in 25Live, imported with their buildings.** Every space
+  25Live lists for the account (`spaces.xml`), booked or not, with its capacity
+  and its number of bookings in the next 30–180 days, and a building taken from
+  25Live where the instance gives one, or guessed from the name ("Science Hall
+  204 (Chem lab)" → Science Hall). If 25Live won't list every space, the ones
+  with bookings are listed instead, and the page says so. Ticked rooms are
+  added in one go, creating their buildings.
+- **Equipment: one AHU for many rooms, several VAVs for one room.** A
+  building's `equipment:` lists the air handlers, VAVs and the like that have a
+  schedule of their own; each room lists the ones that serve it
+  (`equipment: [ahu_3]`). Each runs whenever any room listing it is booked,
+  merged across rooms like a floor, and is written once. A room can list
+  several, with or without its own `target:`. Edited on **Room map →
+  Equipment**, and ticked on each room's form; renaming equipment repoints its
+  rooms, and equipment in use can't be deleted.
+- **Room map → From 25Live**: those spaces, grouped by building, to add a building at a time (each group has its own *Add* button,
+  and a new building goes straight to its form for its schedule) or all at
+  once. It's the setup guide's Rooms step too, and needs *Edit the room map*
+  rather than *Edit settings*.
+- `--discover` lists every space, not only those with bookings
+  (`--discover-booked-only` for the old list), with each one's formal name,
+  capacity, building and number of bookings (cancelled occurrences, and states
+  the sync doesn't include, aren't counted), and keeps them in
+  `state/discovery.json`. Its printed YAML has the same shape.
+
+### Changed
+- The status page's *Getting started* card follows the setup guide's steps,
+  and goes once the guide is finished or skipped, or the site has run a live
+  sync.
+- Two rooms with the same `target:` still share it, and the warning now
+  suggests equipment for when that's intended.
+
 ## [1.3.0] — 2026-09-28 — A web UI, and Docker as the way to run it
 
 The container now runs a long-lived service with a web UI: status and

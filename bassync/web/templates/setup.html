@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Setup{% endblock %}
+{% block body %}
+<div class="setup">
+  <nav class="stepper" aria-label="Setup steps">
+    <ol>
+      {% for s in steps %}
+        <li class="{{ 'done' if s.done }}">
+          <a href="{{ s.url }}"{% if s.id == step %} aria-current="step"{% endif %}>
+            <span class="num" aria-hidden="true">{{ '✓' if s.done else loop.index }}</span>
+            <span>{{ s.title }}{% if s.done %}<span class="visually-hidden"> (done)</span>{% endif %}
+              {% if s.summary %}<small>{{ s.summary }}</small>{% endif %}</span>
+          </a>
+        </li>
+      {% endfor %}
+    </ol>
+  </nav>
+  <div class="setup-body">
+    {% if raw_error %}
+      <div class="flash error">config.yaml can't be read, so the guide can't save to it: {{ raw_error }} —
+        <a href="{{ url_for('file_edit', name='config') }}">fix it here</a>.</div>
+    {% endif %}
+    {% for e in errors %}<div class="flash error pre">{{ e }}</div>{% endfor %}
+    {% include "setup_" ~ step ~ ".html" %}
+  </div>
+</div>
+{% endblock %}
