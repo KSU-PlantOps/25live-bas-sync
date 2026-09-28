@@ -347,9 +347,9 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             needed = "run_tools"
         if kind == "sync" and request.form.get("force"):
             needed = "force"
-        if not access.can(g.role, needed):
-            abort(403, "Your role can't start that. Basic users can sync every system; "
-                       "the tools need Advanced, and Force needs Admin.")
+        if not access.can(g.caps, needed):
+            abort(403, f"Your role ({g.role_label or 'none'}) can't start that: it needs "
+                       f"“{access.CAPABILITY_LABELS[needed]}”.")
         args: list = []
         system = (request.form.get("system") or "").strip()
         if system and kind in ("sync", "dry-run", "validate"):
@@ -630,7 +630,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             version=version_of(files().config), secrets=secret_status(raw)), status
 
     @app.route("/settings/connection", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def connection_save():
         system = request.form.get("system", "")
         driver = request.form.get("driver", "")
@@ -686,7 +686,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=system))
 
     @app.route("/settings/systems", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def system_add():
         name = (request.form.get("name") or "").strip()
         driver = request.form.get("driver") or "bacnet"
@@ -721,7 +721,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return redirect(url_for("connection", system=name))
 
     @app.route("/settings/systems/<name>/delete", methods=["POST"])
-    @requires("admin")
+    @requires("edit_settings")
     def system_delete(name):
         with ctx()["write_lock"]:
             raw, error = load_config_raw()
@@ -755,7 +755,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── settings: defaults and schedule ──────────────────────────────────────
 
     @app.route("/settings/defaults", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def defaults():
         values = load_defaults()
         errors: list = []
@@ -788,7 +788,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                                fields=mapedit.DEFAULTS_FIELDS, errors=errors)
 
     @app.route("/settings/schedule", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def schedule():
         service = svc()
         raw, error = load_config_raw()
@@ -845,7 +845,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── settings: passwords, alerts, access ──────────────────────────────────
 
     @app.route("/settings/passwords", methods=["POST"])
-    @requires("admin")
+    @requires("edit_passwords")
     def password_set():
         name = request.form.get("name", "")
         back = {"alerts": "alerts", "access": "access_page"}.get(
@@ -879,7 +879,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                       ("alerts", "webhook_notify_on_success")]
 
     @app.route("/settings/alerts", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def alerts():
         raw, error = load_config_raw()
         errors: list = []
@@ -953,7 +953,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             422 if errors or confirm else 200)
 
     @app.route("/settings/access", methods=["GET", "POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_page():
         conf = load_access()
         path = files().web_file
@@ -1007,7 +1007,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         secret_source = secretstore.source(SSO_SECRET_NAME, files().secrets_file)
         return render_template(
             "access.html", conf=conf, errors=errors, file_error=file_error,
-            roles=access.ROLES, role_labels=access.ROLE_LABELS,
+            role_names=access.role_names(conf),
+            capability_groups=_capability_groups(),
+            role_use={r["id"]: sum(1 for row in conf["groups"] if row["role"] == r["id"])
+                      for r in conf["roles"]},
+            deletable=[r["id"] for r in conf["roles"]
+                       if not any(row["role"] == r["id"] for row in conf["groups"])],
             hosts=access.AUTHORITY_HOSTS, secret_source=secret_source,
             problems=access.sso_problems(conf, bool(secret_source)),
             redirect=redirect_uri(conf), path=path,
@@ -1015,7 +1020,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             last_refusal=ctx().get("last_refusal")), 422 if errors else 200
 
     @app.route("/settings/appearance", methods=["GET", "POST"])
-    @requires("admin")
+    @requires("manage_access")
     def appearance():
         conf = load_access()
         brand = conf["branding"]
@@ -1074,12 +1079,13 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             422 if errors else 200)
 
     @app.route("/settings/access/groups", methods=["POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_group_add():
         conf = load_access()
         group = access.clean_group(request.form.get("group"))
         role = request.form.get("role", "")
-        if not group or role not in access.ROLES:
+        names = access.role_names(conf)
+        if not group or role not in names:
             notice("Give the group's object ID or name, and pick a role.", "error")
             return redirect(url_for("access_page"))
         if any(row["group"].lower() == group.lower() for row in conf["groups"]):
@@ -1094,11 +1100,11 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             notice(_write_error(exc), "error")
             return redirect(url_for("access_page"))
         audit("gave group %s the %s role", group, role)
-        notice(f"{group} may now sign in as {access.ROLE_LABELS[role]}.")
+        notice(f"{group} may now sign in as {names[role]}.")
         return redirect(url_for("access_page"))
 
     @app.route("/settings/access/groups/<int:index>/delete", methods=["POST"])
-    @requires("admin")
+    @requires("manage_access")
     def access_group_delete(index):
         conf = load_access()
         if not 0 <= index < len(conf["groups"]):
@@ -1119,6 +1125,110 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         audit("removed group %s (%s)", removed["group"], removed["role"])
         notice(f"Removed {removed['group']}. Anyone signed in only through it is "
                "signed out.")
+        return redirect(url_for("access_page"))
+
+    # ── settings: roles ──────────────────────────────────────────────────────
+
+    def _save_roles(conf: dict, message: str, *args) -> bool:
+        """Save web.yaml with changed roles, unless that locks everyone out."""
+        secret = secretstore.get(SSO_SECRET_NAME, files().secrets_file)
+        problem = access.lockout_problem(
+            conf, conf["sso"]["enabled"] and not access.sso_problems(conf, bool(secret)))
+        if problem:
+            notice(problem, "error")
+            return False
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+            return False
+        audit(message, *args)
+        return True
+
+    @app.route("/settings/access/roles", methods=["POST"])
+    @requires("manage_access")
+    def access_roles_save():
+        conf = load_access()
+        form = request.form
+        changed = []
+        for role in conf["roles"]:
+            rid = role["id"]
+            before = (role["name"], role["capabilities"])
+            name = (form.get(f"name:{rid}") or "").strip()[:40]
+            if name:
+                role["name"] = name
+            if f"all:{rid}" in form:
+                role["capabilities"] = "all"
+            else:
+                role["capabilities"] = access.complete(form.getlist(f"cap:{rid}"))
+            if not role["capabilities"]:
+                notice(f"{role['name']} would be able to do nothing; give it something, "
+                       "or delete it.", "error")
+                return redirect(url_for("access_page"))
+            if (role["name"], role["capabilities"]) != before:
+                caps = role["capabilities"]
+                changed.append(f"{role['name']}: "
+                               + ("everything" if caps == "all" else ", ".join(caps)))
+        lowered = [r["name"].lower() for r in conf["roles"]]
+        if len(set(lowered)) != len(lowered):
+            notice("Two roles have the same name.", "error")
+            return redirect(url_for("access_page"))
+        if not changed:
+            notice("Nothing had changed.")
+        elif _save_roles(conf, "changed roles — %s", "; ".join(changed)):
+            notice("Saved the roles. They apply to people already signed in.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/add", methods=["POST"])
+    @requires("manage_access")
+    def access_role_add():
+        conf = load_access()
+        name = (request.form.get("name") or "").strip()[:40]
+        if not name:
+            notice("Give the new role a name.", "error")
+            return redirect(url_for("access_page"))
+        if name.lower() in (r["name"].lower() for r in conf["roles"]):
+            notice(f"There's already a role called {name}.", "error")
+            return redirect(url_for("access_page"))
+        source = next((r for r in conf["roles"] if r["id"] == request.form.get("copy")), None)
+        caps = source["capabilities"] if source else ["view_basic"]
+        conf["roles"].append({"id": access.new_role_id(name, conf), "name": name,
+                              "capabilities": caps if caps == "all" else list(caps)})
+        if _save_roles(conf, "added the role %s", name):
+            notice(f"Added {name}. Tick what it may do, save, then give it to a group.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/delete", methods=["POST"])
+    @requires("manage_access")
+    def access_role_delete():
+        conf = load_access()
+        rid = request.form.get("role", "")
+        role = next((r for r in conf["roles"] if r["id"] == rid), None)
+        if role is None:
+            abort(404)
+        used = [row["group"] for row in conf["groups"] if row["role"] == rid]
+        if used:
+            notice(f"{role['name']} is given to {', '.join(used)}; change or remove "
+                   "those groups first.", "error")
+        elif len(conf["roles"]) == 1:
+            notice("That's the only role.", "error")
+        else:
+            conf["roles"] = [r for r in conf["roles"] if r["id"] != rid]
+            if _save_roles(conf, "deleted the role %s", role["name"]):
+                notice(f"Deleted {role['name']}.")
+        return redirect(url_for("access_page"))
+
+    @app.route("/settings/access/roles/reset", methods=["POST"])
+    @requires("manage_access")
+    def access_roles_reset():
+        conf = load_access()
+        builtin = {r["id"] for r in access.DEFAULT_ROLES}
+        conf["roles"] = access.default_roles() + [r for r in conf["roles"]
+                                                  if r["id"] not in builtin]
+        if _save_roles(conf, "restored the built-in roles"):
+            notice("Restored Basic, Advanced and Admin to what they do out of the box. "
+                   "Other roles are as they were.")
         return redirect(url_for("access_page"))
 
     # ── files ────────────────────────────────────────────────────────────────
@@ -1146,7 +1256,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return render_template("files.html", files=rows, health=health())
 
     @app.route("/files/<name>", methods=["GET", "POST"])
-    @requires("view_all", "admin")
+    @requires("view_all", "edit_settings")
     def file_edit(name):
         if name not in FILES:
             abort(404)
@@ -1254,8 +1364,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         if which not in ("sync", "service", "activity"):
             abort(404)
         if which == "activity":
-            if not access.can(g.role, "admin"):
-                abort(403, "The activity log needs the Admin role.")
+            if not access.can(g.caps, "view_activity"):
+                abort(403, "Your role can't see the activity log.")
             return render_template("logs.html", which=which, lines=0,
                                    activity=_activity(_log_path("service")),
                                    text="", path=_log_path("service"))
@@ -1309,6 +1419,16 @@ def _config_change_problems(raw: dict, new: dict) -> list:
         problems.append(f"The sync would refuse to start: {after_cfg}")
     problems += [f"Room map: {p}" for p in new_problems(before, after)]
     return problems
+
+
+def _capability_groups() -> list:
+    """[(heading, [(capability, label), ...]), ...] for the roles table."""
+    out: list = []
+    for cap, label, heading in access.CAPABILITY_LIST:
+        if not out or out[-1][0] != heading:
+            out.append((heading, []))
+        out[-1][1].append((cap, label))
+    return out
 
 
 def _times_text(times) -> list:

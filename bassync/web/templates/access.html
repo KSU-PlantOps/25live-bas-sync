@@ -9,14 +9,58 @@ in the service's state folder instead.</p>
 
 <section class="card">
   <h2>Roles</h2>
-  <table class="list">
-    <tr><td><strong>Basic</strong></td><td>The status page and sync history; <em>Sync now</em> for every system.</td></tr>
-    <tr><td><strong>Advanced</strong></td><td>Sees everything; the tools (dry run, validate, discover, test alert), syncing one
-      system, stopping a job; adds and edits rooms, buildings and floors.</td></tr>
-    <tr><td><strong>Admin</strong></td><td>Full control: connection, systems and passwords, alerts, defaults, schedule, the
-      files, this page, and <em>Force</em> (overriding the mass-clear safety check).</td></tr>
-  </table>
-  <p class="hint">Someone in several groups gets the highest of their roles. Changes here apply to people already signed in.</p>
+  <p class="hint">What each role may do. Someone in several groups gets every capability of every role they're in, and
+    changes apply to people already signed in. What a capability needs is ticked for you when you save — every page past
+    the status page needs <em>See everything else</em>.</p>
+  <form method="post" action="{{ url_for('access_roles_save') }}">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <div class="scroll-x">
+    <table class="list matrix">
+      <thead><tr><th scope="col">Capability</th>
+        {% for r in conf.roles %}<th scope="col"><input name="name:{{ r.id }}" value="{{ r.name }}" size="9" maxlength="40"
+          aria-label="Name of the {{ r.name }} role" required></th>{% endfor %}</tr></thead>
+      <tbody>
+        <tr><td><strong>Everything</strong>, including what later versions add</td>
+          {% for r in conf.roles %}<td class="c"><input type="checkbox" name="all:{{ r.id }}" {{ 'checked' if r.capabilities == 'all' }}
+            aria-label="{{ r.name }}: everything"></td>{% endfor %}</tr>
+        {% for heading, caps in capability_groups %}
+          <tr class="group"><th colspan="{{ conf.roles | length + 1 }}" scope="colgroup">{{ heading }}</th></tr>
+          {% for cap, label in caps %}
+            <tr><td>{{ label }}</td>
+              {% for r in conf.roles %}<td class="c"><input type="checkbox" name="cap:{{ r.id }}" value="{{ cap }}"
+                {{ 'checked' if r.capabilities == 'all' or cap in r.capabilities }} aria-label="{{ r.name }}: {{ label }}"></td>{% endfor %}
+            </tr>
+          {% endfor %}
+        {% endfor %}
+        <tr class="group"><td>Groups given this role</td>{% for r in conf.roles %}<td class="c">{{ role_use[r.id] }}</td>{% endfor %}</tr>
+      </tbody>
+    </table>
+    </div>
+    <p class="hint">A role with <em>Everything</em> ticked has every capability, whatever else is ticked.</p>
+    <div class="buttons"><button class="primary">Save roles</button></div>
+  </form>
+  <div class="split">
+    <form method="post" action="{{ url_for('access_role_add') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input name="name" placeholder="New role, e.g. Scheduler" aria-label="New role's name" maxlength="40" required>
+      <label class="inline-label">starting as
+        <select name="copy">{% for r in conf.roles %}<option value="{{ r.id }}" {{ 'selected' if r.id == 'basic' }}>{{ r.name }}</option>{% endfor %}</select></label>
+      <button>Add role</button>
+    </form>
+    {% set unused = conf.roles | selectattr('id', 'in', deletable) | list %}
+    {% if unused and conf.roles | length > 1 %}
+    <form method="post" action="{{ url_for('access_role_delete') }}" class="inline" data-confirm="Delete this role?">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <select name="role" aria-label="Role to delete">{% for r in unused %}<option value="{{ r.id }}">{{ r.name }}</option>{% endfor %}</select>
+      <button class="danger">Delete role</button>
+    </form>
+    {% endif %}
+    <form method="post" action="{{ url_for('access_roles_reset') }}" class="inline"
+          data-confirm="Put Basic, Advanced and Admin back to what they do out of the box? Other roles stay as they are.">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <button class="link">Restore the built-in roles</button>
+    </form>
+  </div>
 </section>
 
 <section class="card">
@@ -26,7 +70,9 @@ in the service's state folder instead.</p>
       <thead><tr><th>Group (as it appears in the token)</th><th>Role</th><th>Note</th><th></th></tr></thead>
       <tbody>
       {% for row in conf.groups %}
-        <tr><td><code>{{ row.group }}</code></td><td>{{ role_labels[row.role] }}</td><td>{{ row.note }}</td>
+        <tr><td><code>{{ row.group }}</code></td>
+          <td>{% if row.role in role_names %}{{ role_names[row.role] }}{% else %}<span class="bad">no role “{{ row.role }}” — grants nothing</span>{% endif %}</td>
+          <td>{{ row.note }}</td>
           <td class="row-actions">
             <form method="post" action="{{ url_for('access_group_delete', index=loop.index0) }}" class="inline"
                   data-confirm="Stop {{ row.group }} from signing in?">
@@ -37,12 +83,13 @@ in the service's state folder instead.</p>
       </tbody>
     </table>
   {% else %}
-    <p class="hint">None yet. Add at least one Admin group before you rely on single sign-on.</p>
+    <p class="hint">None yet. Add at least one group whose role can change sign-in and roles before you rely on single
+      sign-on.</p>
   {% endif %}
   <form method="post" action="{{ url_for('access_group_add') }}" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
     <input name="group" placeholder="e.g. BAS_Admins, or the group's object ID" aria-label="Group" required size="36">
-    <select name="role" aria-label="Role">{% for r in roles %}<option value="{{ r }}" {{ 'selected' if r == 'basic' }}>{{ role_labels[r] }}</option>{% endfor %}</select>
+    <select name="role" aria-label="Role">{% for r in conf.roles %}<option value="{{ r.id }}" {{ 'selected' if r.id == 'basic' }}>{{ r.name }}</option>{% endfor %}</select>
     <input name="note" placeholder="note (optional)" aria-label="Note">
     <button>Add group</button>
   </form>

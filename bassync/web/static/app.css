@@ -165,3 +165,13 @@ body.login .contact { color: var(--muted); font-size: .9rem; margin-top: .6rem; 
   /* Most logos are drawn for a light background; give them one. */
   .brand img, .login-logo, .logo-preview { background: #f4f5f7; padding: 3px 6px; border-radius: 6px; }
 }
+/* The roles table on the Access page: a column per role. */
+.scroll-x { overflow-x: auto; }
+table.matrix td.c, table.matrix th { text-align: center; }
+table.matrix td:first-child { text-align: left; }
+table.matrix thead input { width: 7.5rem; text-align: center; }
+table.matrix tr.group th, table.matrix tr.group td { text-align: left; color: var(--muted);
+  font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; padding-top: .8rem; }
+table.matrix tr.group td.c { text-align: center; text-transform: none; letter-spacing: 0; font-size: .9rem; }
+.split { display: flex; flex-wrap: wrap; gap: .4rem 1.5rem; align-items: center; margin-top: .8rem; }
+.inline-label { display: inline-flex; gap: .4rem; align-items: center; font-weight: 400; }

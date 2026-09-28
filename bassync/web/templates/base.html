@@ -54,8 +54,8 @@
                    ('Schedule', url_for('schedule'), 'view_all', request.endpoint == 'schedule'),
                    ('Defaults', url_for('defaults'), 'view_all', request.endpoint == 'defaults'),
                    ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
-                   ('Access', url_for('access_page'), 'admin', request.endpoint == 'access_page'),
-                   ('Appearance', url_for('appearance'), 'admin', request.endpoint == 'appearance')] %}
+                   ('Access', url_for('access_page'), 'manage_access', request.endpoint == 'access_page'),
+                   ('Appearance', url_for('appearance'), 'manage_access', request.endpoint == 'appearance')] %}
 {% endif %}
 <main>
   {% if nav_sub %}

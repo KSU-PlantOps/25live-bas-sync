@@ -152,11 +152,11 @@ def create_app(service, settings: dict) -> Flask:
     # ── request guards ───────────────────────────────────────────────────────
 
     def _who() -> Optional[tuple]:
-        """(user, role) for this session, or None. The role is worked out
-        again on every request, so a changed password, SSO app or group role
-        applies to sessions already open."""
+        """(user, capabilities, role label) for this session, or None. Worked
+        out again on every request, so a changed password, SSO app, role or
+        group applies to sessions already open."""
         if not auth_required:
-            return {"name": "anyone", "via": "none"}, "admin"
+            return {"name": "anyone", "via": "none"}, access.EVERYTHING, "Admin"
         if not session.get("auth"):
             return None
         conf = load_access()
@@ -164,19 +164,22 @@ def create_app(service, settings: dict) -> Flask:
         if via == "password":
             if local_usable(conf) and hmac.compare_digest(str(session.get("fp", "")),
                                                           password_fp):
-                return {"name": "local admin", "via": "password"}, "admin"
+                return {"name": "local admin", "via": "password"}, access.EVERYTHING, "Admin"
             return None
         if via == "sso" and sso_usable(conf) and hmac.compare_digest(
                 str(session.get("fp", "")), sso_fp(conf)):
-            role = access.role_for(session.get("groups"), conf)
-            if role:
-                return dict(session.get("user") or {}, via="sso"), role
+            roles = access.roles_for(session.get("groups"), conf)
+            caps = access.capabilities_of(roles, conf)
+            if caps:
+                names = access.role_names(conf)
+                return (dict(session.get("user") or {}, via="sso"), caps,
+                        " + ".join(names[r] for r in roles))
         return None
 
     @app.before_request
     def _guard():
         g.addr = request.remote_addr or "?"
-        g.user, g.role = {"name": "", "via": ""}, None
+        g.user, g.caps, g.role_label = {"name": "", "via": ""}, frozenset(), ""
         if request.endpoint in _OPEN_ENDPOINTS:
             return None
         who = _who()
@@ -185,7 +188,7 @@ def create_app(service, settings: dict) -> Flask:
             if request.method == "GET" and not request.path.startswith("/api/"):
                 return redirect(url_for("login", next=request.full_path.rstrip("?")))
             abort(401)
-        g.user, g.role = who
+        g.user, g.caps, g.role_label = who
         if "csrf" not in session:
             session["csrf"] = secrets.token_urlsafe(32)
         if request.method not in ("GET", "HEAD", "OPTIONS"):
@@ -285,8 +288,8 @@ def create_app(service, settings: dict) -> Flask:
             return refuse(str(exc))
         user = entra.identity(claims)
         groups = claims.get("groups") or []
-        role = access.role_for(groups, conf)
-        if role is None:
+        roles = access.roles_for(groups, conf)
+        if not access.capabilities_of(roles, conf):
             app.extensions["bassync"]["last_refusal"] = {
                 "when": datetime.now(timezone.utc).isoformat(), "user": user,
                 "groups": [str(x) for x in groups[:60]], "count": len(groups)}
@@ -296,8 +299,9 @@ def create_app(service, settings: dict) -> Flask:
                           f"{user['username'] or user['name']} is in none of the "
                           f"configured groups ({len(groups)} group(s) in the token)")
         _signed_in("sso", user, sso_fp(conf), access.matching(groups, conf))
+        names = access.role_names(conf)
         logging.info("[web] SSO sign-in: %s (%s) as %s, from %s", user["name"],
-                     user["username"], role, g.addr)
+                     user["username"], " + ".join(names[r] for r in roles), g.addr)
         return redirect(pending.get("next") or "/")
 
     @app.route("/logout", methods=["POST"])
@@ -341,9 +345,8 @@ def create_app(service, settings: dict) -> Flask:
             "auth_required": auth_required,
             "user": g.get("user") or {},
             "brand": _brand(),
-            "role": g.get("role"),
-            "role_label": access.ROLE_LABELS.get(g.get("role") or "", ""),
-            "can": lambda capability: access.can(g.get("role"), capability),
+            "role_label": g.get("role_label", ""),
+            "can": lambda capability: access.can(g.get("caps"), capability),
             "current_job": service.jobs.current,
             "local_time": lambda value, fmt="%Y-%m-%d %H:%M": local_time(service, value, fmt),
             "relative": relative_time,
@@ -402,9 +405,9 @@ def requires(view: str, change: Optional[str] = None):
         @functools.wraps(fn)
         def inner(*args, **kwargs):
             needed = change if (change and request.method == "POST") else view
-            if not access.can(g.get("role"), needed):
-                abort(403, f"Your role ({access.ROLE_LABELS.get(g.get('role') or '', 'none')}) "
-                           "can't do that.")
+            if not access.can(g.get("caps"), needed):
+                abort(403, f"Your role ({g.get('role_label') or 'none'}) can't do that: it "
+                           f"needs “{access.CAPABILITY_LABELS.get(needed, needed)}”.")
             return fn(*args, **kwargs)
         inner.required = (view, change)                    # type: ignore[attr-defined]
         return inner

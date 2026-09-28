@@ -28,7 +28,7 @@
   </div>
 {% endif %}
 
-{% if can('admin') and (not health.config_exists or not health.counts.systems or not health.counts.rooms) %}
+{% if can('edit_settings') and (not health.config_exists or not health.counts.systems or not health.counts.rooms) %}
 <section class="card">
   <h2>Getting started</h2>
   <ol class="steps">
@@ -69,7 +69,7 @@
     {% endif %}
     {% if service.pending_since %}<p class="hint">A sync is due and will start when the running job finishes.</p>{% endif %}
     {% if service.schedule.error %}<p class="bad">{{ service.schedule.error }}</p>{% endif %}
-    {% if can('view_all') %}<p><a href="{{ url_for('schedule') }}">{{ 'Change' if can('admin') else 'See' }} the schedule</a></p>{% endif %}
+    {% if can('view_all') %}<p><a href="{{ url_for('schedule') }}">{{ 'Change' if can('edit_settings') else 'See' }} the schedule</a></p>{% endif %}
   </section>
   <section class="card">
     <h2>Room map</h2>

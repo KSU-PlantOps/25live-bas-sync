@@ -6,7 +6,7 @@
   <div class="tabs">
     <a href="{{ url_for('logs', which='sync') }}" {% if which == 'sync' %}aria-current="page"{% endif %}>Sync</a>
     <a href="{{ url_for('logs', which='service') }}" {% if which == 'service' %}aria-current="page"{% endif %}>Service</a>
-    {% if can('admin') %}<a href="{{ url_for('logs', which='activity') }}" {% if which == 'activity' %}aria-current="page"{% endif %}>Activity</a>{% endif %}
+    {% if can('view_activity') %}<a href="{{ url_for('logs', which='activity') }}" {% if which == 'activity' %}aria-current="page"{% endif %}>Activity</a>{% endif %}
   </div>
   {% if which != 'activity' %}
     <span class="hint">last {{ lines }} lines of <code>{{ path }}</code></span>
