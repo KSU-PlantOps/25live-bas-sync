@@ -24,9 +24,9 @@ The sync only ever **reads** from 25Live, through Series25 WebServices.
   fails the fetch with a message, instead of re-requesting the same page.
 - Find a space's numeric `space_id` from its detail-page URL in 25Live, with
   *Discover spaces* on the web UI, or with `--discover`. The web UI's
-  [setup guide](web-ui.md#the-setup-guide) lists every space booked in a window
-  of up to 180 days, with its capacity and number of bookings, and adds the ones
-  you tick. Discovery asks the same `events.xml` the sync does, so a space
+  [Room map → From 25Live](web-ui.md#adding-rooms-from-25live) lists every space
+  booked in a window of up to 180 days, grouped by building, with its capacity
+  and number of bookings, and adds them a building at a time. Discovery asks the same `events.xml` the sync does, so a space
   appears only if it has a booking in the window. Where your instance includes
   a space's building in that response, it's used; otherwise the building is
   guessed from the space's name, for you to check.

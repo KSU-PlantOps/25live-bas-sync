@@ -70,7 +70,8 @@ python main.py --dry-run    # talks to 25Live only; contacts no BAS at all
 The suite runs under pytest, offline — no 25Live, no BAS, no internet. It
 covers:
 
-- the merge/roll-up logic, and the loader and its inheritance rules
+- the merge/roll-up logic (equipment included), and the loader and its
+  inheritance rules
 - config validation, the safety rail and its state file
 - the 25Live client's paging, cancellation and fetch-window handling, and
   what discovery collects and guesses
@@ -105,7 +106,7 @@ check.
 | `bassync/extras.py` | Extra bookings: occupancy that isn't in 25Live. |
 | `bassync/discovery.py` | What `--discover` found, kept for the setup guide, and its guesses at each room's building. |
 | `bassync/updates.py` | Whether a newer release is out (GitHub's releases API). |
-| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, and the setup guide in `setup.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
+| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, the setup guide in `setup.py`, and adding rooms from 25Live in `importer.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
 | `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
 | `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
 | `bassync/editor.py` · `editor.py` · `Edit-Rooms.bat` | The desktop editor (Tkinter), its launcher, and a double-click launcher for Windows. |

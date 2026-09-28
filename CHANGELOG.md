@@ -20,6 +20,19 @@ semantic versioning from 1.0 onward.
   bookings, and a building taken from 25Live where the instance gives one, or
   guessed from the name ("Science Hall 204 (Chem lab)" → Science Hall).
   Ticked rooms are added in one go, creating their buildings.
+- **Equipment: one AHU for many rooms, several VAVs for one room.** A
+  building's `equipment:` lists the air handlers, VAVs and the like that have a
+  schedule of their own; each room lists the ones that serve it
+  (`equipment: [ahu_3]`). Each runs whenever any room listing it is booked,
+  merged across rooms like a floor, and is written once. A room can list
+  several, with or without its own `target:`. Edited on **Room map →
+  Equipment**, and ticked on each room's form; renaming equipment repoints its
+  rooms, and equipment in use can't be deleted.
+- **Room map → From 25Live**: the spaces booked in 25Live, grouped by
+  building, to add a building at a time (each group has its own *Add* button,
+  and a new building goes straight to its form for its schedule) or all at
+  once. It's the setup guide's Rooms step too, and needs *Edit the room map*
+  rather than *Edit settings*.
 - `--discover` collects each space's formal name, capacity, building and
   number of bookings (cancelled occurrences, and states the sync doesn't
   include, aren't counted), and keeps them in `state/discovery.json`. Its
@@ -29,6 +42,8 @@ semantic versioning from 1.0 onward.
 - The status page's *Getting started* card follows the setup guide's steps,
   and goes once the guide is finished or skipped, or the site has run a live
   sync.
+- Two rooms with the same `target:` still share it, and the warning now
+  suggests equipment for when that's intended.
 
 ## [1.3.0] — 2026-09-28 — A web UI, and Docker as the way to run it
 

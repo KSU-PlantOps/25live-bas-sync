@@ -36,8 +36,9 @@ flowchart LR
 3. **Merge** overlapping bookings, and ones closer than `merge_gap_minutes`,
    into clean occupancy windows.
 4. **Roll up**: every room in a building unions into the building's schedule,
-   and a room on a floor with its own schedule unions into that too. If *any*
-   room is occupied, the common areas run.
+   and a room on a floor with its own schedule unions into that too, as does
+   each piece of equipment (an AHU, a VAV) that serves it. If *any* room is
+   occupied, the common areas run.
 5. **Check** the result against the last run, and refuse to write if it would
    stand an implausible share of the campus down — see [Safety rails](safety.md).
 6. **Write** each schedule through the driver for the BAS it lives on — one
@@ -111,13 +112,14 @@ lookahead no matter how heavily booked the rooms are.
 
 This is the thing to get right, and **it is not the same campus-wide.** How
 granular you can be is decided by how each building was built out, not by this
-tool. All three patterns are first-class, and they mix freely in one map:
+tool. All four patterns are first-class, and they mix freely in one map:
 
 | Pattern | When | How to map it |
 |---|---|---|
 | **Per room** | The room has its own schedulable object — a room-level VAV or FCU. Typical of **WebCTRL** sites, where scheduling is normally done per room. | Give the room a `target:`. |
 | **Per floor** | The building came online with floor-level air handling, so the corridor AHU is the finest real control. | Give the room a `building:` and a `floor:`, and **no** `target:`. |
 | **Per building** | The oldest wings: one air handler for the whole building. | Give the room a `building:` and nothing else. |
+| **Per equipment** | An AHU serves a group of rooms, or a big room has two VAVs. | Define the equipment once under its building's `equipment:`, and list it on each room it serves. |
 
 A room with **no `target:` is a normal, supported mapping** — it contributes its
 bookings to whatever roll-ups it belongs to and writes no schedule of its own.
@@ -125,9 +127,15 @@ Occupancy always rolls up **room → floor → building**, so a booked room driv
 its own schedule (if it has one), its floor's corridor (if it names a floor),
 and its building's common areas.
 
+Equipment is how a schedule serves **more than one room**, or a room drives
+**more than one schedule**. An AHU listed by six rooms runs whenever any of the
+six is booked; a lecture hall with two VAVs lists the second as equipment (or
+both, and no `target:`) and drives both. Each piece of equipment is written
+once, however many rooms list it.
+
 The only thing that *is* an error is a room with neither a `target:` nor a
 `building:` — its bookings would drive nothing at all, and the loader says so
 rather than swallowing them.
 
 [The room map](configuration.md#the-room-map) has the details, and
-`space_mapping.example.yaml` shows all three patterns side by side.
+`space_mapping.example.yaml` shows all four patterns side by side.
