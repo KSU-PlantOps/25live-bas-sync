@@ -58,6 +58,8 @@ class RunReport:
     exit_code: Optional[int] = None
     outcome: str = ""                       # one line, set with the exit code
     event_count: Optional[int] = None
+    extra_bookings: int = 0                 # occurrences from extra_bookings.yaml
+    extra_errors: list = field(default_factory=list)
     rooms: int = 0
     map_errors: list = field(default_factory=list)
     map_warnings: list = field(default_factory=list)
@@ -138,6 +140,8 @@ class RunReport:
             lines.append(f"Limited to system: {self.only_system}")
         if self.event_count is not None:
             lines.append(f"25Live: {self.event_count} booking(s) for {self.rooms} mapped room(s)")
+        if self.extra_bookings:
+            lines.append(f"Extra bookings: {self.extra_bookings} occurrence(s) not from 25Live")
         if self.schedules:
             lines.append(f"Schedules: {c['written']} written"
                          + (f", {c['preview']} preview-only" if c["preview"] else "")
@@ -152,6 +156,8 @@ class RunReport:
             lines.append(f"Safety baseline: {self.baseline}")
         if self.map_errors:
             lines.append(f"Room map: {len(self.map_errors)} broken row(s) left out")
+        if self.extra_errors:
+            lines.append(f"Extra bookings: {len(self.extra_errors)} broken row(s) left out")
         for s in self.systems.values():
             state = ("reachable" if s.reachable else "UNREACHABLE"
                      if s.reachable is False else "not contacted")
