@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Service{% endblock %}
+{% block body %}
+<h1>Service</h1>
+
+<section class="card">
+  <h2>Version</h2>
+  <p>25live-bas-sync <strong>{{ updates.current }}</strong>.
+    {% if not check_updates %}<span class="hint">Checking for new releases is off.</span>
+    {% elif updates.available %}<span class="warn"><strong>{{ updates.latest.name }}</strong> is available{% if updates.latest.published %},
+      released {{ local_time(updates.latest.published, '%b %d, %Y') }}{% endif %}.</span>
+      <a href="{{ updates.latest.url }}">What's new</a>
+    {% elif updates.error %}<span class="hint">Couldn't check GitHub for a newer release: {{ updates.error }}</span>
+    {% elif updates.checked %}<span class="ok">The newest release.</span>
+      <span class="hint">(checked {{ relative(updates.checked_at) }})</span>
+    {% elif updates.checking %}<span class="hint">Checking GitHub for a newer release…</span>{% endif %}</p>
+  <details {{ 'open' if updates.available }}>
+    <summary>How to update</summary>
+    <p>On the Docker host, in the folder with <code>docker-compose.yml</code>:</p>
+    <pre class="code">docker compose pull        # with image: ghcr.io/ksu-plantops/25live-bas-sync:1.3
+docker compose up -d
+
+# or, if it's built from the repository (build: .):
+git pull
+docker compose up -d --build</pre>
+    <p class="hint">The container can't replace its own image — that would need the Docker socket, which is root on the host.
+      To update automatically, the host can run those commands on a timer; see
+      <a href="https://github.com/KSU-PlantOps/25live-bas-sync/blob/main/docs/docker.md#updating-automatically">Updating automatically</a>.
+      Read the release's upgrade notes first.</p>
+  </details>
+  {% if can('restart') %}
+  <div class="split">
+    <form method="post" action="{{ url_for('service_updates') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="action" value="check">
+      <button>Check now</button>
+    </form>
+    <form method="post" action="{{ url_for('service_updates') }}" class="inline">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}">
+      <input type="hidden" name="check" value="{{ '0' if check_updates else '1' }}">
+      <button class="link">{{ 'Stop checking' if check_updates else 'Check' }} GitHub for new releases{{ '' if check_updates else ' twice a day' }}</button>
+    </form>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Restart</h2>
+  <p>Stops the service and starts it again — a few seconds, with nobody signed out. Settings made on these pages apply
+    without it. Restart to load a renewed HTTPS certificate, after changing where logs or state are kept, or if something
+    seems stuck.</p>
+  <p class="hint">It doesn't re-read the container's environment (<code>.env</code>): for that, run
+    <code>docker compose up -d</code> on the host.</p>
+  {% if blocker %}<p class="warn">{{ blocker }}</p>{% endif %}
+  {% if can('restart') %}
+  <form method="post" action="{{ url_for('service_restart') }}" data-confirm="Restart the service now?">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <button class="primary" {{ 'disabled' if blocker }}>Restart the service</button>
+  </form>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>Running</h2>
+  <table class="list">
+    <tr><th scope="row">Since</th><td>{{ local_time(service.started.isoformat()) }} <span class="hint">{{ relative(service.started.isoformat()) }}</span></td></tr>
+    <tr><th scope="row">Schedule</th><td>{{ service.describe() }}</td></tr>
+    <tr><th scope="row">Process</th><td>PID {{ about.pid }}{% if about.uid is not none %}, running as {% if about.user %}{{ about.user }} ({{ about.uid }}:{{ about.gid }}){% else %}user {{ about.uid }}, group {{ about.gid }}{% endif %}{% endif %}{{ ', in a container' if about.container }}</td></tr>
+    <tr><th scope="row">Python</th><td>{{ about.python }} on {{ about.platform }}</td></tr>
+    <tr><th scope="row">Web UI</th><td>{% if web %}{{ 'https' if web.cert else 'http' }}://{{ web.host }}:{{ web.port }}{{ ', behind a reverse proxy' if web.behind_proxy }}{{ ' — no sign-in (BAS_WEB_AUTH=none)' if web.auth == 'none' }}{% else %}—{% endif %}</td></tr>
+    <tr><th scope="row">HTTPS certificate</th><td>{% if cert %}{{ cert.name }}, expires {{ cert.expires.strftime('%Y-%m-%d') }}
+      <span class="{{ 'bad' if cert.days_left < 14 else 'hint' }}">({{ 'expired' if cert.days_left < 0 else 'in %d days' % cert.days_left }})</span>
+      {% elif web and web.cert %}<span class="hint">{{ web.cert }}</span>{% else %}<span class="hint">none — plain HTTP{{ ', HTTPS at the proxy' if web and web.behind_proxy }}</span>{% endif %}</td></tr>
+    {% for label, path in places %}<tr><th scope="row">{{ label }}</th><td><code>{{ path }}</code></td></tr>{% endfor %}
+  </table>
+</section>
+{% endblock %}

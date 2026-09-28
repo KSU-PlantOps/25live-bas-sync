@@ -12,7 +12,9 @@ import copy
 import hashlib
 import io
 import os
+import platform
 import re
+import ssl
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -23,7 +25,9 @@ from zoneinfo import available_timezones
 import yaml
 from flask import Response, abort, g, redirect, render_template, request, send_file, url_for
 
-from .. import extras, history, mapedit, secretstore
+from .. import extras, history, mapedit, safety, secretstore
+from .. import updates as updates_mod
+from ..config import DEFAULTS as CONFIG_DEFAULTS
 from ..config import (
     STATE_PARAM_STYLES,
     ConfigError,
@@ -309,8 +313,11 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         service = svc()
         raw, _err = load_config_raw()
         runs = history.list_runs(files().runs_dir, limit=6)
+        updates = None
+        if access.can(g.caps, "restart"):
+            updates = service.updates.status(load_access()["updates"]["check"])
         return render_template(
-            "dashboard.html", health=health(), runs=runs,
+            "dashboard.html", health=health(), runs=runs, updates=updates,
             last_run=runs[0] if runs else None,
             jobs=service.jobs.recent(6), service=service,
             secrets=secret_status(raw),
@@ -841,6 +848,164 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         return render_template("schedule.html", form=form, errors=errors,
                                service=service, upcoming=upcoming,
                                sync_at=os.environ.get("SYNC_AT", ""))
+
+    # ── settings: safety ─────────────────────────────────────────────────────
+
+    @app.route("/settings/safety", methods=["GET", "POST"])
+    @requires("view_all", "edit_settings")
+    def safety_page():
+        raw, error = load_config_raw()
+        section = raw.get("safety") if isinstance(raw.get("safety"), dict) else {}
+        retry = raw.get("retry") if isinstance(raw.get("retry"), dict) else {}
+        builtin = CONFIG_DEFAULTS["safety"]
+        form = {"enabled": section.get("enabled", builtin["enabled"]) is not False,
+                "min_events": section.get("min_events", builtin["min_events"]),
+                "max_cleared": _percent(section.get("max_cleared_fraction",
+                                                    builtin["max_cleared_fraction"])),
+                "on_map_errors": section.get("on_map_errors", builtin["on_map_errors"]),
+                "attempts": retry.get("attempts", CONFIG_DEFAULTS["retry"]["attempts"]),
+                "backoff": retry.get("backoff_seconds",
+                                     CONFIG_DEFAULTS["retry"]["backoff_seconds"])}
+        errors: list = []
+        confirm: list = []
+        if request.method == "POST" and not error:
+            f = request.form
+            form = {"enabled": "enabled" in f, "min_events": f.get("min_events", "").strip(),
+                    "max_cleared": f.get("max_cleared", "").strip(),
+                    "on_map_errors": f.get("on_map_errors", ""),
+                    "attempts": f.get("attempts", "").strip(),
+                    "backoff": f.get("backoff", "").strip()}
+            numbers = {}
+            for key, label, kind, low, high in (
+                    ("min_events", "Fewest 25Live bookings", int, 0, 100000),
+                    ("max_cleared", "Most schedules cleared at once", float, 0, 100),
+                    ("attempts", "Retries", int, 0, 20),
+                    ("backoff", "Wait between retries", float, 0, 300)):
+                try:
+                    numbers[key] = kind(form[key])
+                except ValueError:
+                    errors.append(f"{label} must be a number.")
+                    continue
+                if not low <= numbers[key] <= high:
+                    errors.append(f"{label} must be between {low} and {high}.")
+            if form["on_map_errors"] not in ("skip", "abort"):
+                errors.append("Pick what a broken row does.")
+            if not errors:
+                new = copy.deepcopy(raw)
+                safety_new = new.setdefault("safety", {})
+                if not isinstance(safety_new, dict):
+                    safety_new = new["safety"] = {}
+                safety_new.update(enabled=form["enabled"], min_events=numbers["min_events"],
+                                  max_cleared_fraction=round(numbers["max_cleared"] / 100, 4),
+                                  on_map_errors=form["on_map_errors"])
+                retry_new = new.setdefault("retry", {})
+                if not isinstance(retry_new, dict):
+                    retry_new = new["retry"] = {}
+                retry_new.update(attempts=numbers["attempts"], backoff_seconds=numbers["backoff"])
+                confirm = _config_change_problems(raw, new)
+                if not form["enabled"] and section.get("enabled", True) is not False:
+                    confirm.insert(0, "With the mass-clear check off, nothing stops a run from "
+                                      "clearing every schedule when 25Live returns nothing.")
+                if not confirm or f.get("confirm"):
+                    if f.get("version") != version_of(files().config):
+                        errors.append("config.yaml changed since this page was opened. "
+                                      "Reload it and redo your change.")
+                    else:
+                        try:
+                            with ctx()["write_lock"]:
+                                mapedit.save_config(files().config, new)
+                        except OSError as exc:
+                            errors.append(_write_error(exc))
+                        else:
+                            audit("saved the safety settings (check %s, max %s%% cleared, "
+                                  "min %s bookings, broken rows: %s)",
+                                  "on" if form["enabled"] else "OFF", form["max_cleared"],
+                                  numbers["min_events"], form["on_map_errors"])
+                            notice("Saved the safety settings.")
+                            return redirect(url_for("safety_page"))
+        elif error:
+            errors.append(f"config.yaml can't be read: {error}. Fix it under Files first.")
+        state_path = Path(str(section.get("state_file") or "") or files().state_dir / "last_run.json")
+        state, status = safety.load_state_with_status(str(state_path))
+        windows = state.get("windows") if isinstance(state.get("windows"), dict) else {}
+        baseline = {"status": status, "path": state_path,
+                    "written_at": state.get("written_at"),
+                    "event_count": state.get("event_count"),
+                    "schedules": len(windows),
+                    "occupied": sum(1 for n in windows.values() if n)}
+        return render_template("safety.html", form=form, errors=errors, confirm=confirm,
+                               version=version_of(files().config), baseline=baseline), (
+            422 if errors or confirm else 200)
+
+    # ── settings: the service (restart, updates) ─────────────────────────────
+
+    @app.route("/settings/service")
+    @requires("view_all")
+    def service_page():
+        service = svc()
+        conf = load_access()
+        web = dict(service.web)
+        cert = _certificate(web.get("cert", ""))
+        try:
+            import pwd
+            user = pwd.getpwuid(os.getuid()).pw_name
+        except (ImportError, KeyError, AttributeError):
+            user = ""
+        about = {"pid": os.getpid(), "python": platform.python_version(),
+                 "platform": platform.platform(terse=True), "user": user,
+                 "uid": getattr(os, "getuid", lambda: None)(),
+                 "gid": getattr(os, "getgid", lambda: None)(),
+                 "container": Path("/.dockerenv").exists()}
+        p = files()
+        places = [("Settings", p.config.parent), ("Room map", p.space_map),
+                  ("Extra bookings", p.extras_file), ("Web UI settings", p.web_file),
+                  ("State (baseline, history, stored passwords)", p.state_dir),
+                  ("Logs", p.log_file.parent)]
+        return render_template(
+            "service.html", service=service, web=web, cert=cert, about=about,
+            places=places, blocker=service.restart_blocker(),
+            updates=service.updates.status(conf["updates"]["check"]),
+            check_updates=conf["updates"]["check"])
+
+    @app.route("/settings/service/restart", methods=["POST"])
+    @requires("restart")
+    def service_restart():
+        service = svc()
+        problem = service.request_restart()
+        if problem:
+            notice(problem, "error")
+            return redirect(url_for("service_page"))
+        audit("restarted the service")
+        return render_template("restarting.html", boot=service.boot)
+
+    @app.route("/settings/service/updates", methods=["POST"])
+    @requires("restart")
+    def service_updates():
+        service = svc()
+        if request.form.get("action") == "check":
+            service.updates.refresh()
+            status = service.updates.status(False)
+            if status["error"]:
+                notice(f"Couldn't reach GitHub to check: {status['error']}", "error")
+            elif status["latest"] and (updates_mod.parse_version(status["latest"]["version"])
+                                       or ()) > (updates_mod.parse_version(status["current"])
+                                                 or ()):
+                notice(f"{status['latest']['name']} is available.")
+            else:
+                notice("This is the newest release.")
+            return redirect(url_for("service_page"))
+        conf = load_access()
+        conf["updates"]["check"] = request.form.get("check") == "1"
+        try:
+            with ctx()["write_lock"]:
+                access.save(files().web_file, conf)
+        except OSError as exc:
+            notice(_write_error(exc), "error")
+        else:
+            audit("turned %s checking for updates", "on" if conf["updates"]["check"] else "off")
+            notice("Checking GitHub for new releases is "
+                   + ("on." if conf["updates"]["check"] else "off."))
+        return redirect(url_for("service_page"))
 
     # ── settings: passwords, alerts, access ──────────────────────────────────
 
@@ -1444,6 +1609,34 @@ def _config_change_problems(raw: dict, new: dict) -> list:
         problems.append(f"The sync would refuse to start: {after_cfg}")
     problems += [f"Room map: {p}" for p in new_problems(before, after)]
     return problems
+
+
+def _certificate(path: str) -> Optional[dict]:
+    """The HTTPS certificate's subject and expiry, or None. The ssl module's
+    own decoder (the one its tests use) is the only one in the standard
+    library; if a Python ever drops it, the page just leaves this out."""
+    decode = getattr(getattr(ssl, "_ssl", None), "_test_decode_cert", None)
+    if not path or decode is None:
+        return None
+    try:
+        info = decode(path)
+        expires = datetime.fromtimestamp(ssl.cert_time_to_seconds(info["notAfter"]),
+                                         timezone.utc)
+    except (OSError, ssl.SSLError, ValueError, KeyError):
+        return None
+    subject = dict(item for rdn in info.get("subject", ()) for item in rdn)
+    names = [value for kind, value in info.get("subjectAltName", ()) if kind == "DNS"]
+    return {"name": subject.get("commonName") or (names[0] if names else "?"),
+            "names": names, "expires": expires,
+            "days_left": (expires - datetime.now(timezone.utc)).days}
+
+
+def _percent(fraction) -> str:
+    """0.34 -> "34"; a fraction that isn't a number is shown as it is."""
+    try:
+        return f"{float(fraction) * 100:g}"
+    except (TypeError, ValueError):
+        return str(fraction)
 
 
 def _capability_groups() -> list:

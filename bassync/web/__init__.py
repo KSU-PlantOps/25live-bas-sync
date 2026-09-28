@@ -311,7 +311,8 @@ def create_app(service, settings: dict) -> Flask:
 
     @app.route("/healthz")
     def healthz():
-        return {"ok": True}
+        # `boot` changes when the service restarts; the restart page waits on it.
+        return {"ok": True, "boot": service.boot}
 
     # ── branding (public: the sign-in page uses it) ──────────────────────────
 

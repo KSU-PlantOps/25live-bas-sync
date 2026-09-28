@@ -29,12 +29,20 @@ Environment:
 Stopping (SIGTERM, i.e. `docker stop`) refuses new jobs and gives a running
 sync up to BAS_STOP_GRACE seconds (default 90) to finish before interrupting
 it; set the container's stop timeout at least that long.
+
+Restarting from the web UI stops the same way (it isn't offered while a job
+runs or a scheduled sync is minutes away), then replaces the process with a
+fresh copy of itself: same PID, arguments and environment, so Docker, systemd
+or a terminal sees one process that never exited. It re-reads everything read
+only at start — the TLS certificate, the log and state locations — but not
+the container's environment (.env); that needs `docker compose up -d`.
 """
 
 import argparse
 import logging
 import logging.handlers
 import os
+import secrets
 import signal
 import sys
 import threading
@@ -49,7 +57,9 @@ from . import __version__, paths
 from .config import ConfigError, load_config, parse_hhmm
 from .jobs import JobBusy, JobManager
 from .scheduler import next_run_any
+from .updates import UpdateChecker
 
+RESTART_QUIET = 120                # no restart this close to a scheduled sync (seconds)
 HEARTBEAT_FILE = "service.alive"
 HEARTBEAT_MAX_AGE = 120            # seconds; the loop touches it every ~15 s
 TICK_SECONDS = 15
@@ -137,6 +147,11 @@ class Service:
         self.pending_since: Optional[datetime] = None    # due while a job ran
         self.last_tick: Optional[datetime] = None
         self.web_enabled = False
+        self.web: dict = {}                  # where the web UI listens (no secrets)
+        self.stop_event = threading.Event()
+        self.restart_requested = False
+        self.boot = secrets.token_hex(6)     # changes with every start, restarts included
+        self.updates = UpdateChecker()
         self._signature: Optional[tuple] = None
         self._tick_lock = threading.Lock()
 
@@ -234,6 +249,40 @@ class Service:
         if s.source != "config.yaml":
             text += f", from {s.source}"
         return text
+
+    # ── restarting ───────────────────────────────────────────────────────────
+
+    def restart_blocker(self, now: Optional[datetime] = None) -> Optional[str]:
+        """Why a restart would be a bad idea right now, or None."""
+        now = now or datetime.now(timezone.utc)
+        job = self.jobs.current
+        if job is not None:
+            return f"{job.label} is running. Restart when it has finished, or stop it first."
+        if self.pending_since is not None:
+            return "A scheduled sync is waiting to start. Restart after it has run."
+        if self.next_due is not None and 0 <= (self.next_due - now).total_seconds() < RESTART_QUIET:
+            return "A scheduled sync starts in the next two minutes. Restart after it has run."
+        if self.stop_event.is_set():
+            return "The service is already stopping."
+        return None
+
+    def request_restart(self) -> Optional[str]:
+        """Stop, then start again in place (see main). Returns why not, or
+        None when the restart is on its way."""
+        blocker = self.restart_blocker()
+        if blocker:
+            return blocker
+        closer = getattr(self.jobs, "close_if_idle", None)
+        running = closer() if closer else None
+        if running:
+            return f"{running} has just started. Restart when it has finished."
+        self.restart_requested = True
+        logging.info("[service] restart requested")
+        # A moment's grace, so the page saying so reaches the browser first.
+        timer = threading.Timer(0.5, self.stop_event.set)
+        timer.daemon = True
+        timer.start()
+        return None
 
     # ── the loop ─────────────────────────────────────────────────────────────
 
@@ -387,10 +436,11 @@ def main(argv: Optional[list] = None) -> int:
                         "web UI (Settings) or copy config.example.yaml there",
                         files.config)
 
-    stop = threading.Event()
+    stop = service.stop_event
 
     def _on_signal(signum, _frame):
         logging.info("[service] %s received; stopping", signal.Signals(signum).name)
+        service.restart_requested = False          # a stop wins over a restart
         stop.set()
     signal.signal(signal.SIGTERM, _on_signal)
     signal.signal(signal.SIGINT, _on_signal)
@@ -414,6 +464,7 @@ def main(argv: Optional[list] = None) -> int:
                           "schedule still runs.", settings["host"], settings["port"], exc)
         else:
             service.web_enabled = True
+            service.web = {k: settings[k] for k in ("host", "port", "cert", "behind_proxy", "auth")}
             scheme = "https" if settings["cert"] else "http"
             logging.info("[service] web UI on %s://%s:%d%s", scheme, settings["host"],
                          settings["port"],
@@ -436,8 +487,27 @@ def main(argv: Optional[list] = None) -> int:
         grace = 90.0
     service.jobs.shutdown(grace)
     scheduler.join(timeout=5)
+    if service.restart_requested:
+        return restart_in_place()
     logging.info("=== service stopped ===")
     return 0
+
+
+def restart_in_place() -> int:
+    """Replace this process with a fresh copy of itself. Returns only if that
+    failed, with an exit code a restart policy will act on."""
+    logging.info("=== service restarting ===")
+    for handler in logging.getLogger().handlers:
+        handler.flush()
+    sys.stdout.flush()
+    sys.stderr.flush()
+    argv = list(getattr(sys, "orig_argv", None) or [sys.executable, *sys.argv])
+    try:
+        os.execv(sys.executable, argv)
+    except OSError as exc:
+        logging.error("[service] couldn't restart in place (%s); exiting so the "
+                      "container's restart policy starts it again", exc)
+    return 3
 
 
 if __name__ == "__main__":

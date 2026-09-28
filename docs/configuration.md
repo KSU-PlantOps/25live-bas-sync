@@ -12,6 +12,7 @@ the repository. With Docker they're in `./config` and the
 | `config.yaml` | Your 25Live instance, BAS systems, accounts, timezone, safety limits, alerting and the schedule. Usually IT-managed. | `config.example.yaml` |
 | `defaults.yaml` | The operator-tunable defaults: run-up, run-down, merge gap, lookahead. | `defaults.example.yaml` |
 | `space_mapping.yaml` | The room map: buildings, floors and rooms, and the schedule each one drives. | `space_mapping.example.yaml` |
+| `extra_bookings.yaml` | Bookings that aren't in 25Live — see [Extra bookings](#extra-bookings). | written by the web UI (optional) |
 | `web.yaml` | The web UI's sign-in, roles and branding — see [The web UI](web-ui.md). | written by the web UI |
 
 Each example documents every setting it takes. Passwords are **never** in any
@@ -23,6 +24,7 @@ of them — see [Secrets](#secrets).
 - [The room map — space_mapping.yaml](#the-room-map)
 - [Targets](#targets)
 - [A broken row doesn't cost you the campus](#a-broken-row-doesnt-cost-you-the-campus)
+- [Extra bookings](#extra-bookings)
 
 ## Settings — config.yaml
 
@@ -161,6 +163,11 @@ Each entry carries:
   bookable in 25Live (an atrium, say).
 - **`note:`** — free text for people; the sync ignores it.
 
+Every building and floor entry names a schedule the sync owns, whether or not
+any room rolls up into it: with no bookings it's cleared, like any other. A
+building with no rooms at all — one that isn't in 25Live — can still be driven
+by [extra bookings](#extra-bookings).
+
 `space_mapping.example.yaml` documents every field and shows all three
 granularity patterns side by side. Find a room's `space_id` with *Discover
 spaces* in the web UI or `--discover` on the command line.
@@ -193,3 +200,55 @@ whose own target is malformed still feeds its floor and building.
 
 Set `safety.on_map_errors: abort` to write nothing until the map is fixed
 instead.
+
+## Extra bookings
+
+Occupancy the sync should schedule that 25Live doesn't know about: an open
+house, an evening custodial shift, a make-up lab, a building that isn't in
+25Live at all. Add them on the web UI's **Bookings** page, or in
+`extra_bookings.yaml` beside `config.yaml` (`$BAS_EXTRA_BOOKINGS` or
+`extra_bookings_file:` in `config.yaml` point elsewhere):
+
+```yaml
+bookings:
+  - title: Open house
+    building: science_hall      # a building's common-area schedule
+    date: 2026-10-05            # one day...
+    start: "08:00"
+    end: "14:00"
+  - title: Evening custodial
+    building: liberal_arts
+    floor: 2                    # ...a floor's corridor schedule
+    days: [mon, wed]            # ...or every week on these days,
+    from: 2026-09-01            #    between these dates (both optional)
+    until: 2026-12-12
+    start: "18:00"
+    end: "21:00"
+  - title: Chem lab make-up
+    space_id: 1234              # a room in the room map, by its 25Live id
+    date: 2026-10-07
+    start: "13:00"
+    end: "16:00"
+    exact: true                 # no run-up or run-down
+```
+
+Each run treats them like 25Live bookings:
+
+- **A room's** gets the room's run-up and run-down, and keeps its floor and
+  building running too. **A building's or floor's** gets the building's.
+  `exact: true` leaves the run-up and run-down off.
+- An `end` at or before the `start` runs past midnight; `"24:00"` is midnight
+  at the end of the day. Times are in the campus `timezone:`.
+- They're scheduled up to `lookahead_days` ahead, like everything else, and a
+  change is written at the next sync.
+- They never count as 25Live bookings, so they can't hide a 25Live outage from
+  the [safety check](safety.md).
+- A row that won't read — a missing time, a day that isn't one — is reported,
+  the run alerts (exit `2`), and the schedules it would have driven keep their
+  current schedule that night, [like a broken room-map row](#a-broken-row-doesnt-cost-you-the-campus).
+  A row naming a room or building the map doesn't have is a warning. A file
+  that can't be read at all stops the run before anything is written.
+
+`--validate` checks them, and the run report counts them. On the web UI, seeing
+them needs *See everything* and changing them *Edit extra bookings*, which
+Advanced has.

@@ -1,0 +1,20 @@
+# Pull the newest image for the tag docker-compose.yml names, and recreate the
+# container if it changed. See docs/docker.md, "Updating automatically".
+#
+#   sudo cp contrib/systemd/25live-bas-sync-update.* /etc/systemd/system/
+#   sudo systemctl edit 25live-bas-sync-update.service   # if not /opt/25live-bas-sync
+#   sudo systemctl enable --now 25live-bas-sync-update.timer
+[Unit]
+Description=Update the 25Live -> BAS sync container
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# The folder with docker-compose.yml and .env.
+WorkingDirectory=/opt/25live-bas-sync
+ExecStart=/usr/bin/docker compose pull --quiet
+# Recreates the container only if the image changed. A sync that is writing
+# gets to finish first (stop_grace_period in docker-compose.yml).
+ExecStart=/usr/bin/docker compose up -d
+ExecStartPost=-/usr/bin/docker image prune -f

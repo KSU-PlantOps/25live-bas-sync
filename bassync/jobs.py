@@ -186,6 +186,15 @@ class JobManager:
                 return
         job.process.kill()
 
+    def close_if_idle(self) -> Optional[str]:
+        """Refuse new jobs from now on — if none is running. Returns the
+        running job's label instead, changing nothing, if one is."""
+        with self._lock:
+            if self._current is not None:
+                return self._current.label
+            self._stopping = True
+            return None
+
     # ── reading ──────────────────────────────────────────────────────────────
 
     @property

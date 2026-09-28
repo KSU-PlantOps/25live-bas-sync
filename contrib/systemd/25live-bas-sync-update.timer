@@ -1,0 +1,12 @@
+# When to look for a new image: mid-morning on a weekday, when someone is
+# around to notice, and well away from the nightly sync.
+[Unit]
+Description=Look for a new 25Live -> BAS sync image
+
+[Timer]
+OnCalendar=Tue *-*-* 10:00
+RandomizedDelaySec=30m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

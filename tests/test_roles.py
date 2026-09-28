@@ -220,3 +220,26 @@ def test_the_local_password_can_always_do_everything(site):
     c = _admin_client(site)
     assert c.get("/settings/access").status_code == 200
     assert c.get("/logs?which=activity").status_code == 200
+
+
+def test_every_capability_the_pages_name_exists(site):
+    """A misspelt capability would lock a page or hide a button for everyone."""
+    import re
+    from pathlib import Path
+
+    app = app_for(site)
+    named = set()
+    for view in app.view_functions.values():
+        named.update(c for c in getattr(view, "required", ()) if c)
+    templates = Path(access.__file__).parent / "templates"
+    for page in templates.glob("*.html"):
+        text = page.read_text(encoding="utf-8")
+        named.update(re.findall(r"can\('([a-z_]+)'\)", text))
+        named.update(re.findall(r"'([a-z_]+)', (?:request\.endpoint|args\.get|\[)", text))
+    for module in Path(access.__file__).parent.glob("*.py"):
+        text = module.read_text(encoding="utf-8")
+        named.update(re.findall(r'access\.can\(g\.caps, "([a-z_]+)"\)', text))
+        named.update(re.findall(r'needed = "([a-z_]+)"', text))
+    assert named <= set(access.ALL_CAPABILITIES), named - set(access.ALL_CAPABILITIES)
+    # And every capability guards something.
+    assert named == set(access.ALL_CAPABILITIES), set(access.ALL_CAPABILITIES) - named

@@ -52,13 +52,17 @@ finely as that building actually supports.
   and its building's common areas.
 - **Pre-conditioning and run-down buffers**, set per room, per building or
   globally. Back-to-back bookings merge into clean occupancy windows.
+- **Extra bookings** for what isn't in 25Live — an open house, an evening
+  shift, a building 25Live doesn't have — one day or every week, on a room, a
+  floor or a whole building.
 - **Fails safe.** It refuses to stand the campus down because 25Live had a bad
   day, and a broken row in the room map costs you that row, not the whole run.
 - **Tells you what it did.** An email report lists every schedule and the exact
   windows written, with a CSV. It can also alert Slack or Teams, and ping a
   dead-man's switch.
-- **Sign in with Microsoft Entra ID**, with Basic, Advanced and Admin roles
-  mapped from your Entra groups.
+- **Sign in with Microsoft Entra ID**, with roles mapped from your Entra
+  groups: Basic, Advanced and Admin out of the box, or your own, down to
+  individual capabilities.
 - **Low-risk.** It's read-only against 25Live, and it only ever writes occupancy
   schedules. `--validate` and `--dry-run` prove a change before it goes live.
 
@@ -137,22 +141,25 @@ three patterns are first-class, and they mix freely in one map:
 
 ## The web UI
 
-Status and history, *Sync now*, the tools with live output, and editing of
-rooms, buildings, floors and every setting. Everything is checked by the sync's
-own validation before it's saved. People sign in with **Microsoft Entra ID**,
-and their groups decide what they can do:
+Status and history, *Sync now*, the tools with live output, extra bookings,
+and editing of rooms, buildings, floors and every setting. Everything is
+checked by the sync's own validation before it's saved. People sign in with
+**Microsoft Entra ID**, and their groups decide what they can do — out of the
+box:
 
 | Role | Can |
 |---|---|
 | **Basic** | See the status page and sync history; *Sync now*. |
-| **Advanced** | See everything; run the tools; add and edit rooms, buildings and floors. |
-| **Admin** | Full control: connection, passwords, alerts, schedule, access, appearance, and *Force*. |
+| **Advanced** | See everything; run the tools; add and edit rooms, buildings, floors and extra bookings. |
+| **Admin** | Full control: connection, passwords, alerts, schedule, safety, access, appearance, restarting the service, and *Force*. |
+
+Change what each role may do, or add your own, on the Access page.
 
 | Room map, with campuses | Each sync's report |
 |---|---|
 | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/rooms-dark.png"><img alt="The rooms list, with building, campus, floor, system and target" src="docs/images/rooms-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/report-dark.png"><img alt="A sync's report: the safety check, and every schedule with the windows written" src="docs/images/report-light.png"></picture> |
 
-→ [The web UI](docs/web-ui.md): every page, setting up Entra sign-in,
+→ [The web UI](docs/web-ui.md): every page, setting up Entra sign-in, roles,
 security, and branding with your logo and contact details.
 
 ## Built to fail safe

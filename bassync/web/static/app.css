@@ -78,7 +78,7 @@ input.tiny { width: 5em; }
 form.inline { display: inline-flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 0 .6rem .4rem 0; }
 .form { display: grid; grid-template-columns: minmax(160px, 260px) 1fr; gap: .7rem 1rem; align-items: start; }
 .form > label, .form > fieldset > label { padding-top: .45rem; font-weight: 600; }
-.form .field input:not([type=checkbox]), .form .field select, .form .field textarea { width: min(100%, 520px); }
+.form .field input:not([type=checkbox]):not([type=radio]), .form .field select, .form .field textarea { width: min(100%, 520px); }
 .form .full, .form h2 { grid-column: 1 / -1; }
 .form h2 { margin: .8rem 0 0; padding-top: .6rem; border-top: 1px solid var(--border); }
 .form h2:first-of-type { border-top: 0; margin-top: 0; padding-top: 0; }

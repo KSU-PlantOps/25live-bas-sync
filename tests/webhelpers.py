@@ -5,6 +5,7 @@ import re
 import yaml
 
 from bassync.service import Paths, Service, web_settings
+from bassync.updates import UpdateChecker
 
 from .test_service import FakeJobs
 
@@ -37,6 +38,7 @@ def make_site(tmp_path):
                   tmp_path / "space_mapping.yaml", tmp_path / "state",
                   tmp_path / "logs" / "25live_sync.log")
     service = Service(files, jobs=FakeJobs(), environ={})
+    service.updates = UpdateChecker(fetch=lambda: [])      # never the network
     service.tick()
     return service
 

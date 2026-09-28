@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Restarting{% endblock %}
+{% block body %}
+<h1>Restarting…</h1>
+<section class="card" id="restarting" data-boot="{{ boot }}" data-health="{{ url_for('healthz') }}"
+         data-next="{{ url_for('service_page') }}">
+  <p>The service is stopping and starting again. This page goes back to the Service page when it's up — usually within
+    a few seconds.</p>
+  <p class="hint" data-restart-slow hidden>It's taking longer than it should. <code>docker compose logs</code> on the host says
+    why; if the container stopped, <code>docker compose up -d</code> starts it.</p>
+  <noscript><p><a href="{{ url_for('service_page') }}">Back to the Service page</a></p></noscript>
+</section>
+{% endblock %}

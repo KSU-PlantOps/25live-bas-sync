@@ -44,7 +44,7 @@ CAPABILITY_LIST = (
                       "safety limits and the settings files", "Administer"),
     ("edit_passwords", "Set and clear stored passwords", "Administer"),
     ("view_activity", "See the activity log: who did what", "Administer"),
-    ("restart", "Restart the service", "Administer"),
+    ("restart", "Restart the service, and check for updates", "Administer"),
     ("manage_access", "Change sign-in, roles and appearance — which can grant "
                       "any capability, so give it only to administrators", "Administer"),
 )
@@ -146,7 +146,7 @@ def empty() -> dict:
                     "authority_host": "login.microsoftonline.com",
                     "public_url": ""},
             "groups": [], "local_password": True, "roles": default_roles(),
-            "branding": empty_branding()}
+            "updates": {"check": True}, "branding": empty_branding()}
 
 
 # ── branding (the Appearance page) ───────────────────────────────────────────
@@ -235,6 +235,8 @@ def load(path: Path) -> tuple:
     out["local_password"] = data.get("local_password", True) is not False
     out["branding"] = branding_from(data.get("branding"))
     out["roles"] = clean_roles(data.get("roles"))
+    updates = data["updates"] if isinstance(data.get("updates"), dict) else {}
+    out["updates"]["check"] = updates.get("check", True) is not False
     for row in data.get("groups") or []:
         # A group whose role doesn't exist is kept (and shown as such on the
         # Access page) but grants nothing.

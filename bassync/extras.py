@@ -42,6 +42,7 @@ broken room-map row.
 """
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from pathlib import Path
@@ -350,9 +351,26 @@ def clean_row(row: dict) -> dict:
 
 
 def dump(rows: list) -> str:
+    """The file's text: a block per booking, `days: [mon, wed]` inline."""
     import yaml
-    body = yaml.safe_dump({"bookings": [clean_row(r) for r in rows]}, sort_keys=False,
-                          default_flow_style=None, allow_unicode=True, width=100)
+
+    class Dumper(yaml.SafeDumper):
+        pass
+
+    def inline_scalars(dumper, data):
+        flow = all(not isinstance(item, (list, dict)) for item in data)
+        return dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=flow)
+
+    def quoted_times(dumper, data):
+        # "08:00" and "18:00" alike: unquoted, YAML 1.1 reads some as numbers.
+        style = "'" if re.match(r"^\d{1,2}:\d{2}$", data) else None
+        return dumper.represent_scalar("tag:yaml.org,2002:str", data, style=style)
+
+    Dumper.add_representer(list, inline_scalars)
+    Dumper.add_representer(str, quoted_times)
+    body = yaml.dump({"bookings": [clean_row(r) for r in rows]}, Dumper=Dumper,
+                     sort_keys=False, default_flow_style=False, allow_unicode=True,
+                     width=100)
     return HEADER + "\n" + body
 
 

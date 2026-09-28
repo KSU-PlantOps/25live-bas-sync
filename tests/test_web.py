@@ -39,7 +39,7 @@ def test_everything_but_the_login_needs_a_password(site):
     assert r.status_code == 302 and "/login?next=/map/rooms" in r.location
     assert c.get("/api/status").status_code == 401
     assert c.post("/jobs", data={"kind": "sync"}).status_code == 401
-    assert c.get("/healthz").json == {"ok": True}
+    assert c.get("/healthz").json == {"ok": True, "boot": site.boot}
     assert site.jobs.started == []
 
 
