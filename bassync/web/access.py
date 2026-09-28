@@ -7,10 +7,12 @@ Roles, what each may do, and the web UI's access settings.
 A role is a name and a set of capabilities (CAPABILITY_LIST). Three come
 built in, and are what a site gets until it changes them on the Access page:
 
-    basic     the status page and sync history; Sync now (every system)
+    basic     the status page and sync history; Sync now (everything, or
+              one system or building)
     advanced  everything visible; the tools (dry run, validate, discover,
-              test alert), a sync of one system, stopping a job; adding and
-              editing rooms, buildings, floors and extra bookings
+              test alert), stopping a job; adding and editing rooms,
+              buildings, floors, equipment and extra bookings, and adding
+              rooms from 25Live
     admin     everything, including capabilities added in later versions
 
 A role that can sync can be limited to some systems and buildings
@@ -43,7 +45,8 @@ CAPABILITY_LIST = (
     ("run_tools", "Dry run, Validate, Discover and Test alert", "Run"),
     ("stop_job", "Stop a running job", "Run"),
     ("force", "Force a sync past the mass-clear safety check", "Run"),
-    ("edit_map", "Add and edit rooms, buildings and floors", "Change"),
+    ("edit_map", "Add and edit rooms, buildings, floors and equipment, and add "
+                 "rooms found in 25Live", "Change"),
     ("edit_bookings", "Add and edit extra bookings", "Change"),
     ("edit_settings", "Change the connection, systems, alerts, schedule, defaults, "
                       "safety limits and the settings files", "Administer"),

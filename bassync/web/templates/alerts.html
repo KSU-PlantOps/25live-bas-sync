@@ -66,7 +66,7 @@ dead-man's-switch ping. <code>alerts:</code> and <code>monitoring:</code> in con
   {{ tristate('alerts.webhook_notify_on_success', 'Post every run', alerts.webhook_notify_on_success, 'overrides “Every run” for the webhook') }}
 
   <h2 class="full">Dead-man's switch</h2>
-  {{ text('monitoring.ping_url', 'Ping after success', monitoring.ping_url, 'healthchecks.io, Uptime Kuma push, Cronitor… — alarms when the pings stop') }}
+  {{ text('monitoring.ping_url', 'Ping after success', monitoring.ping_url, 'after each full sync; healthchecks.io, Uptime Kuma push, Cronitor… — alarms when the pings stop') }}
   {{ text('monitoring.ping_fail_url', 'Ping after failure', monitoring.ping_fail_url) }}
 
   {% if confirm %}

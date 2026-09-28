@@ -4,7 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.4.0] — 2026-09-28 — Rooms from 25Live, equipment, and a building at a time
+
+Setting up and growing the room map moves into the web UI: a setup guide for
+a new install, and every space 25Live lists, grouped by building, to add a
+building at a time. The room map gains equipment, so one air handler can serve
+many rooms and one room can drive several VAVs. A sync can be limited to one
+building, and a role to syncing some systems or buildings. Nothing in your
+files needs to change; read *From 1.3* in `docs/upgrading.md` for the two
+things that behave differently.
 
 ### Added
 - **A setup guide in the web UI.** A new install opens on it: 25Live (saved
@@ -30,16 +38,16 @@ semantic versioning from 1.0 onward.
   several, with or without its own `target:`. Edited on **Room map →
   Equipment**, and ticked on each room's form; renaming equipment repoints its
   rooms, and equipment in use can't be deleted.
-- **Room map → From 25Live**: those spaces, grouped by building, to add a building at a time (each group has its own *Add* button,
-  and a new building goes straight to its form for its schedule) or all at
-  once. It's the setup guide's Rooms step too, and needs *Edit the room map*
-  rather than *Edit settings*.
+- **Room map → From 25Live**: those spaces, grouped by building, to add a
+  building at a time (each group has its own *Add* button, and a new building
+  goes straight to its form for its schedule) or all at once. It's the setup
+  guide's Rooms step too, and needs *Edit the room map* rather than *Edit
+  settings*.
 - `--discover` lists every space, not only those with bookings
   (`--discover-booked-only` for the old list), with each one's formal name,
   capacity, building and number of bookings (cancelled occurrences, and states
   the sync doesn't include, aren't counted), and keeps them in
   `state/discovery.json`. Its printed YAML has the same shape.
-
 - **Roles limited to some systems or buildings.** On the Access page, a role
   can be limited to syncing particular systems and buildings: its *Sync now*
   lists only those, one at a time, and the Buildings list has a *Sync* link on

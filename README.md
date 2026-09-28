@@ -27,7 +27,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-  <img alt="The web UI's status page: the last sync, the next scheduled run, the room map, and Sync now, Dry run, Validate, Test alert and Discover spaces" src="docs/images/dashboard-light.png">
+  <img alt="The web UI's status page: the last sync, the next scheduled run, the room map, and Sync now (everything, or one system or building), Dry run, Validate, Test alert and Discover spaces" src="docs/images/dashboard-light.png">
 </picture>
 
 This tool pulls confirmed events from **CollegeNET 25Live** and writes them into
@@ -45,9 +45,10 @@ finely as that building actually supports.
 - **Runs itself.** One Docker container runs the sync on its schedule and
   serves a web UI for status, history, *Sync now*, and editing the room map and
   settings.
-- **Set up in the browser.** A setup guide connects 25Live, finds the rooms
-  booked there, and imports them with their buildings, then points each building
-  at its BAS schedule.
+- **Set up in the browser.** A setup guide connects 25Live, lists every space
+  there, booked or not, grouped by building, and adds them a building at a
+  time. Then it points each building at its BAS schedule. Later buildings are
+  added the same way from the room map.
 - **Mixed-vendor campus in one run.** Every building names the BAS it lives on,
   and its rooms inherit it.
 - **Per-room, per-floor, per-building or per-equipment scheduling**, mixed
@@ -66,7 +67,8 @@ finely as that building actually supports.
   dead-man's switch.
 - **Sign in with Microsoft Entra ID**, with roles mapped from your Entra
   groups: Basic, Advanced and Admin out of the box, or your own, down to
-  individual capabilities.
+  individual capabilities. A role can be limited to syncing particular systems
+  or buildings.
 - **Low-risk.** It's read-only against 25Live, and it only ever writes occupancy
   schedules. `--validate` and `--dry-run` prove a change before it goes live.
 
@@ -80,8 +82,9 @@ flowchart LR
 ```
 
 Each run fetches the coming days' bookings (a week by default) and adds each
-room's run-up and run-down. It merges them into occupancy windows and rolls them up into floor and
-building schedules. It checks the result against the last run, then writes each
+room's run-up and run-down. It merges them into occupancy windows and rolls
+them up into floor, equipment and building schedules. It checks the result
+against the last run, then writes each
 schedule's `Exception_Schedule`: one special event per day, on a schedule
 dedicated to bookings, which the controller combines with the zone's normal
 schedule. → [How it works](docs/how-it-works.md)
@@ -149,7 +152,8 @@ four patterns are first-class, and they mix freely in one map:
 ## The web UI
 
 Status and history, *Sync now*, the tools with live output, extra bookings,
-and editing of rooms, buildings, floors and every setting. Everything is
+adding rooms from 25Live a building at a time, and editing of rooms,
+buildings, floors, equipment and every setting. Everything is
 checked by the sync's own validation before it's saved. People sign in with
 **Microsoft Entra ID**, and their groups decide what they can do — out of the
 box:
@@ -157,7 +161,7 @@ box:
 | Role | Can |
 |---|---|
 | **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
-| **Advanced** | See everything; run the tools; add and edit rooms, buildings, floors and extra bookings. |
+| **Advanced** | See everything; run the tools; add rooms from 25Live; add and edit rooms, buildings, floors, equipment and extra bookings. |
 | **Admin** | Full control: connection, passwords, alerts, schedule, safety, access, appearance, restarting the service, and *Force*. |
 
 Change what each role may do, add your own, or limit a role to syncing
@@ -165,7 +169,7 @@ particular systems or buildings, on the Access page.
 
 | Room map, with campuses | Each sync's report |
 |---|---|
-| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/rooms-dark.png"><img alt="The rooms list, with building, campus, floor, system and target" src="docs/images/rooms-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/report-dark.png"><img alt="A sync's report: the safety check, and every schedule with the windows written" src="docs/images/report-light.png"></picture> |
+| <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/rooms-dark.png"><img alt="The rooms list, with building, campus, floor, equipment, system and target" src="docs/images/rooms-light.png"></picture> | <picture><source media="(prefers-color-scheme: dark)" srcset="docs/images/report-dark.png"><img alt="A sync's report: the safety check, and every schedule with the windows written" src="docs/images/report-light.png"></picture> |
 
 → [The web UI](docs/web-ui.md): every page, setting up Entra sign-in, roles,
 security, and branding with your logo and contact details.

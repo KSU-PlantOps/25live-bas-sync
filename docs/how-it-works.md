@@ -17,7 +17,7 @@ Each run does the same thing, whether it's started by the schedule, by
 flowchart LR
     A["25Live<br/>confirmed bookings"] --> B["Pre/post buffers<br/>per room"]
     B --> C["Merge into<br/>occupancy windows"]
-    C --> D["Roll up<br/>room → floor → building"]
+    C --> D["Roll up<br/>room → equipment,<br/>floor, building"]
     D --> E{"Safety<br/>check"}
     E -- passes --> F["Write each schedule<br/>through its BAS driver"]
     E -- mass clear --> X["Refuse, and alert"]
@@ -42,13 +42,15 @@ flowchart LR
 5. **Check** the result against the last run, and refuse to write if it would
    stand an implausible share of the campus down — see [Safety rails](safety.md).
 6. **Write** each schedule through the driver for the BAS it lives on — one
-   run drives a mixed-vendor campus.
-7. **Report**: bump the BAS heartbeat, ping the dead-man's switch, save the
-   run's report to the history, and email it — see
+   run drives a mixed-vendor campus. A run [limited](command-line.md#commands)
+   to one system or building writes only its schedules, and leaves the rest
+   as they are.
+7. **Report**: bump the BAS heartbeat, ping the dead-man's switch (after a
+   full sync), save the run's report to the history, and email it — see
    [Reports and alerts](reports-and-alerts.md).
 
-The Python stays generic. Everything site-specific lives in three YAML files —
-see [Configuration](configuration.md).
+The Python stays generic. Everything site-specific lives in YAML files — see
+[Configuration](configuration.md).
 
 ## Why BACnet
 
