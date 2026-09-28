@@ -161,7 +161,7 @@ published to GHCR for amd64 and arm64:
 | `ghcr.io/ksu-plantops/25live-bas-sync:latest` | the newest release |
 
 A release candidate is marked as a pre-release and has only its exact tag,
-e.g. `:1.3.0rc1`; the `:1.3` tag arrives with 1.3.0 itself.
+e.g. `:1.3.0rc1`; `:1.3` and `:latest` never move to one.
 
 To run a published release rather than build locally, delete `build: .` from
 `docker-compose.yml` and set `image:` to one of those.
