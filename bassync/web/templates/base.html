@@ -16,7 +16,7 @@
   ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
   ('Bookings', url_for('bookings'), 'view_all', ['bookings', 'booking_form']),
   ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
-  ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete']),
+  ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete', 'map_import']),
   ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults', 'safety_page',
                                                     'files_list', 'file_edit', 'access_page', 'appearance',
                                                     'service_page', 'setup_step']),
@@ -46,10 +46,12 @@
   </div>
 </header>
 {% set nav_sub = [] %}
-{% if request.endpoint in ['map_list', 'map_form', 'map_delete'] %}
+{% if request.endpoint in ['map_list', 'map_form', 'map_delete', 'map_import'] %}
   {% set nav_sub = [('Rooms', url_for('map_list', kind='rooms'), 'view_all', args.get('kind') == 'rooms'),
                    ('Buildings', url_for('map_list', kind='buildings'), 'view_all', args.get('kind') == 'buildings'),
-                   ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors')] %}
+                   ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors'),
+                   ('Equipment', url_for('map_list', kind='equipment'), 'view_all', args.get('kind') == 'equipment'),
+                   ('From 25Live', url_for('map_import'), 'view_all', request.endpoint == 'map_import')] %}
 {% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page', 'setup_step'] %}
   {% set nav_sub = [('Setup guide', url_for('setup_step'), 'edit_settings', request.endpoint == 'setup_step'),
                    ('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),

@@ -106,6 +106,10 @@ class SpaceConfig:
     # zone, its floor's corridor, AND its building's common areas — so a single
     # evening booking on the third floor lights and conditions that corridor
     # without running the whole tower.
+    equipment_destinations: tuple = ()
+    # Equipment that serves this room besides its own schedule: an AHU it
+    # shares with other rooms, or a second VAV. Each one's schedule is the
+    # union of every room it serves, like a floor's.
 
     # `destination` is optional because how finely a building can be scheduled
     # depends on how it was built out. A room-level VAV retrofit gets its own
@@ -116,10 +120,12 @@ class SpaceConfig:
 
     def all_destinations(self) -> list:
         """Every schedule this space writes to, most specific first."""
-        return [d for d in (self.destination, self.floor_destination,
-                            self.building_destination) if d is not None]
+        return [d for d in (self.destination, *self.equipment_destinations,
+                            self.floor_destination, self.building_destination)
+                if d is not None]
 
     def rollup_destinations(self) -> list:
-        """The roll-up schedules this space contributes to, nearest first."""
-        return [d for d in (self.floor_destination, self.building_destination)
-                if d is not None]
+        """The shared schedules this space contributes to, nearest first:
+        its equipment, its floor, its building."""
+        return [d for d in (*self.equipment_destinations, self.floor_destination,
+                            self.building_destination) if d is not None]

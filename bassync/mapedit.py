@@ -53,10 +53,11 @@ FILE_HEADER = """\
 # Field order we emit so the file reads cleanly and diffs stay stable.
 BUILDING_KEY_ORDER = ["id", "name", "campus", "system", "target",
                       "pre_condition_minutes", "post_buffer_minutes",
-                      "merge_gap_minutes", "space_id", "note"]
-ROOM_KEY_ORDER = ["space_id", "space_name", "building", "floor", "system", "target",
-                  "pre_condition_minutes", "post_buffer_minutes",
+                      "merge_gap_minutes", "space_id", "note", "equipment"]
+ROOM_KEY_ORDER = ["space_id", "space_name", "building", "floor", "equipment", "system",
+                  "target", "pre_condition_minutes", "post_buffer_minutes",
                   "merge_gap_minutes", "note"]
+EQUIPMENT_KEY_ORDER = ["id", "name", "system", "target", "note"]
 FLOOR_KEY_ORDER = ["building", "level", "name", "system", "target", "note"]
 
 # Pre-1.0 key name. Read and migrated to `target` on load, so an existing map
@@ -343,6 +344,16 @@ def room_problem(values: dict, rooms: list[dict], buildings: list[dict],
                 "drive nothing.\n\nEither give it a Target (its own schedule — "
                 "e.g. \"12001:5\" for BACnet), or a Building to roll up into "
                 "(optionally with a Floor).")
+    wanted = room_equipment(values)
+    if wanted:
+        if not building:
+            return "Equipment belongs to a building: give the room its Building first."
+        have = {str(e.get("id")) for e in equipment_rows(buildings)
+                if e["building"] == str(building)}
+        missing = [e for e in wanted if e not in have]
+        if missing:
+            return (f"{', '.join(missing)} isn't equipment of building '{building}'. "
+                    "A room can list only its own building's equipment.")
     return target_error(values, buildings, config_raw, building)
 
 
@@ -375,6 +386,82 @@ def floor_problem(values: dict, floors: list[dict], buildings: list[dict],
         return (f"Floor {values['level']} of '{values['building']}' is already "
                 "defined.")
     return target_error(values, buildings, config_raw, values.get("building"))
+
+
+# ── equipment: kept under its building, edited as one list ───────────────────
+
+def equipment_rows(buildings: list[dict]) -> list[dict]:
+    """Every building's equipment as one list of rows, each naming its
+    `building` — how the editors show and edit it."""
+    rows: list = []
+    for b in buildings:
+        items = b.get("equipment") if isinstance(b, dict) else None
+        if isinstance(items, list):
+            rows.extend({"building": str(b.get("id")), **item}
+                        for item in items if isinstance(item, dict))
+    return rows
+
+
+def with_equipment(buildings: list[dict], rows: list[dict]) -> list[dict]:
+    """The buildings with their `equipment:` rebuilt from `rows` (as
+    equipment_rows gives them); a building with none has no key."""
+    grouped: dict = {}
+    for row in rows:
+        item = {k: v for k, v in row.items() if k != "building"}
+        grouped.setdefault(str(row.get("building")), []).append(
+            _ordered(item, EQUIPMENT_KEY_ORDER))
+    out = []
+    for b in buildings:
+        b = dict(b)
+        items = grouped.get(str(b.get("id")))
+        if items:
+            b["equipment"] = items
+        else:
+            b.pop("equipment", None)
+        out.append(b)
+    return out
+
+
+def room_equipment(room: dict) -> list[str]:
+    """The equipment ids a room lists (the file allows one, or a list)."""
+    value = room.get("equipment")
+    if value in (None, "", []):
+        return []
+    return [str(v).strip() for v in (value if isinstance(value, list) else [value])]
+
+
+def equipment_users(building_id, equipment_id, rooms: list[dict]) -> list[dict]:
+    """The rooms that list this piece of equipment."""
+    return [r for r in rooms if str(r.get("building")) == str(building_id)
+            and str(equipment_id) in room_equipment(r)]
+
+
+def rename_equipment(building_id, old_id, new_id, rooms: list[dict]) -> None:
+    """Repoint the rooms that list equipment whose id changed."""
+    if str(old_id) == str(new_id):
+        return
+    for r in equipment_users(building_id, old_id, rooms):
+        r["equipment"] = [str(new_id) if e == str(old_id) else e for e in room_equipment(r)]
+
+
+def equipment_problem(values: dict, rows: list[dict], buildings: list[dict],
+                      config_raw: dict, index: Optional[int] = None) -> Optional[str]:
+    """Why an equipment row can't be saved as it is, or None."""
+    building = values.get("building")
+    if not building:
+        return "Building is required — equipment belongs to the building it's in."
+    if str(building) not in {str(b.get("id")) for b in buildings}:
+        return f"There is no building '{building}'."
+    if not values.get("id"):
+        return "Equipment ID is required — rooms list it by this."
+    taken = {str(r.get("id")) for j, r in enumerate(rows)
+             if j != index and str(r.get("building")) == str(building)}
+    if str(values["id"]) in taken:
+        return f"'{building}' already has equipment called '{values['id']}'."
+    if not values.get("target"):
+        return ("Target is required — the equipment's schedule in its BAS (e.g. "
+                "\"12001:30\" for BACnet).")
+    return target_error(values, buildings, config_raw, building)
 
 
 def rename_building(old_id, new_id, floors: list[dict], rooms: list[dict]) -> None:
@@ -423,7 +510,7 @@ def delete_building(building_id, buildings: list[dict], floors: list[dict],
     kept_rooms = []
     for r in rooms:
         if str(r.get("building")) == bid:
-            r = {k: v for k, v in r.items() if k not in ("building", "floor")}
+            r = {k: v for k, v in r.items() if k not in ("building", "floor", "equipment")}
         kept_rooms.append(r)
     return ([b for b in buildings if str(b.get("id")) != bid],
             [f for f in floors if str(f.get("building")) != bid],

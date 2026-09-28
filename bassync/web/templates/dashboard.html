@@ -85,6 +85,7 @@
     <h2>Room map</h2>
     <p class="big">{{ health.counts.rooms }} <span class="unit">rooms</span></p>
     <p class="hint">{{ health.counts.buildings }} building{{ '' if health.counts.buildings == 1 else 's' }} · {{ health.counts.floors }} floor{{ '' if health.counts.floors == 1 else 's' }} ·
+      {% if health.counts.equipment %}{{ health.counts.equipment }} equipment ·{% endif %}
       {{ health.counts.systems }} BAS system{{ '' if health.counts.systems == 1 else 's' }}</p>
     {% if health.by_campus %}
       <p class="hint">{% for campus, n in health.by_campus %}{{ campus }}: {{ n }} room{{ '' if n == 1 else 's' }}{{ ' · ' if not loop.last }}{% endfor %}</p>

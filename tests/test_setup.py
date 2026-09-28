@@ -11,6 +11,7 @@ pytest.importorskip("flask")
 from bassync import discovery, secretstore  # noqa: E402
 from bassync.collegenet import CollegeNetClient  # noqa: E402
 from bassync.service import Paths, Service  # noqa: E402
+from bassync.updates import UpdateChecker  # noqa: E402
 
 from .test_access import configure_sso, signed_in_as  # noqa: E402
 from .test_service import FakeJobs  # noqa: E402
@@ -34,6 +35,7 @@ def fresh(tmp_path):
                   tmp_path / "space_mapping.yaml", tmp_path / "state",
                   tmp_path / "logs" / "25live_sync.log")
     service = Service(files, jobs=FakeJobs(), environ={})
+    service.updates = UpdateChecker(fetch=lambda: [])      # never the network
     service.tick()
     return service
 
@@ -109,14 +111,15 @@ def test_the_whole_guide_from_nothing_to_a_schedule(fresh, admin, connected):
     assert cfg["default_system"] == "campus"
 
     # Rooms: look in 25Live, then add what it found.
-    assert post(admin, "/setup/rooms/find", {"days": "90"}).location == "/setup/rooms"
+    assert post(admin, "/map/import/find", {"days": "90", "back": "setup"}).location == "/setup/rooms"
     assert fresh.jobs.started[-1][:2] == ("discover", ["--discover-days", "90"])
     discovery.save(fresh.paths.state_dir, 90, FOUND)
     page = admin.get("/setup/rooms").text
     assert 'value="Science Hall"' in page and 'value="Art Center"' in page
-    assert "Found 4 spaces" in page
-    r = post(admin, "/setup/rooms/import", {
-        "version": version(admin, "/setup/rooms"), "pick": ["11", "12", "13", "14"],
+    assert "Found 4 spaces in 2 buildings" in page
+    r = post(admin, "/map/import", {
+        "back": "setup", "version": version(admin, "/setup/rooms"),
+        "pick": ["11", "12", "13", "14"],
         "b.11": "Science Hall", "b.12": "science hall", "b.13": "Art Center", "b.14": ""})
     assert r.location == "/setup/schedules"
     m = the_map(fresh)
@@ -220,7 +223,7 @@ def test_import_skips_rooms_already_mapped_and_reuses_buildings(site, connected)
     ])
     page = c.get("/setup/rooms").text
     assert "added</span>" in page                           # 101 is mapped already
-    r = post(c, "/setup/rooms/import", {"version": version(c, "/setup/rooms"),
+    r = post(c, "/map/import", {"back": "setup", "version": version(c, "/setup/rooms"),
                                         "pick": ["101", "150"], "b.101": "Science",
                                         "b.150": "sci"})
     assert r.location == "/setup/rooms"                     # no new building
@@ -233,9 +236,9 @@ def test_import_refuses_a_stale_page_and_an_empty_choice(site):
     c = app_for(site).test_client()
     c.post("/login", data={"password": PASSWORD})
     discovery.save(site.paths.state_dir, 30, FOUND)
-    r = post(c, "/setup/rooms/import", {"version": "stale", "pick": "11", "b.11": "X"})
+    r = post(c, "/map/import", {"back": "setup", "version": "stale", "pick": "11", "b.11": "X"})
     assert r.status_code == 409 and "changed since" in r.text
-    r = post(c, "/setup/rooms/import", {"version": version(c, "/setup/rooms")})
+    r = post(c, "/map/import", {"back": "setup", "version": version(c, "/setup/rooms")})
     assert r.status_code == 422 and "Tick the rooms" in r.text
 
 
@@ -244,7 +247,7 @@ def test_a_schedule_must_suit_its_system(fresh, admin, connected):
     post(admin, "/setup/bas", {"name": "campus", "local_address": "10.0.0.5/24",
                                "device_id": "599001"})
     discovery.save(fresh.paths.state_dir, 30, FOUND[:1])
-    post(admin, "/setup/rooms/import", {"version": version(admin, "/setup/rooms"),
+    post(admin, "/map/import", {"back": "setup", "version": version(admin, "/setup/rooms"),
                                         "pick": "11", "b.11": "Science Hall"})
     r = post(admin, "/setup/schedules", {"version": version(admin, "/setup/schedules"),
                                          "t.science_hall": "not-a-target",
@@ -296,7 +299,7 @@ def test_only_people_who_can_change_settings_get_the_guide(fresh, monkeypatch):
     c = signed_in_as(app_for(fresh), monkeypatch, ["BAS_Users"])      # advanced
     assert c.get("/").status_code == 200                   # no redirect for them
     assert c.get("/setup").status_code == 403
-    assert post(c, "/setup/rooms/import", {}).status_code == 403
+    assert post(c, "/map/import", {"back": "setup"}).status_code == 403
 
 
 def test_the_steps_read_the_job_runner_s_summaries(fresh, admin, monkeypatch):

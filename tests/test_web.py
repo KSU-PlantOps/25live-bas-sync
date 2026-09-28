@@ -10,6 +10,7 @@ pytest.importorskip("flask")
 from bassync import history, mapedit  # noqa: E402
 from bassync.report import RunReport  # noqa: E402
 from bassync.service import Paths, Service  # noqa: E402
+from bassync.updates import UpdateChecker  # noqa: E402
 
 from .helpers import TZ, dt  # noqa: E402
 from .test_service import FakeJobs  # noqa: E402
@@ -372,6 +373,7 @@ def test_a_fresh_install_renders_and_is_set_up_from_the_browser(tmp_path):
                   tmp_path / "space_mapping.yaml", tmp_path / "state",
                   tmp_path / "logs" / "25live_sync.log")
     service = Service(files, jobs=FakeJobs(), environ={})
+    service.updates = UpdateChecker(fetch=lambda: [])      # never the network
     service.tick()
     c = app_for(service).test_client()
     c.post("/login", data={"password": PASSWORD})

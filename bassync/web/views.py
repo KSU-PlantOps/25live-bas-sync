@@ -121,6 +121,7 @@ def health() -> dict:
         "map_warnings": map_warnings,
         "counts": {"rooms": len(rooms), "buildings": len(buildings),
                    "floors": len(floors),
+                   "equipment": len(mapedit.equipment_rows(buildings)),
                    "systems": len(mapedit.config_systems(raw))},
         "by_campus": _rooms_by_campus(buildings, rooms),
         "writable": os.access(p.config.parent if p.config.parent.exists() else ".", os.W_OK),
@@ -190,6 +191,8 @@ ROOM_FIELDS = [
     ("space_name", "Name", "text", ""),
     ("building", "Building", "building", "the building it rolls up into"),
     ("floor", "Floor #", "level", "rolls up into that floor's corridor schedule"),
+    ("equipment", "Equipment", "equipment",
+     "what else serves it — an AHU it shares with other rooms, or more VAVs"),
     ("system", "BAS system", "system", "blank = its building's"),
     ("target", "Target", "text", "its own schedule; blank = roll-up only"),
     ("pre_condition_minutes", "Pre-condition minutes", "int", "blank = building / default"),
@@ -217,11 +220,20 @@ FLOOR_FIELDS = [
     ("note", "Note", "text", ""),
 ]
 
+EQUIPMENT_FIELDS = [
+    ("building", "Building", "building", "required; rooms in this building can list it"),
+    ("id", "Equipment ID", "text", "required; rooms list it by this, e.g. ahu_3"),
+    ("name", "Name", "text", "e.g. AHU-3, or VAV 2-14"),
+    ("system", "BAS system", "system", "blank = its building's"),
+    ("target", "Target", "text", "required; its schedule, e.g. 12001:30 for BACnet"),
+    ("note", "Note", "text", ""),
+]
+
 KINDS_OF_ROW: dict[str, dict] = {
     "rooms": {"title": "Rooms", "one": "room", "slot": 2, "fields": ROOM_FIELDS,
               "columns": [("space_id", "Space ID"), ("space_name", "Name"),
                           ("building", "Building"), ("_campus", "Campus"),
-                          ("floor", "Floor"),
+                          ("floor", "Floor"), ("equipment", "Equipment"),
                           ("system", "System"), ("target", "Target"),
                           ("pre_condition_minutes", "Pre"),
                           ("post_buffer_minutes", "Post"),
@@ -240,7 +252,19 @@ KINDS_OF_ROW: dict[str, dict] = {
                            ("level", "Floor"),
                            ("system", "System"), ("target", "Corridor target")],
                "key": "level"},
+    # Kept under each building in the file; edited here as one list.
+    "equipment": {"title": "Equipment", "one": "equipment", "slot": 3,
+                  "fields": EQUIPMENT_FIELDS,
+                  "columns": [("building", "Building"), ("_campus", "Campus"),
+                              ("id", "ID"), ("name", "Name"), ("system", "System"),
+                              ("target", "Target"), ("_rooms", "Rooms")],
+                  "key": "id"},
 }
+
+
+def map_lists(buildings: list, floors: list, rooms: list) -> tuple:
+    """The room map's rows by kind, in KINDS_OF_ROW's slot order."""
+    return buildings, floors, rooms, mapedit.equipment_rows(buildings)
 
 
 def row_label(kind: str, row: dict) -> str:
@@ -249,6 +273,8 @@ def row_label(kind: str, row: dict) -> str:
         return f"room {row.get('space_id')}" + (f" ({name})" if name else "")
     if kind == "buildings":
         return f"building '{row.get('id')}'"
+    if kind == "equipment":
+        return f"equipment '{row.get('id')}' of '{row.get('building')}'"
     return f"floor {row.get('level')} of '{row.get('building')}'"
 
 
@@ -256,6 +282,11 @@ def parse_row(form, fields) -> tuple:
     values: dict = {}
     errors: list = []
     for key, label, kind, _hint in fields:
+        if kind == "equipment":
+            picked = list(dict.fromkeys(v.strip() for v in form.getlist(key) if v.strip()))
+            if picked:
+                values[key] = picked
+            continue
         raw = (form.get(key) or "").strip()
         if raw == "":
             continue
@@ -271,22 +302,31 @@ def parse_row(form, fields) -> tuple:
 
 def row_problem(kind: str, values: dict, lists: tuple, raw: dict,
                 index: Optional[int]) -> Optional[str]:
-    buildings, floors, rooms = lists
+    buildings, floors, rooms, equipment = lists
     if kind == "rooms":
         return mapedit.room_problem(values, rooms, buildings, raw, index)
     if kind == "buildings":
         return mapedit.building_problem(values, buildings, raw, index)
+    if kind == "equipment":
+        return mapedit.equipment_problem(values, equipment, buildings, raw, index)
     return mapedit.floor_problem(values, floors, buildings, raw, index)
 
 
 def form_choices(lists: tuple, raw: dict) -> dict:
-    buildings, floors, _rooms = lists
+    buildings, floors, _rooms, equipment = lists
     levels = sorted({str(f.get("level")) for f in floors if f.get("level") not in (None, "")},
                     key=lambda s: (0, int(s)) if s.lstrip("-").isdigit() else (1, s))
+    names = {str(b.get("id")): str(b.get("name") or b.get("id")) for b in buildings}
+    by_building: dict = {}
+    for e in equipment:
+        by_building.setdefault(e["building"], []).append(
+            (str(e.get("id")), str(e.get("name") or e.get("id"))))
     return {"buildings": [str(b.get("id")) for b in buildings],
             "systems": sorted(mapedit.config_systems(raw)),
             "levels": levels,
-            "campuses": campuses(buildings)}
+            "campuses": campuses(buildings),
+            "equipment": [(bid, names.get(bid, bid), items)
+                          for bid, items in by_building.items()]}
 
 
 def campuses(buildings: list) -> list:
@@ -477,11 +517,15 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     def map_list(kind):
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         buildings, floors, rooms, version, error = load_map()
-        rows = (buildings, floors, rooms)[spec["slot"]]
+        rows = map_lists(buildings, floors, rooms)[spec["slot"]]
+        users: dict = {}
+        for r in rooms:
+            for e in mapedit.room_equipment(r):
+                users[(str(r.get("building")), e)] = users.get((str(r.get("building")), e), 0) + 1
         return render_template("map_list.html", kind=kind, spec=spec, rows=rows,
                                version=version, error=error, health=health(),
                                kinds=KINDS_OF_ROW, campus_of=campus_of(buildings),
-                               campuses=campuses(buildings))
+                               campuses=campuses(buildings), users=users)
 
     @app.route("/map/<kind>/new")
     @app.route("/map/<kind>/<int:index>/edit")
@@ -492,7 +536,8 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         if error:
             notice(f"The room map can't be edited until it reads cleanly: {error}", "error")
             return redirect(url_for("map_list", kind=kind))
-        rows = (buildings, floors, rooms)[spec["slot"]]
+        lists = map_lists(buildings, floors, rooms)
+        rows = lists[spec["slot"]]
         values: dict = {}
         if index is not None:
             if not 0 <= index < len(rows):
@@ -506,11 +551,13 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         else:
             values = {key: request.args[key] for key, *_ in spec["fields"]
                       if request.args.get(key)}
+        if kind == "rooms":
+            values["equipment"] = mapedit.room_equipment(values)
         raw, _err = load_config_raw()
         return render_template(
             "map_form.html", kind=kind, spec=spec, index=index, values=values,
             version=version, errors=[], confirm=[],
-            choices=form_choices((buildings, floors, rooms), raw))
+            choices=form_choices(lists, raw))
 
     @app.route("/map/<kind>/save", methods=["POST"])
     @requires("edit_map")
@@ -521,14 +568,15 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         with ctx()["write_lock"]:
             buildings, floors, rooms, version, error = load_map()
             raw, _cfg_err = load_config_raw()
-            lists = (buildings, floors, rooms)
+            lists = map_lists(buildings, floors, rooms)
             rows = lists[spec["slot"]]
             values, errors = parse_row(request.form, spec["fields"])
+            typed = {**request.form.to_dict(), "equipment": request.form.getlist("equipment")}
 
             def again(errs, confirm=(), status=422):
                 return render_template(
                     "map_form.html", kind=kind, spec=spec, index=index_n,
-                    values=dict(request.form), version=request.form.get("version"),
+                    values=typed, version=request.form.get("version"),
                     errors=errs, confirm=list(confirm), choices=form_choices(lists, raw)), status
 
             if error:
@@ -546,9 +594,19 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                 return again([problem])
 
             original = rows[index_n] if index_n is not None else {}
+            if kind == "equipment" and index_n is not None:
+                moved = str(values.get("building")) != str(original.get("building"))
+                users = mapedit.equipment_users(original.get("building"),
+                                                original.get("id"), rooms)
+                if moved and users:
+                    return again([f"{len(users)} room(s) in '{original.get('building')}' list "
+                                  "this equipment, so it can't move to another building. "
+                                  "Take it off them first: "
+                                  + ", ".join(str(r.get("space_id")) for r in users[:10])])
             row = mapedit.merge_form_result(original, values,
                                             [key for key, *_ in spec["fields"]])
-            new_lists = [list(buildings), [dict(f) for f in floors], [dict(r) for r in rooms]]
+            new_lists = [list(buildings), [dict(f) for f in floors], [dict(r) for r in rooms],
+                         [dict(e) for e in lists[3]]]
             new_rows = new_lists[spec["slot"]]
             if index_n is None:
                 new_rows.append(row)
@@ -557,6 +615,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             if kind == "buildings" and index_n is not None:
                 mapedit.rename_building(original.get("id"), row.get("id"),
                                         new_lists[1], new_lists[2])
+            if kind == "equipment":
+                if index_n is not None:
+                    mapedit.rename_equipment(row.get("building"), original.get("id"),
+                                             row.get("id"), new_lists[2])
+                new_lists[0] = mapedit.with_equipment(new_lists[0], new_lists[3])
+            new_lists = new_lists[:3]
 
             defaults = load_defaults()
             _e, before, _w = mapedit.validate_before_save(buildings, floors, rooms, raw, defaults)
@@ -585,7 +649,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         spec = KINDS_OF_ROW.get(kind) or abort(404)
         with ctx()["write_lock"]:
             buildings, floors, rooms, version, error = load_map()
-            rows = (buildings, floors, rooms)[spec["slot"]]
+            rows = map_lists(buildings, floors, rooms)[spec["slot"]]
             if error or not 0 <= index < len(rows):
                 abort(404)
             row = rows[index]
@@ -593,6 +657,14 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             if kind == "buildings":
                 blocked, consequences = mapedit.building_delete_check(
                     row.get("id"), floors, rooms)
+            elif kind == "equipment":
+                users = mapedit.equipment_users(row.get("building"), row.get("id"), rooms)
+                if users:
+                    blocked = (f"{len(users)} room(s) list this equipment: "
+                               + ", ".join(str(r.get("space_id")) for r in users[:20])
+                               + ("…" if len(users) > 20 else "")
+                               + ". Take it off them first, so none is left driving "
+                               "less than you expect.")
             if request.method == "GET" or blocked:
                 return render_template("map_delete.html", kind=kind, spec=spec,
                                        index=index, row=row, label=row_label(kind, row),
@@ -605,6 +677,9 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             if kind == "buildings":
                 buildings, floors, rooms = mapedit.delete_building(
                     row.get("id"), buildings, floors, rooms)
+            elif kind == "equipment":
+                rows.pop(index)
+                buildings = mapedit.with_equipment(buildings, rows)
             else:
                 rows.pop(index)
             try:

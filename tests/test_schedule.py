@@ -121,3 +121,21 @@ def test_overlap_helper():
     b = OccupancyWindow(dt(10, 4), dt(11))
     assert a.overlaps_or_adjacent(b, gap_minutes=5)
     assert not a.overlaps_or_adjacent(b, gap_minutes=3)
+
+
+def test_equipment_is_the_union_of_the_rooms_it_serves():
+    """One AHU for two rooms runs whenever either is booked; a room with two
+    VAVs runs both."""
+    import dataclasses
+    ahu, vav_b = dest("Bldg/AHU"), dest("Bldg/VAV1B")
+    room1 = dataclasses.replace(space(1, "room", "Bldg/VAV1A"),
+                                equipment_destinations=(ahu, vav_b))
+    room2 = dataclasses.replace(space(2, "room", "Bldg/Rm2"), destination=None,
+                                equipment_destinations=(ahu,))
+    result = ScheduleBuilder(5).build(
+        [event(1, dt(9), dt(10), "E1"), event(2, dt(13), dt(14), "E2")],
+        {"1": room1, "2": room2})
+    assert [(w.start, w.end) for w in result[ahu]] == [(dt(9), dt(10)), (dt(13), dt(14))]
+    assert [(w.start, w.end) for w in result[vav_b]] == [(dt(9), dt(10))]
+    assert [(w.start, w.end) for w in result[dest("Bldg/VAV1A")]] == [(dt(9), dt(10))]
+    assert dest("Bldg/Rm2") not in result

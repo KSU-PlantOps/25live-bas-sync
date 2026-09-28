@@ -200,3 +200,8 @@ tr.muted td { color: var(--muted); }
   .stepper li a { white-space: nowrap; }
   .stepper small { display: none; }
 }
+/* Rooms found in 25Live, a group per building. */
+table.grouped tr.group th { background: var(--code-bg); font-weight: 400; color: var(--text); font-size: 1rem;
+  white-space: normal; vertical-align: middle; }
+table.grouped tr.group .hint { margin-left: .4rem; }
+table.hide-added tr.muted, table.hide-added tbody.all-added { display: none; }
