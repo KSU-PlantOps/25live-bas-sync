@@ -58,7 +58,8 @@ Placeholders available in paths and payloads
     {password}      the system's password (login payload only)
     {token}         the bearer token from the login step
     {start} {end}   ISO-8601 window bounds, with timezone offset
-    {start_local} {end_local}   ISO-8601 without offset (naive local time)
+    {start_local} {end_local}   ISO-8601 without offset: wall-clock time in the
+                                system's `timezone:` (else the campus's)
     {date}          the window's local start date, YYYY-MM-DD
     {start_time} {end_time}     local HH:MM:SS
     {value}         true
@@ -81,7 +82,7 @@ from urllib.parse import quote
 
 import requests
 
-from ..httputil import mount_retries
+from ..httputil import mount_retries, tls_verify
 from .base import DriverError, ScheduleWriter
 
 HTTP_TIMEOUT = 30
@@ -135,7 +136,7 @@ class RestScheduleWriter(ScheduleWriter):
 
         self._token: Optional[str] = None
         self.session = requests.Session()
-        self.session.verify = cfg.get("verify_tls", True)
+        self.session.verify = tls_verify(cfg)
         if not self.session.verify:
             logging.warning("System '%s': TLS verification is DISABLED.", system_name)
             import urllib3
@@ -227,6 +228,7 @@ class RestScheduleWriter(ScheduleWriter):
         if not self.exists_cfg.get("path"):
             return True, "no exists.path configured — not checked"
         try:
+            self.connect()                      # a bearer token, if it needs one
             r = self._request(self.exists_cfg, self._context(target))
         except requests.RequestException as exc:
             return False, str(exc)
@@ -246,7 +248,7 @@ class RestScheduleWriter(ScheduleWriter):
             self._write_batch(target, windows)
         else:
             for index, win in enumerate(windows):
-                ctx = self._context(target, _window_context(win, index, len(windows)))
+                ctx = self._context(target, _window_context(win, index, len(windows), self.tz))
                 r = self._request(self.write_cfg, ctx)
                 if r.status_code >= 400:
                     raise DriverError(
@@ -256,7 +258,7 @@ class RestScheduleWriter(ScheduleWriter):
 
     def _write_batch(self, target: str, windows: list) -> None:
         """Single request carrying every window — atomic where the API allows."""
-        items = [_window_context(w, i, len(windows)) for i, w in enumerate(windows)]
+        items = [_window_context(w, i, len(windows), self.tz) for i, w in enumerate(windows)]
         template = self.write_cfg["batch_payload"]
         rendered = json.dumps(template)
         # {windows} is substituted as raw JSON, so it must not be quoted in the
@@ -270,15 +272,19 @@ class RestScheduleWriter(ScheduleWriter):
                 f"Batch write failed {target}: HTTP {r.status_code} {r.text[:200]}")
 
 
-def _window_context(win, index: int, count: int) -> dict:
+def _window_context(win, index: int, count: int, tz=None) -> dict:
+    """A window's placeholders. The local ones are wall-clock time in the
+    system's timezone (its own `timezone:`, else the campus's)."""
+    start = win.start.astimezone(tz) if tz is not None else win.start
+    end = win.end.astimezone(tz) if tz is not None else win.end
     return {
         "start": win.start.isoformat(),
         "end": win.end.isoformat(),
-        "start_local": win.start.replace(tzinfo=None).isoformat(),
-        "end_local": win.end.replace(tzinfo=None).isoformat(),
-        "date": win.start.date().isoformat(),
-        "start_time": win.start.strftime("%H:%M:%S"),
-        "end_time": win.end.strftime("%H:%M:%S"),
+        "start_local": start.replace(tzinfo=None).isoformat(),
+        "end_local": end.replace(tzinfo=None).isoformat(),
+        "date": start.date().isoformat(),
+        "start_time": start.strftime("%H:%M:%S"),
+        "end_time": end.strftime("%H:%M:%S"),
         "value": True,
         "index": index,
         "count": count,

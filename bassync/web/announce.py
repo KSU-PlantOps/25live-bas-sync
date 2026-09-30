@@ -289,7 +289,12 @@ def register(app) -> None:
                 keep.append(row)
             gone = len(rows) - len(keep)
             if gone:
-                save(path, keep)
+                try:
+                    save(path, keep)
+                except OSError as exc:
+                    from .views import _write_error
+                    notice(_write_error(exc), "error")
+                    return redirect(url_for("announcements"))
         if gone:
             audit("deleted %d ended announcement(s)", gone)
         notice(f"Deleted {gone} ended announcement(s)." if gone else "None had ended.")

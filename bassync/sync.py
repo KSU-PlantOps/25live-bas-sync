@@ -253,12 +253,19 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     # them now would drop that room's bookings from its corridor and building.
     # Reported even when no healthy room still feeds one, so the email says
     # which buildings were left alone.
-    held = {d for d in space_map.held | extra.held | low_temp_held
-            if in_scope is None or in_scope(d)}
+    causes: dict = {}
+    for why, dests in (("a broken room-map row feeds it", space_map.held),
+                       ("a broken extra booking feeds it", extra.held),
+                       ("the low-temp events file can't be read", low_temp_held)):
+        for d in dests:
+            if in_scope is None or in_scope(d):
+                causes.setdefault(d, []).append(why)
+    held = set(causes)
     if held:
         logging.warning(
-            "Not writing %d schedule(s) this run because a broken room-map row "
-            "or extra booking feeds them; they keep their current schedule: %s",
+            "Not writing %d schedule(s) this run because a broken room-map row, "
+            "extra booking or low-temp events file feeds them; they keep their "
+            "current schedule: %s",
             len(held),
             ", ".join(sorted(str(d) for d in held)[:10])
             + (f" (+{len(held) - 10} more)" if len(held) > 10 else ""))
@@ -266,8 +273,8 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
             report.add_schedule(
                 dest.system, dest.target, space_map.labels.get(dest, dest.target),
                 schedule.get(dest, []), "not written",
-                "held: a broken room-map row or extra booking feeds it "
-                "(see Problems); its current schedule is left as it is")
+                f"held: {' and '.join(causes[dest])} (see Problems); its current "
+                "schedule is left as it is")
         all_destinations = all_destinations - held
         schedule = {d: w for d, w in schedule.items() if d not in held}
 
@@ -537,13 +544,14 @@ def _state_dir_check(cfg: dict) -> tuple:
     return True, str(directory)
 
 
-def run_validate(cfg: dict, config_warnings: Optional[list] = None) -> int:
+def run_validate(cfg: dict, config_warnings: Optional[list] = None,
+                 only_system: Optional[str] = None) -> int:
     """
     Pre-flight (no writes): config, room map, 25Live auth, that 25Live
     actually returns bookings for the mapped rooms, every BAS reachable, every
     schedule target readable (and what a live run would overwrite), and that
-    the safety baseline can be kept. Logs a PASS/FAIL line per check and
-    returns 0 only if all pass.
+    the safety baseline can be kept. With `only_system`, only that BAS is
+    checked. Logs a PASS/FAIL line per check and returns 0 only if all pass.
     """
     tz = ZoneInfo(cfg["timezone"])
     checks: list = []
@@ -576,6 +584,20 @@ def run_validate(cfg: dict, config_warnings: Optional[list] = None) -> int:
             checks.append(("Extra bookings load", not extra.errors, detail))
             notes.extend(extra.warnings)
 
+    low_path = cfg.get("low_temp_file")
+    if low_path and Path(low_path).exists():
+        try:
+            marked = lowtemp.event_ids(low_path)
+        except ConfigError as exc:
+            checks.append(("Low-temp events load", False,
+                           f"{exc} — a live run leaves every low-temp schedule as it is"))
+        else:
+            checks.append(("Low-temp events load", True, f"{len(marked)} event(s) marked"))
+            if marked and space_map and not space_map.low_temp:
+                notes.append("Events are marked low temp, but no room in the room map "
+                             "has a low-temp schedule (low_temp_target), so they "
+                             "drive nothing.")
+
     base_url = cfg["collegenet"].get("base_url")
     checks.append(("25Live base_url configured", bool(base_url),
                    base_url or "set collegenet.instance or base_url"))
@@ -596,6 +618,8 @@ def run_validate(cfg: dict, config_warnings: Optional[list] = None) -> int:
                        "no `systems:` block in config.yaml"))
 
     used = space_map.systems_used() if space_map else set(systems)
+    if only_system:
+        used = {only_system}
     by_system: dict = defaultdict(list)
     for dest in (space_map.destinations() if space_map else set()):
         by_system[dest.system].append(dest.target)

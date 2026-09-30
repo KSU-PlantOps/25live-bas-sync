@@ -84,8 +84,9 @@ it — see [Security](web-ui.md#security).
 ## The config folder
 
 `./config` is mounted read-write at `/config`: the web UI saves `config.yaml`,
-`defaults.yaml`, `space_mapping.yaml`, `extra_bookings.yaml` and `web.yaml`
-there (and an uploaded logo). The container starts as root only long enough to sort out file
+`defaults.yaml`, `space_mapping.yaml`, `extra_bookings.yaml`,
+`low_temp_events.yaml`, `announcements.yaml` and `web.yaml` there (and an
+uploaded logo). The container starts as root only long enough to sort out file
 ownership, then runs as **whoever owns that folder on the host**, so the files
 stay yours and you can still edit them there.
 

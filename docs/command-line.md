@@ -50,7 +50,7 @@ python main.py --force          # override the mass-clear safety check
   set alerting up: alerting only matters when something has already gone
   wrong, which is a bad time to discover the relay rejects your `from` address.
 - **`--system NAME`** limits a run to one BAS system, for commissioning one
-  before the rest.
+  before the rest. With `--validate`, only that system is checked.
 - **`--building ID`** (repeatable) limits a sync or `--dry-run` to those
   buildings' schedules: each building's own, its floors', its equipment's and
   its rooms' own. Everything is still fetched and built — a schedule a room

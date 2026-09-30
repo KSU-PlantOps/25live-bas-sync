@@ -138,7 +138,10 @@ def guess_buildings(spaces: list) -> dict:
     A name with a room number gives its building directly. A name without
     one ("Student Center Ballroom") takes the longest building already
     guessed that it starts with, or the longest start it shares with
-    another such name ("Student Center Lounge")."""
+    another such name ("Student Center Lounge").
+
+    Linear in the number of spaces (times the words in a name), so a campus
+    of thousands of unnumbered spaces still opens its import page at once."""
     out: dict = {}
     pending: list = []
     for s in spaces:
@@ -152,24 +155,31 @@ def guess_buildings(spaces: list) -> dict:
             out[sid] = guess
         else:
             pending.append((sid, _words(name)))
-    known = sorted({tuple(b.split()) for b in out.values() if b.split()},
-                   key=len, reverse=True)
+    known: dict = {}
+    for b in out.values():
+        words = b.split()
+        if words:
+            known.setdefault(tuple(w.lower() for w in words), " ".join(words))
+    # How many pending names start with each run of words.
+    starts: dict = {}
+    for _sid, words in pending:
+        lowered = tuple(w.lower() for w in words)
+        for n in range(1, len(lowered) + 1):
+            starts[lowered[:n]] = starts.get(lowered[:n], 0) + 1
     for sid, words in pending:
-        lowered = [w.lower() for w in words]
-        match = next((" ".join(k) for k in known
-                      if len(k) < len(words)
-                      and [w.lower() for w in k] == lowered[:len(k)]), "")
+        lowered = tuple(w.lower() for w in words)
+        match = next((known[lowered[:n]] for n in range(len(words) - 1, 0, -1)
+                      if lowered[:n] in known), "")
         if not match:
+            # The longest start this name shares with another, and no more:
+            # n words are shared exactly when more names start with those n
+            # than with this name's first n + 1.
             best: list = []
-            for other_sid, other in pending:
-                if other_sid == sid:
+            for n in range(len(words), 0, -1):
+                more = starts.get(lowered[:n + 1], 0) if n < len(words) else 1
+                if starts[lowered[:n]] <= more:
                     continue
-                shared = []
-                for a, b in zip(words, other, strict=False):
-                    if a.lower() != b.lower():
-                        break
-                    shared.append(a)
-                shared = _tidy(shared)
+                shared = _tidy(words[:n])
                 if len(shared) < len(words) and _significant(shared) \
                         and len(shared) > len(best):
                     best = shared

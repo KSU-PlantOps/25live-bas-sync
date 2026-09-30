@@ -266,7 +266,12 @@ def register(app) -> None:
                 keep.append(row)
             gone = len(rows) - len(keep)
             if gone:
-                extras.save(path, keep)
+                try:
+                    extras.save(path, keep)
+                except OSError as exc:
+                    from .views import _write_error
+                    notice(_write_error(exc), "error")
+                    return redirect(url_for("bookings"))
         if gone:
             audit("deleted %d ended extra booking(s)", gone)
         notice(f"Deleted {gone} ended booking(s)." if gone else "None had ended.")

@@ -242,3 +242,38 @@ def test_a_limited_sync_updates_only_its_part(campus):
     first = json.loads(scheduled.path_for(cfg).read_text())
     assert sync_mod.run_sync(cfg, only_system="nope") == sync_mod.EXIT_NO_MAP
     assert json.loads(scheduled.path_for(cfg).read_text()) == first    # nothing written
+
+
+def test_a_schedule_held_for_the_marks_file_says_so(campus):
+    """It used to blame a broken room-map row or extra booking."""
+    cfg, _tmp = campus
+    Path(cfg["low_temp_file"]).write_text("events: {not: a list}\n")
+    report = RunReport("SYNC", "t", TZ)
+    sync_mod.run_sync(cfg, report=report)
+    why = {s.target: s.error for s in report.schedules if s.status == "not written"}
+    assert "the low-temp events file can't be read" in why["S/Ball-Cold"]
+    assert "room-map row" not in why["S/Ball-Cold"]
+
+
+def test_validate_reads_the_marks_file(campus, caplog):
+    cfg, _tmp = campus
+    cfg["collegenet"]["base_url"] = ""
+    Path(cfg["low_temp_file"]).write_text("events: {not: a list}\n")
+    with caplog.at_level("INFO"):
+        assert sync_mod.run_validate(cfg) == sync_mod.EXIT_VALIDATION_FAILED
+    assert "[FAIL] Low-temp events load" in caplog.text
+    _mark(cfg, "BLOOD", "TALK")
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        sync_mod.run_validate(cfg)
+    assert "[PASS] Low-temp events load — 2 event(s) marked" in caplog.text
+
+
+def test_validate_can_check_one_system(campus, caplog):
+    cfg, _tmp = campus
+    cfg["collegenet"]["base_url"] = ""
+    cfg["systems"]["other"] = {"driver": "preview"}
+    with caplog.at_level("INFO"):
+        sync_mod.run_validate(cfg, only_system="other")
+    assert "System 'other' reachable" in caplog.text
+    assert "System 'sys'" not in caplog.text

@@ -443,3 +443,34 @@ def test_spaces_nested_in_a_space_do_not_make_a_page_look_complete():
     assert [int(call["page_offset"]) for call in c.session.calls
             if call["_endpoint"] == "spaces.xml"] == [0, 100]
     assert {str(i) for i in range(150)} <= {s["space_id"] for s in spaces}
+
+
+def test_an_event_listed_twice_on_a_full_page_does_not_end_the_paging():
+    """A full page is 100 entries, not 100 distinct ids: one event listed
+    twice used to make page one look short, and final, so every event after
+    it was silently dropped."""
+    def respond(p):
+        off = int(p["page_offset"])
+        if off == 0:
+            return _doc([_event_xml(i) for i in range(99)] + [_event_xml(98)])
+        return _doc([_event_xml(i) for i in range(100, 130)])
+    c = _client(respond)
+    events = c.fetch_events(_spaces(1), now=NOW)
+    assert [int(call["page_offset"]) for call in c.session.calls] == [0, 100]
+    assert {"0", "98", "129"} <= {e.event_id for e in events}
+    assert len({e.event_id for e in events}) == 129
+
+
+def test_verify_tls_reaches_the_session():
+    """collegenet.verify_tls was accepted but ignored: a self-hosted Series25
+    behind a private CA couldn't be reached at all."""
+    from bassync.collegenet import CollegeNetClient
+    for value in (True, False, "/etc/ssl/campus-ca.pem"):
+        c = CollegeNetClient({"base_url": "https://x", "verify_tls": value}, TZ)
+        assert c.session.verify == value
+        c.close()
+    for unset in ({}, {"verify_tls": None}, {"verify_tls": ""}):
+        # `verify_tls:` alone is null, which requests would take as "don't".
+        c = CollegeNetClient({"base_url": "https://x", **unset}, TZ)
+        assert c.session.verify is True
+        c.close()

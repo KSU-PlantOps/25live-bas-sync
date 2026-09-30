@@ -1239,6 +1239,7 @@ def run_gui(map_path: Path) -> int:
                 ("floor", "Floor # (per-floor hallway)", "int", self._floor_choices()),
                 self._system_field(INHERIT_LABEL),
                 ("target", "Target (blank = roll-up only)", "text", None),
+                ("low_temp_target", "Low-temp target (optional)", "text", None),
                 ("pre_condition_minutes", "Pre-condition minutes", "int", None),
                 ("post_buffer_minutes", "Post-buffer minutes", "int", None),
                 ("merge_gap_minutes", "Merge-gap minutes", "int", None),

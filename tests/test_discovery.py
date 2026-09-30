@@ -65,3 +65,35 @@ def test_a_missing_or_mangled_file_is_no_discovery(tmp_path):
     assert discovery.load(tmp_path)["spaces"] == [
         {"space_id": "5", "space_name": "5", "formal_name": "", "building": "",
          "capacity": None, "bookings": 0}]
+
+
+def test_guessing_buildings_for_thousands_of_unnumbered_spaces_is_quick():
+    """Every unnumbered name used to be compared with every other: 3,000 of
+    them took about ten seconds, on every load of the import page."""
+    import time
+
+    from bassync.discovery import guess_buildings
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    spaces = [{"space_id": str(i),
+               "space_name": f"Tower {letters[i % 26]} Wing {letters[i // 26 % 26]} "
+                             f"Area {letters[i // 676 % 26]}"} for i in range(3000)]
+    started = time.perf_counter()
+    out = guess_buildings(spaces)
+    assert time.perf_counter() - started < 2
+    assert len(out) == 3000
+
+
+def test_unnumbered_names_share_the_longest_start_they_have_in_common():
+    from bassync.discovery import guess_buildings
+    out = guess_buildings([
+        {"space_id": "1", "space_name": "Student Center Ballroom"},
+        {"space_id": "2", "space_name": "Student Center Lounge"},
+        {"space_id": "3", "space_name": "Student Center West Lounge"},
+        {"space_id": "4", "space_name": "The Quad"},
+        {"space_id": "5", "space_name": "The Green"},
+        {"space_id": "6", "space_name": "Science Hall 101"},
+        {"space_id": "7", "space_name": "Science Hall Atrium"},
+        {"space_id": "8", "space_name": "Chapel"},
+    ])
+    assert out == {"1": "Student Center", "2": "Student Center", "3": "Student Center",
+                   "4": "", "5": "", "6": "Science Hall", "7": "Science Hall", "8": ""}

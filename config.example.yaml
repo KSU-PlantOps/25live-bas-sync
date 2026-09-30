@@ -26,6 +26,7 @@ collegenet:
 
   # Self-hosted Series25? Set base_url explicitly and leave instance blank.
   base_url: ""
+  # verify_tls: "/etc/ssl/campus-ca.pem"   # its certificate is from your own CA
 
   username: "svc-25live"     # a LOCAL 25Live account (NOT SSO) with read access
   include_states: [2]        # 2=confirmed (add 4 for tentative)

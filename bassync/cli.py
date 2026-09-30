@@ -316,7 +316,7 @@ def main(argv=None) -> int:
         if args.test_alert:
             code = run_test_alert(cfg)
         elif args.validate:
-            code = run_validate(cfg, config_warnings)
+            code = run_validate(cfg, config_warnings, only_system=args.system)
         elif args.discover:
             code = run_discover(cfg, args.discover_days,
                                 every_space=not args.discover_booked_only)

@@ -319,3 +319,16 @@ def test_schedule_section_is_validated():
         with_yaml("schedule:\n  times: ['25:00']\n", load_config)
     with pytest.raises(ConfigError, match="schedule.enabled"):
         with_yaml("schedule:\n  enabled: sometimes\n", load_config)
+
+
+def test_verify_tls_is_true_false_or_a_ca_bundle():
+    cfg, _w = _load("collegenet:\n  verify_tls: 'false'\n")
+    assert cfg["collegenet"]["verify_tls"] is False       # not a file called "false"
+    cfg, _w = _load("collegenet:\n  verify_tls: /etc/ssl/campus-ca.pem\n")
+    assert cfg["collegenet"]["verify_tls"] == "/etc/ssl/campus-ca.pem"
+    with pytest.raises(ConfigError, match="collegenet.verify_tls"):
+        _load("collegenet:\n  verify_tls: 3\n")
+    cfg, warnings = _load("systems:\n  ebo:\n    driver: rest\n    base_url: https://x\n"
+                          "    write: {path: /w}\n    verify_tls: ''\n")
+    assert "verify_tls" not in cfg["systems"]["ebo"]      # verifying, as by default
+    assert any("verify_tls is blank" in w for w in warnings), warnings

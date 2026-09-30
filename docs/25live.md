@@ -8,7 +8,9 @@ The sync only ever **reads** from 25Live, through Series25 WebServices.
   events and locations, and enable Series25 WebServices for it. Its password is
   `BAS_25LIVE_PASSWORD`, or set it on the web UI's Connection page.
 - Set `collegenet.instance` (CollegeNET-hosted) or `collegenet.base_url`
-  (self-hosted).
+  (self-hosted). A self-hosted Series25 whose certificate comes from your own
+  CA: set `collegenet.verify_tls` to that CA bundle's path (`false` turns
+  checking off, with a warning in every run's log).
 - The request filters confirmed events by the numeric `state` parameter
   (`include_states`, default `[2]`, confirmed; add `4` for tentative).
   **Instances differ in how they want it encoded** — set

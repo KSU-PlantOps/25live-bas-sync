@@ -389,6 +389,21 @@ def save(path, rows: list) -> bool:
     return write_if_changed(path, dump(rows))
 
 
+def rename_building(rows: list, old, new) -> int:
+    """Follow a building whose id changed in the bookings on it and its
+    floors; how many changed."""
+    old, new = str(old), str(new)
+    changed = 0
+    if old == new:
+        return changed
+    for row in rows:
+        if isinstance(row, dict) and row.get("space_id") in (None, "") \
+                and str(row.get("building") or "").strip() == old:
+            row["building"] = new
+            changed += 1
+    return changed
+
+
 def log_expansion(result: Expansion) -> None:
     for message in result.errors:
         logging.error("%s", message)

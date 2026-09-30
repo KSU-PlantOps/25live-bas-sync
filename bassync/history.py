@@ -18,6 +18,7 @@ import logging
 import os
 import re
 import tempfile
+import threading
 from datetime import timezone
 from pathlib import Path
 from typing import Optional
@@ -79,9 +80,13 @@ def save_report(report: RunReport, directory: Path, keep: int = KEEP_RUNS) -> Op
             n += 1
             run_id = f"{stamp}-{mode}-{n}"
         fd, tmp = tempfile.mkstemp(prefix=".run.", suffix=".tmp", dir=directory)
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(report_record(report), fh)
-        os.replace(tmp, directory / f"{run_id}.json")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                json.dump(report_record(report), fh)
+            os.replace(tmp, directory / f"{run_id}.json")
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)            # a half-written record isn't left behind
         for old in sorted(directory.glob("*.json"))[:-keep or None]:
             old.unlink(missing_ok=True)
         return run_id
@@ -89,6 +94,13 @@ def save_report(report: RunReport, directory: Path, keep: int = KEEP_RUNS) -> Op
         logging.warning("Could not save this run to the history in %s: %s",
                         directory, exc)
         return None
+
+
+# {path: ((mtime_ns, size), summary)}: a record's summary, kept while its file
+# is unchanged. The full records carry the rendered reports, a few MB each on
+# a big campus, and the status page asks for the latest every few seconds.
+_summaries: dict = {}
+_summaries_lock = threading.Lock()
 
 
 def list_runs(directory: Path, limit: int = 50) -> list:
@@ -100,13 +112,33 @@ def list_runs(directory: Path, limit: int = 50) -> list:
     except OSError:
         return out
     for path in files[:limit]:
-        record = _read(path)
-        if record is None:
-            continue
-        summary = {k: v for k, v in record.items() if k not in ("text", "html", "csv")}
-        summary["id"] = path.stem
-        out.append(summary)
+        summary = _summary(path)
+        if summary is not None:
+            out.append(dict(summary))
     return out
+
+
+def _summary(path: Path) -> Optional[dict]:
+    try:
+        stat = path.stat()
+    except OSError:
+        return None
+    key, stamp = str(path), (stat.st_mtime_ns, stat.st_size)
+    with _summaries_lock:
+        cached = _summaries.get(key)
+    if cached is not None and cached[0] == stamp:
+        return cached[1]
+    record = _read(path)
+    if record is None:
+        return None
+    summary = {k: v for k, v in record.items() if k not in ("text", "html", "csv")}
+    summary["id"] = path.stem
+    with _summaries_lock:
+        if len(_summaries) > 4 * KEEP_RUNS:
+            # Pruned runs' entries: start again rather than track them.
+            _summaries.clear()
+        _summaries[key] = (stamp, summary)
+    return summary
 
 
 def load_run(directory: Path, run_id: str) -> Optional[dict]:

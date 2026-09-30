@@ -961,9 +961,9 @@ class BacnetScheduleWriter(ScheduleWriter):
         local = stamp.astimezone(self.tz)
         value: Any
         if obj_type == "analog-value":
-            # Hours since the Unix epoch fit a 32-bit REAL exactly, and change
-            # every run — which is all a "value unchanged for a day" alarm
-            # needs.
+            # Hours since the Unix epoch: a 32-bit REAL holds them to within
+            # two minutes or so, and they change every run — which is all a
+            # "value unchanged for a day" alarm needs.
             value = Real(round(local.timestamp() / 3600.0, 2))
         elif obj_type == "characterstring-value":
             value = CharacterString(local.isoformat(timespec="seconds"))

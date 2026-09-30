@@ -47,7 +47,7 @@ from urllib.parse import quote
 
 import requests
 
-from ..httputil import mount_retries
+from ..httputil import mount_retries, tls_verify
 from .base import DriverError, ScheduleWriter
 
 # Value pushed for an occupied window (True = Occupied on a BooleanSchedule).
@@ -114,7 +114,7 @@ class NiagaraScheduleWriter(ScheduleWriter):
         mount_retries(self.session, retry, allowed_methods=["GET", "DELETE"])
         # Verify by default. A station with a self-signed certificate should
         # point verify_tls at its CA bundle; `false` still works, loudly.
-        self.session.verify = cfg.get("verify_tls", True)
+        self.session.verify = tls_verify(cfg)
         if not self.session.verify:
             logging.warning(
                 "System '%s': Niagara TLS verification is DISABLED "
