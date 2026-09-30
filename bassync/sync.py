@@ -17,6 +17,7 @@ what the email and webhook notifications are built from.
 import logging
 import os
 from collections import defaultdict
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
@@ -25,7 +26,7 @@ from zoneinfo import ZoneInfo
 import requests
 import yaml
 
-from . import __version__, discovery, extras, safety
+from . import __version__, discovery, extras, lowtemp, safety, scheduled
 from .collegenet import CollegeNetClient, CollegeNetError
 from .config import ConfigError
 from .drivers import build_driver
@@ -211,8 +212,26 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     report.map_warnings.extend(extra.warnings)
     map_problem = map_problem or bool(extra.errors)
 
+    # Events marked low temp also drive their rooms' low-temp schedules. A
+    # marks file that can't be read leaves every low-temp schedule as it is:
+    # which ones it would change can't be known.
+    low_temp_held: set = set()
+    try:
+        marked = lowtemp.event_ids(cfg.get("low_temp_file"))
+    except ConfigError as exc:
+        marked = set()
+        report.low_temp_error = str(exc)
+        low_temp_held = set(space_map.low_temp)
+        map_problem = True
+        logging.error("Low-temp events can't be read — %s. The low-temp schedules are "
+                      "left as they are until the file is fixed.", exc)
+    if marked:
+        events = [replace(e, low_temp=True) if e.event_id in marked else e for e in events]
+    bookings = events + extra.events
+    _note_low_temp(bookings, space_map, report)
+
     builder = ScheduleBuilder(cfg["collegenet"]["merge_gap_minutes"])
-    schedule = builder.build(events + extra.events, space_map, extra.windows)
+    schedule = builder.build(bookings, space_map, extra.windows)
 
     # Every schedule this map owns — including roll-ups and rooms with no
     # bookings this week, which must be actively cleared rather than left
@@ -234,7 +253,8 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     # them now would drop that room's bookings from its corridor and building.
     # Reported even when no healthy room still feeds one, so the email says
     # which buildings were left alone.
-    held = {d for d in space_map.held | extra.held if in_scope is None or in_scope(d)}
+    held = {d for d in space_map.held | extra.held | low_temp_held
+            if in_scope is None or in_scope(d)}
     if held:
         logging.warning(
             "Not writing %d schedule(s) this run because a broken room-map row "
@@ -254,7 +274,11 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
     for dest in all_destinations:
         schedule.setdefault(dest, [])
 
-    verdict = safety.check(cfg, schedule, all_destinations, len(events))
+    # Low-temp schedules only ever hold a few marked events, so one ending is
+    # no sign of 25Live going quiet: they're left out of the comparison.
+    low = space_map.low_temp
+    verdict = safety.check(cfg, {d: w for d, w in schedule.items() if d not in low},
+                           all_destinations - low, len(events))
     report.safety_ok = bool(verdict)
     report.safety_reason = verdict.reason
     report.baseline = verdict.baseline
@@ -294,6 +318,7 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
                                   merge=code != EXIT_OK or map_problem or bool(only_buildings))
         if not saved:
             report.baseline += " — could NOT be saved for the next run"
+    scheduled.record(scheduled.path_for(cfg), report, space_map, bookings, in_scope)
 
     c = report.counts()
     if code != EXIT_OK:
@@ -305,9 +330,30 @@ def _sync_locked(cfg: dict, tz: ZoneInfo, space_map: SpaceMap, report: RunReport
             broken.append(f"{len(space_map.errors)} broken room-map row(s)")
         if extra.errors:
             broken.append(f"{len(extra.errors)} broken extra booking(s)")
+        if report.low_temp_error:
+            broken.append("the unreadable low-temp events file")
         return _done(report, EXIT_NO_MAP, f"{' and '.join(broken)} left out; "
                                           f"{c['written']} schedule(s) written")
     return _done(report, EXIT_OK, f"{c['written']} schedule(s) written")
+
+
+def _note_low_temp(bookings: list, space_map: SpaceMap, report: RunReport) -> None:
+    """Count the low-temp bookings, and say which land in a room with no
+    low-temp schedule — marked, but nothing to make colder."""
+    low = [b for b in bookings if b.low_temp]
+    report.low_temp_bookings = len(low)
+    if not low:
+        return
+    logging.info("Low temp: %d booking(s) marked low temp in this run's window", len(low))
+    missing: dict = {}
+    for b in low:
+        sc = space_map.spaces.get(b.space_id)
+        if sc is not None and not sc.low_temp_destinations:
+            missing.setdefault(sc.space_name, set()).add(b.title)
+    for room, titles in sorted(missing.items()):
+        logging.warning("Low temp: %s is marked low temp in %s, which has no low-temp "
+                        "schedule (low_temp_target) in the room map, so nothing runs "
+                        "colder there.", ", ".join(sorted(titles)), room)
 
 
 def _scope(space_map: SpaceMap, only_system: Optional[str],

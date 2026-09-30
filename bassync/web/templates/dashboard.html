@@ -3,6 +3,7 @@
 {% block body %}
 <div data-status-url="{{ url_for('api_status') }}" data-job="{{ current_job.id if current_job else '' }}"></div>
 <h1>Status</h1>
+{% include "_announcements.html" %}
 
 {# ── things that need attention ── #}
 {% if can('view_all') %}

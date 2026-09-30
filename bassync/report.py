@@ -59,6 +59,8 @@ class RunReport:
     outcome: str = ""                       # one line, set with the exit code
     event_count: Optional[int] = None
     extra_bookings: int = 0                 # occurrences from extra_bookings.yaml
+    low_temp_bookings: int = 0              # bookings marked low temp
+    low_temp_error: str = ""                # low_temp_events.yaml unreadable
     extra_errors: list = field(default_factory=list)
     rooms: int = 0
     map_errors: list = field(default_factory=list)
@@ -146,6 +148,10 @@ class RunReport:
             lines.append(f"25Live: {self.event_count} booking(s) for {self.rooms} mapped room(s)")
         if self.extra_bookings:
             lines.append(f"Extra bookings: {self.extra_bookings} occurrence(s) not from 25Live")
+        if self.low_temp_bookings:
+            lines.append(f"Low temp: {self.low_temp_bookings} booking(s) marked low temp")
+        if self.low_temp_error:
+            lines.append("Low-temp events: unreadable — low-temp schedules left as they are")
         if self.schedules:
             lines.append(f"Schedules: {c['written']} written"
                          + (f", {c['preview']} preview-only" if c["preview"] else "")

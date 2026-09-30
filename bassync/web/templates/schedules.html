@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Schedules{% endblock %}
+{% block body %}
+<h1>Schedules <span class="count">{{ spaces | length }}</span></h1>
+{% if announcements %}{% include "_announcements.html" %}{% endif %}
+<p class="hint">What each space is scheduled to do: its bookings, and the times the sync wrote to its schedules
+  {%- if snapshot.updated %} — as of the sync at {{ local_time(snapshot.updated, '%a %d %b %H:%M') }} ({{ relative(snapshot.updated) }}){% endif %}.
+  Pick a space to see them.</p>
+{% if not snapshot.updated %}
+  <div class="flash warn">Nothing has been synced yet. This fills in after the next live sync.</div>
+{% endif %}
+{% if map_error %}<div class="flash error">{{ map_error }}</div>{% endif %}
+
+<div class="toolbar">
+  <input type="search" placeholder="Filter by room, building or ID" data-filter="spaces" class="filter" aria-label="Filter the spaces">
+  {% if campuses %}
+    <select data-campus-filter="spaces" aria-label="Campus">
+      <option value="">All campuses</option>
+      {% for c in campuses %}<option>{{ c }}</option>{% endfor %}
+    </select>
+  {% endif %}
+</div>
+<table class="list wide" id="spaces">
+  <thead><tr><th data-sort>Space</th><th data-sort>Building</th><th data-sort>Space ID</th>
+    <th data-sort>Next booking</th><th data-sort>Upcoming</th><th>Low temp</th></tr></thead>
+  <tbody>
+  {% for s in spaces %}
+    <tr data-campus="{{ s.campus }}">
+      <td><a href="{{ url_for('space_schedule', space_id=s.id) }}">{{ s.name }}</a></td>
+      <td>{{ s.building_name }}{% if s.floor is not none %} · floor {{ s.floor }}{% endif %}</td>
+      <td>{{ s.id }}</td>
+      <td>{% if s.next %}{{ local_time(s.next.start, '%a %d %b %H:%M') }} <small class="hint">{{ s.next.title }}</small>
+          {% elif s.synced %}<span class="hint">none</span>{% else %}<span class="hint">not synced yet</span>{% endif %}</td>
+      <td>{{ s.upcoming if s.synced else '' }}</td>
+      <td>{% if s.low_marked %}<span class="badge cold">{{ s.low_marked }} marked</span>
+          {% elif s.low_temp %}<span class="hint">ready</span>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="6" class="hint">The room map has no spaces yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="hint"><em>Low temp: ready</em> means the space has a low-temp schedule, so an event marked low temp runs it colder.</p>
+{% endblock %}

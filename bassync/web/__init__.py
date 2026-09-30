@@ -370,11 +370,13 @@ def create_app(service, settings: dict) -> Flask:
     def _unauthorised(exc):
         return {"error": "sign in again"}, 401
 
-    from . import bookings, importer, setup, views
+    from . import announce, bookings, importer, schedules, setup, views
     views.register(app)
     bookings.register(app)
     importer.register(app)
     setup.register(app)
+    schedules.register(app)
+    announce.register(app)
     return app
 
 
@@ -407,18 +409,22 @@ def redirect_uri(conf: dict) -> str:
     return f"{base}/auth/callback" if base else url_for("auth_callback", _external=True)
 
 
-def requires(view: str, change: Optional[str] = None):
-    """Refuse the request unless the role has `view` (and `change`, for a
-    POST). One decorator per route, so no page is left unchecked."""
+def requires(view, change: Optional[str] = None):
+    """Refuse the request unless the role has `view` — one capability, or a
+    tuple of which any will do — and `change`, for a POST. One decorator per
+    route, so no page is left unchecked."""
+    views = view if isinstance(view, tuple) else (view,)
+
     def wrap(fn):
         @functools.wraps(fn)
         def inner(*args, **kwargs):
-            needed = change if (change and request.method == "POST") else view
-            if not access.can(g.get("caps"), needed):
+            needed = (change,) if (change and request.method == "POST") else views
+            if not any(access.can(g.get("caps"), c) for c in needed):
+                label = " or ".join(f"“{access.CAPABILITY_LABELS.get(c, c)}”" for c in needed)
                 abort(403, f"Your role ({g.get('role_label') or 'none'}) can't do that: it "
-                           f"needs “{access.CAPABILITY_LABELS.get(needed, needed)}”.")
+                           f"needs {label}.")
             return fn(*args, **kwargs)
-        inner.required = (view, change)                    # type: ignore[attr-defined]
+        inner.required = (*views, change)                  # type: ignore[attr-defined]
         return inner
     return wrap
 

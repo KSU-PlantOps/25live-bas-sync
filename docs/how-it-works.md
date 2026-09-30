@@ -38,7 +38,9 @@ flowchart LR
 4. **Roll up**: every room in a building unions into the building's schedule,
    and a room on a floor with its own schedule unions into that too, as does
    each piece of equipment (an AHU, a VAV) that serves it. If *any* room is
-   occupied, the common areas run.
+   occupied, the common areas run. A booking of an event
+   [marked low temp](configuration.md#low-temp) also runs its room's low-temp
+   schedule, if it has one.
 5. **Check** the result against the last run, and refuse to write if it would
    stand an implausible share of the campus down — see [Safety rails](safety.md).
 6. **Write** each schedule through the driver for the BAS it lives on — one
@@ -46,7 +48,9 @@ flowchart LR
    to one system or building writes only its schedules, and leaves the rest
    as they are.
 7. **Report**: bump the BAS heartbeat, ping the dead-man's switch (after a
-   full sync), save the run's report to the history, and email it — see
+   full sync), save the run's report to the history — and what each space is
+   scheduled to do, for the web UI's
+   [Schedules](web-ui.md#whats-scheduled-per-space) pages — and email it; see
    [Reports and alerts](reports-and-alerts.md).
 
 The Python stays generic. Everything site-specific lives in YAML files — see

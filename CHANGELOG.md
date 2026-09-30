@@ -4,6 +4,38 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Added
+- **Low temp.** A room, or a piece of equipment, can name a
+  `low_temp_target:` — a schedule the BAS uses to run the zone colder. Events
+  marked low temp in the web UI (a blood drive, say) drive it for each of their
+  bookings, with the room's run-up and run-down; the rest of the time it's
+  cleared, like any schedule the sync owns. Marks are kept by 25Live event ID
+  in `low_temp_events.yaml`; a room's extra booking can be `low_temp: true`
+  too. Marking needs the new *Mark events low temp* capability. Low-temp
+  schedules are left out of the mass-clear check, a marks file that can't be
+  read leaves them as they are, and a marked event in a room without one is
+  reported. A low-temp target that is also an occupancy schedule is refused.
+- **What's scheduled, per space.** A new **Schedules** section lists every
+  space; each one's page shows its bookings day by day — booked, and when its
+  schedules run — and the times the last sync wrote to every schedule it
+  drives, with whether each write succeeded. Each live sync records this in
+  `state/scheduled.json`. It needs the new *See what's scheduled* capability,
+  which works on its own: a role with just that (an events team) lands on
+  Schedules and sees nothing else. **Schedules → Low temp** lists the marked
+  events and marks one by its event ID.
+- **Announcements.** People with the new *Post announcements* capability post
+  messages on the home page for everyone signed in, each shown from a start
+  time until an end time (or until deleted), as information or a warning. Kept
+  in `announcements.yaml` beside `web.yaml`.
+
+### Changed
+- The built-in Basic and Advanced roles can see the Schedules pages. Marking
+  events low temp and posting announcements are Admin's until given to a role.
+- 25Live bookings keep their booked times alongside the run-up and run-down,
+  for the Schedules pages.
+
 ## [1.4.0] — 2026-09-28 — Rooms from 25Live, equipment, and a building at a time
 
 Setting up and growing the room map moves into the web UI: a setup guide for

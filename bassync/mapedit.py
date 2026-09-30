@@ -55,9 +55,9 @@ BUILDING_KEY_ORDER = ["id", "name", "campus", "system", "target",
                       "pre_condition_minutes", "post_buffer_minutes",
                       "merge_gap_minutes", "space_id", "note", "equipment"]
 ROOM_KEY_ORDER = ["space_id", "space_name", "building", "floor", "equipment", "system",
-                  "target", "pre_condition_minutes", "post_buffer_minutes",
-                  "merge_gap_minutes", "note"]
-EQUIPMENT_KEY_ORDER = ["id", "name", "system", "target", "note"]
+                  "target", "low_temp_target", "pre_condition_minutes",
+                  "post_buffer_minutes", "merge_gap_minutes", "note"]
+EQUIPMENT_KEY_ORDER = ["id", "name", "system", "target", "low_temp_target", "note"]
 FLOOR_KEY_ORDER = ["building", "level", "name", "system", "target", "note"]
 
 # Pre-1.0 key name. Read and migrated to `target` on load, so an existing map
@@ -317,13 +317,24 @@ def effective_system(values: dict, buildings: list[dict], config_raw: dict,
 
 def target_error(values: dict, buildings: list[dict], config_raw: dict,
                  building_id=None) -> Optional[str]:
-    """Why the row's target isn't valid for the system it resolves to."""
-    target = values.get("target")
-    if not target:
-        return None
+    """Why the row's target, or its low-temp target, isn't valid for the
+    system it resolves to."""
     system = effective_system(values, buildings, config_raw, building_id)
-    problem = target_problem(str(target), system, config_raw or {})
-    return f"Target for system '{system}':\n\n{problem}" if problem else None
+    target = values.get("target")
+    if target:
+        problem = target_problem(str(target), system, config_raw or {})
+        if problem:
+            return f"Target for system '{system}':\n\n{problem}"
+    low = values.get("low_temp_target")
+    if low:
+        if str(low).strip() == str(target or "").strip():
+            return ("The low-temp target is the same schedule as the Target. Low temp "
+                    "needs a schedule of its own, which the BAS uses to run the zone "
+                    "colder.")
+        problem = target_problem(str(low), system, config_raw or {})
+        if problem:
+            return f"Low-temp target for system '{system}':\n\n{problem}"
+    return None
 
 
 def room_problem(values: dict, rooms: list[dict], buildings: list[dict],

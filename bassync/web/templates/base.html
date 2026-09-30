@@ -14,12 +14,14 @@
 {% set nav_sections = [
   ('Status', url_for('dashboard'), 'view_basic', ['dashboard']),
   ('History', url_for('runs'), 'view_basic', ['runs', 'run']),
+  ('Schedules', url_for('schedules'), 'view_schedules', ['schedules', 'space_schedule', 'low_temp_list']),
   ('Bookings', url_for('bookings'), 'view_all', ['bookings', 'booking_form']),
   ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
   ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete', 'map_import']),
   ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults', 'safety_page',
                                                     'files_list', 'file_edit', 'access_page', 'appearance',
-                                                    'service_page', 'setup_step']),
+                                                    'service_page', 'setup_step', 'announcements',
+                                                    'announcement_form']),
   ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
 {% set args = request.view_args or {} %}
 <header class="top">
@@ -52,7 +54,10 @@
                    ('Floors', url_for('map_list', kind='floors'), 'view_all', args.get('kind') == 'floors'),
                    ('Equipment', url_for('map_list', kind='equipment'), 'view_all', args.get('kind') == 'equipment'),
                    ('From 25Live', url_for('map_import'), 'view_all', request.endpoint == 'map_import')] %}
-{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page', 'setup_step'] %}
+{% elif request.endpoint in ['schedules', 'space_schedule', 'low_temp_list'] %}
+  {% set nav_sub = [('Spaces', url_for('schedules'), 'view_schedules', request.endpoint in ['schedules', 'space_schedule']),
+                   ('Low temp', url_for('low_temp_list'), 'view_schedules', request.endpoint == 'low_temp_list')] %}
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page', 'setup_step', 'announcements', 'announcement_form'] %}
   {% set nav_sub = [('Setup guide', url_for('setup_step'), 'edit_settings', request.endpoint == 'setup_step'),
                    ('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
                    ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
@@ -62,6 +67,7 @@
                    ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
                    ('Access', url_for('access_page'), 'manage_access', request.endpoint == 'access_page'),
                    ('Appearance', url_for('appearance'), 'manage_access', request.endpoint == 'appearance'),
+                   ('Announcements', url_for('announcements'), 'announce', request.endpoint in ['announcements', 'announcement_form']),
                    ('Service', url_for('service_page'), 'view_all', request.endpoint == 'service_page')] %}
 {% endif %}
 <main>

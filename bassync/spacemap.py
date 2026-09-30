@@ -27,6 +27,11 @@ serves it (`equipment: [ahu_3]`). Its schedule is the union of every room that
 lists it, like a floor's, so a room can drive any number of schedules and a
 schedule can be driven by any number of rooms.
 
+A room (or a piece of equipment) can also name a `low_temp_target:` — a
+schedule the BAS uses to run that zone colder. Only bookings marked low temp
+drive it (bassync/lowtemp.py), with the room's run-up and run-down; the rest
+of the time it's cleared, like any schedule the sync owns.
+
 Inheritance, all with the same precedence — room > building > global:
     pre_condition_minutes   HVAC run-up before a booking
     post_buffer_minutes     run-down after it
@@ -61,10 +66,10 @@ BUILDING_KEYS = ("id", "name", "campus", "system", "target", "niagara_path",
                  "merge_gap_minutes", "space_id", "equipment", "note")
 FLOOR_KEYS = ("building", "level", "name", "system", "target", "niagara_path",
               "note")
-EQUIPMENT_KEYS = ("id", "name", "system", "target", "note")
+EQUIPMENT_KEYS = ("id", "name", "system", "target", "low_temp_target", "note")
 ROOM_KEYS = ("space_id", "space_name", "building", "floor", "equipment", "system",
-             "target", "niagara_path", "pre_condition_minutes", "post_buffer_minutes",
-             "merge_gap_minutes", "note")
+             "target", "low_temp_target", "niagara_path", "pre_condition_minutes",
+             "post_buffer_minutes", "merge_gap_minutes", "note")
 
 
 class RowError(ValueError):
@@ -158,6 +163,14 @@ def _target_of(row: dict) -> Optional[str]:
     return str(target).strip() or None
 
 
+def _low_temp_target_of(row: dict) -> Optional[str]:
+    """A room's or equipment's `low_temp_target:`, or None."""
+    target = row.get("low_temp_target")
+    if target in (None, ""):
+        return None
+    return str(target).strip() or None
+
+
 def _unknown_keys(row: dict, known: tuple, where: str, warnings: list) -> None:
     """
     Warn about keys the sync doesn't read. Since `target:` became optional, a
@@ -190,7 +203,8 @@ class SpaceMap:
                  labels: Optional[dict] = None, fatal: bool = False,
                  held: Optional[set] = None, buildings: Optional[dict] = None,
                  floors: Optional[dict] = None, equipment: Optional[dict] = None,
-                 building_ids: Optional[set] = None):
+                 building_ids: Optional[set] = None,
+                 equipment_low_temp: Optional[dict] = None):
         self.spaces = spaces              # { space_id: SpaceConfig }
         self.errors = errors              # rows left out, or the whole file
         self.warnings = warnings          # worth saying, not worth stopping for
@@ -213,6 +227,18 @@ class SpaceMap:
         self.equipment: dict = equipment or {}     # { (id, equipment id): Destination }
         # Every building id the map defines, broken ones included.
         self.building_ids: set = set(building_ids or ()) | set(self.buildings)
+        # Equipment's low-temp schedules, { (id, equipment id): Destination }.
+        self.equipment_low_temp: dict = equipment_low_temp or {}
+
+    @property
+    def low_temp(self) -> set:
+        """Every low-temp schedule: rooms' own and equipment's. Written only
+        with bookings marked low temp, so the mass-clear check leaves them
+        out — one ending is not a sign that 25Live has gone quiet."""
+        out = set(self.equipment_low_temp.values())
+        for sc in self.spaces.values():
+            out.update(sc.low_temp_destinations)
+        return out
 
     def __bool__(self) -> bool:
         return bool(self.spaces)
@@ -238,6 +264,7 @@ class SpaceMap:
         out.update(b.destination for b in self.buildings.values())
         out.update(self.floors.values())
         out.update(self.equipment.values())
+        out.update(self.low_temp)
         return out
 
     def systems_used(self) -> set:
@@ -251,9 +278,11 @@ class SpaceMap:
         out = {b.destination for bid, b in self.buildings.items() if bid in wanted}
         out |= {d for (bid, _level), d in self.floors.items() if bid in wanted}
         out |= {d for (bid, _eid), d in self.equipment.items() if bid in wanted}
+        out |= {d for (bid, _eid), d in self.equipment_low_temp.items() if bid in wanted}
         for sc in self.spaces.values():
             if sc.building_id in wanted:
                 out.update(sc.all_destinations())
+                out.update(sc.low_temp_destinations)
         return out
 
 
@@ -408,6 +437,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     #     An AHU several rooms share, or one of several VAVs in a room. Defined
     #     once under its building; rooms in that building list it by id.
     equipment_dest: dict = {}
+    equipment_low_dest: dict = {}
     broken_equipment: set = set()
     for bid, b in buildings.items():
         items = b.get("equipment")
@@ -450,6 +480,11 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
             equipment_dest[(bid, eid)] = Destination(system=system, target=str(target))
             _label(equipment_dest[(bid, eid)],
                    f"{item.get('name') or eid} ({b.get('name') or bid})")
+            low = _low_temp_target_of(item)
+            if low is not None:
+                equipment_low_dest[(bid, eid)] = Destination(system=system, target=low)
+                _label(equipment_low_dest[(bid, eid)],
+                       f"{item.get('name') or eid} ({b.get('name') or bid}) — low temp")
 
     space_map: dict = {}
 
@@ -461,7 +496,8 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                 f"{kept.space_name}). Each space may appear once; the second "
                 "entry was left out.")
             # Roll-ups only the dropped entry fed would lose its bookings.
-            held.update(set(sc.rollup_destinations()) - set(kept.all_destinations()))
+            held.update((set(sc.rollup_destinations()) | set(sc.low_temp_destinations))
+                        - set(kept.all_destinations()) - set(kept.low_temp_destinations))
             return False
         space_map[space_id] = sc
         return True
@@ -518,6 +554,7 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
 
         # The equipment that serves it: an AHU it shares, or more VAVs.
         edests: list = []
+        low_edests: list = []
         raw_equipment = row.get("equipment")
         if raw_equipment not in (None, "", []):
             wanted = raw_equipment if isinstance(raw_equipment, list) else [raw_equipment]
@@ -537,25 +574,29 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                             f"building '{room_building}' — it will NOT drive it.")
                     elif edest not in edests:
                         edests.append(edest)
+                        low = equipment_low_dest.get((room_building, eid))
+                        if low is not None:
+                            low_edests.append(low)
 
         bld = building or {}
         # From here on the row's roll-ups are known. If the row turns out to
         # be broken, those schedules must not be rewritten without it.
         rollups = [d for d in (*edests, fdest, bdest) if d is not None]
+        feeds = rollups + low_edests
         system = str(_resolve(row.get("system"), bld.get("system"),
                               default_system) or "")
         if not system:
             errors.append(
                 f"{where}: no `system:` and no default. Set `default_system:` "
                 "in config.yaml or name one per room.")
-            held.update(rollups)
+            held.update(feeds)
             continue
         if known_systems and system not in known_systems:
             errors.append(
                 f"{where}: system '{system}' is not defined under `systems:` in "
                 f"config.yaml. Known: "
                 f"{', '.join(sorted(known_systems)) or '(none)'}.")
-            held.update(rollups)
+            held.update(feeds)
             continue
 
         # A room without its own `target:` is normal: plenty of buildings can
@@ -564,6 +605,8 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
         # all — that room's bookings would vanish silently, so say so.
         target = _target_of(row)
         rdest = Destination(system=system, target=target) if target else None
+        own_low = _low_temp_target_of(row)
+        low_dests = ([Destination(system=system, target=own_low)] if own_low else []) + low_edests
         if rdest is None and not rollups:
             errors.append(
                 f"{where}: no `target:` and no roll-up to contribute to, so its "
@@ -599,14 +642,17 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                 floor_destination=fdest,
                 equipment_destinations=tuple(edests),
                 building_id=room_building if building is not None else None,
+                low_temp_destinations=tuple(dict.fromkeys(low_dests)),
             )
         except RowError as exc:
             errors.append(str(exc))
-            held.update(rollups)
+            held.update(feeds)
             continue
 
         if _register(space_id, space, f"room {row.get('space_name', space_id)}"):
             _label(rdest, name)
+            if own_low:
+                _label(low_dests[0], f"{name} — low temp")
 
     # ── 3) Buildings that are themselves bookable in 25Live ──────────────────
     #     e.g. an atrium with its own 25Live space. Its own events then count
@@ -653,8 +699,11 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                         if bid in building_buffers}
     standalone.update({("floor", key): dest for key, dest in floor_dest.items()})
     standalone.update({("equipment", key): dest for key, dest in equipment_dest.items()})
+    standalone.update({("equipment_low", key): dest
+                       for key, dest in equipment_low_dest.items()})
     space_map, held, standalone = _canonicalize(space_map, cfg, labels, errors, held,
                                                 standalone)
+    space_map, standalone = _drop_low_temp_clashes(space_map, standalone, labels, errors)
     building_schedules = {
         key[1]: BuildingSchedule(dest, str(buildings[key[1]].get("name") or key[1]),
                                  *building_buffers[key[1]])
@@ -662,6 +711,8 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
     floor_schedules = {key[1]: dest for key, dest in standalone.items() if key[0] == "floor"}
     equipment_schedules = {key[1]: dest for key, dest in standalone.items()
                            if key[0] == "equipment"}
+    equipment_low_schedules = {key[1]: dest for key, dest in standalone.items()
+                               if key[0] == "equipment_low"}
 
     # ── 5) Two rooms pointing at one schedule ────────────────────────────────
     #     Legal and sometimes intentional (an air-wall room split into A/B in
@@ -695,7 +746,34 @@ def load_space_map(path: str, cfg: dict) -> SpaceMap:
                     building_count=len(buildings), floor_count=len(floor_dest),
                     labels=labels, held=held, buildings=building_schedules,
                     floors=floor_schedules, equipment=equipment_schedules,
-                    building_ids=set(buildings))
+                    building_ids=set(buildings),
+                    equipment_low_temp=equipment_low_schedules)
+
+
+def _drop_low_temp_clashes(space_map: dict, standalone: dict, labels: dict,
+                           errors: list) -> tuple:
+    """A low-temp schedule that is also an occupancy schedule would be written
+    twice with different windows, each write erasing the other. Report it and
+    leave it out as a low-temp schedule; its occupancy is unaffected."""
+    occupancy = {d for sc in space_map.values() for d in sc.all_destinations()}
+    occupancy |= {d for key, d in standalone.items() if key[0] != "equipment_low"}
+    low = {d for sc in space_map.values() for d in sc.low_temp_destinations}
+    low |= {d for key, d in standalone.items() if key[0] == "equipment_low"}
+    clash = low & occupancy
+    if not clash:
+        return space_map, standalone
+    for dest in sorted(clash, key=str):
+        errors.append(
+            f"{labels.get(dest, dest)}: low-temp target {dest} is also an occupancy "
+            "schedule, so the two would overwrite each other. It is left out as a "
+            "low-temp schedule — give the low-temp mode a schedule of its own.")
+    for sc in space_map.values():
+        if clash & set(sc.low_temp_destinations):
+            sc.low_temp_destinations = tuple(d for d in sc.low_temp_destinations
+                                             if d not in clash)
+    standalone = {key: d for key, d in standalone.items()
+                  if not (key[0] == "equipment_low" and d in clash)}
+    return space_map, standalone
 
 
 def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
@@ -716,7 +794,7 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
     standalone = standalone or {}
     by_system: dict = {}
     for sc in space_map.values():
-        for dest in sc.all_destinations():
+        for dest in (*sc.all_destinations(), *sc.low_temp_destinations):
             by_system.setdefault(dest.system, set()).add(dest.target)
     for dest in standalone.values():
         by_system.setdefault(dest.system, set()).add(dest.target)
@@ -761,6 +839,8 @@ def _canonicalize(space_map: dict, cfg: dict, labels: dict, errors: list,
             equipment_destinations=tuple(dict.fromkeys(
                 d for d in (_fix(e) for e in sc.equipment_destinations) if d is not None)),
             building_id=sc.building_id,
+            low_temp_destinations=tuple(dict.fromkeys(
+                d for d in (_fix(e) for e in sc.low_temp_destinations) if d is not None)),
         )
         if not fixed.all_destinations():
             errors.append(f"Room {space_id}: every schedule it would write or "

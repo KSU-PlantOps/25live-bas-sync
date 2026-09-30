@@ -8,8 +8,8 @@
 |---|---|
 | [**How it works**](how-it-works.md) | The pipeline, why BACnet, what it writes, and how finely each building can be scheduled. |
 | [**Running with Docker**](docker.md) | The recommended way to run it: quick start, the config folder, volumes, restarting, updating (automatically, too), environment variables. |
-| [**The web UI**](web-ui.md) | Every page, the setup guide, adding rooms from 25Live a building at a time, sign-in with Microsoft Entra ID, roles you can change and limit to some systems or buildings, security, branding. |
-| [**Configuration**](configuration.md) | The settings files, secrets, scheduling defaults, the room map (with equipment shared by rooms), and extra bookings that aren't in 25Live. |
+| [**The web UI**](web-ui.md) | Every page, the setup guide, adding rooms from 25Live a building at a time, what's scheduled per space, low temp, announcements, sign-in with Microsoft Entra ID, roles you can change and limit to some systems or buildings, security, branding. |
+| [**Configuration**](configuration.md) | The settings files, secrets, scheduling defaults, the room map (with equipment shared by rooms), extra bookings that aren't in 25Live, and low-temp schedules for events that need a room colder. |
 
 ### Connecting your systems
 

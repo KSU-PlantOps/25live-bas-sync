@@ -7,13 +7,17 @@ Roles, what each may do, and the web UI's access settings.
 A role is a name and a set of capabilities (CAPABILITY_LIST). Three come
 built in, and are what a site gets until it changes them on the Access page:
 
-    basic     the status page and sync history; Sync now (everything, or
-              one system or building)
+    basic     the status page and sync history; what's scheduled for each
+              space; Sync now (everything, or one system or building)
     advanced  everything visible; the tools (dry run, validate, discover,
               test alert), stopping a job; adding and editing rooms,
               buildings, floors, equipment and extra bookings, and adding
               rooms from 25Live
     admin     everything, including capabilities added in later versions
+
+Marking events low temp and posting announcements are Admin's until a role is
+given them. "What's scheduled" works on its own, without the status page — an
+events team can have just that (and low temp).
 
 A role that can sync can be limited to some systems and buildings
 (`sync_only:`): its Sync now then covers only those, one at a time. The
@@ -40,6 +44,8 @@ CAPABILITY_LIST = (
     ("view_basic", "See the status page and the sync history", "See"),
     ("view_all", "See everything else: jobs, the room map, extra bookings, "
                  "settings and logs (read-only)", "See"),
+    ("view_schedules", "See what's scheduled for each space: its bookings and the "
+                       "times written to its schedules", "See"),
     ("sync", "Sync now — everything, or one system or building (a role can be "
              "limited to some, below)", "Run"),
     ("run_tools", "Dry run, Validate, Discover and Test alert", "Run"),
@@ -48,6 +54,8 @@ CAPABILITY_LIST = (
     ("edit_map", "Add and edit rooms, buildings, floors and equipment, and add "
                  "rooms found in 25Live", "Change"),
     ("edit_bookings", "Add and edit extra bookings", "Change"),
+    ("low_temp", "Mark events low temp, to run their rooms colder", "Change"),
+    ("announce", "Post announcements on the status page", "Change"),
     ("edit_settings", "Change the connection, systems, alerts, schedule, defaults, "
                       "safety limits and the settings files", "Administer"),
     ("edit_passwords", "Set and clear stored passwords", "Administer"),
@@ -59,16 +67,20 @@ CAPABILITY_LIST = (
 ALL_CAPABILITIES = tuple(c for c, _label, _heading in CAPABILITY_LIST)
 CAPABILITY_LABELS = {c: label for c, label, _heading in CAPABILITY_LIST}
 # What a capability is no use without, added whenever a role is saved: every
-# page but the status page needs view_all, and Force is a kind of sync.
+# page but the status page needs view_all, and Force is a kind of sync. What's
+# scheduled stands alone, so a role can see just that; marking low temp is
+# done there, and announcements go on the status page.
 NEEDS: dict = {c: ("view_basic", "view_all") for c in ALL_CAPABILITIES}
 NEEDS.update({"view_basic": (), "view_all": ("view_basic",),
-              "sync": ("view_basic",), "force": ("view_basic", "sync")})
+              "sync": ("view_basic",), "force": ("view_basic", "sync"),
+              "view_schedules": (), "low_temp": ("view_schedules",),
+              "announce": ("view_basic",)})
 
 DEFAULT_ROLES = (
-    {"id": "basic", "name": "Basic", "capabilities": ["view_basic", "sync"]},
+    {"id": "basic", "name": "Basic", "capabilities": ["view_basic", "view_schedules", "sync"]},
     {"id": "advanced", "name": "Advanced",
-     "capabilities": ["view_basic", "view_all", "sync", "run_tools", "stop_job",
-                      "edit_map", "edit_bookings"]},
+     "capabilities": ["view_basic", "view_all", "view_schedules", "sync", "run_tools",
+                      "stop_job", "edit_map", "edit_bookings"]},
     # "all" also grants capabilities added by later versions.
     {"id": "admin", "name": "Admin", "capabilities": "all"},
 )

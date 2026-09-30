@@ -205,3 +205,16 @@ table.grouped tr.group th { background: var(--code-bg); font-weight: 400; color:
   white-space: normal; vertical-align: middle; }
 table.grouped tr.group .hint { margin-left: .4rem; }
 table.hide-added tr.muted, table.hide-added tbody.all-added { display: none; }
+
+/* Announcements on the home page, and low-temp marks. */
+.announcements { margin: 0 0 var(--gap); }
+.announcement { border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: var(--radius);
+  background: var(--surface); padding: .6rem .9rem; margin: 0 0 .5rem; }
+.announcement.warning { border-left-color: var(--warn); background: var(--warn-bg); }
+.announcement p { margin: 0 0 .2rem; }
+.announce-link { margin: .2rem 0 0; }
+.badge { display: inline-block; font-size: .8em; padding: .05rem .45rem; border-radius: 999px;
+  border: 1px solid var(--border); white-space: nowrap; }
+.badge.cold { border-color: var(--accent); color: var(--link); }
+.badge.pending { border-style: dashed; }
+.day-head th { text-align: left; padding-top: .8rem; }

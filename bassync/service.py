@@ -84,6 +84,7 @@ class Paths:
     log_file: Path
     web: Optional[Path] = None             # web.yaml; default beside config.yaml
     extras: Optional[Path] = None          # extra_bookings.yaml; ditto
+    low_temp: Optional[Path] = None        # low_temp_events.yaml; ditto
 
     @property
     def web_file(self) -> Path:
@@ -92,6 +93,18 @@ class Paths:
     @property
     def extras_file(self) -> Path:
         return self.extras or self.config.parent / "extra_bookings.yaml"
+
+    @property
+    def low_temp_file(self) -> Path:
+        return self.low_temp or self.config.parent / "low_temp_events.yaml"
+
+    @property
+    def announcements_file(self) -> Path:
+        return self.web_file.parent / "announcements.yaml"
+
+    @property
+    def scheduled_file(self) -> Path:
+        return self.state_dir / "scheduled.json"
 
     @property
     def secrets_file(self) -> Path:
@@ -116,6 +129,7 @@ def resolve_paths() -> Paths:
     state_dir = paths.state_dir()
     log_file = Path(paths.log_file())
     extras = os.environ.get("BAS_EXTRA_BOOKINGS") or ""
+    low_temp = ""
     try:
         cfg = load_config(str(config), str(defaults))
     except ConfigError:
@@ -123,6 +137,7 @@ def resolve_paths() -> Paths:
     if cfg is not None:
         space_map = space_map or cfg.get("space_map_file") or ""
         extras = extras or cfg.get("extra_bookings_file") or ""
+        low_temp = cfg.get("low_temp_file") or ""
         if (cfg.get("safety") or {}).get("state_file"):
             state_dir = Path(cfg["safety"]["state_file"]).parent
         if cfg.get("log_file"):
@@ -130,7 +145,8 @@ def resolve_paths() -> Paths:
     web = os.environ.get("BAS_WEB_CONFIG") or ""
     return Paths(config, defaults, Path(space_map or paths.space_map_file()),
                  state_dir, log_file, Path(web) if web else None,
-                 Path(extras) if extras else None)
+                 Path(extras) if extras else None,
+                 Path(low_temp) if low_temp else None)
 
 
 class Service:

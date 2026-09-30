@@ -159,6 +159,8 @@ DEFAULTS: dict[str, Any] = {
     "space_map_file": None,                   # None -> paths.space_map_file()
     "extra_bookings_file": None,              # None -> extra_bookings.yaml beside
                                               #   config.yaml (bassync/extras.py)
+    "low_temp_file": None,                    # None -> low_temp_events.yaml beside
+                                              #   config.yaml (bassync/lowtemp.py)
     "log_file": None,                         # None -> default_log_file()
     "log_max_mb": 10,                         # rotate the log at this size
     "log_backups": 10,                        # ...keeping this many old files
@@ -363,6 +365,8 @@ def load_config(path: str, defaults_path: Optional[str] = None,
         cfg["space_map_file"] = str(paths.space_map_file())
     if not cfg.get("extra_bookings_file"):
         cfg["extra_bookings_file"] = str(Path(path).parent / "extra_bookings.yaml")
+    if not cfg.get("low_temp_file"):
+        cfg["low_temp_file"] = str(Path(path).parent / "low_temp_events.yaml")
     if warnings is not None:
         warnings.extend(found)
     return cfg
@@ -399,6 +403,7 @@ CONFIG_SCHEMA: dict = {
     "schedule": {"enabled": None, "times": None, "run_on_start": None},
     "space_map_file": None,
     "extra_bookings_file": None,
+    "low_temp_file": None,
     "log_file": None,
     "log_max_mb": None,
     "log_backups": None,
@@ -578,7 +583,8 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
         return errors                      # the rest assumes the shapes
 
     check_timezone(cfg.get("timezone"), "", errors)
-    for key in ("default_system", "space_map_file", "extra_bookings_file", "log_file"):
+    for key in ("default_system", "space_map_file", "extra_bookings_file",
+                "low_temp_file", "log_file"):
         _as_str(cfg, key, "", errors)
 
     cn = cfg["collegenet"]

@@ -6,12 +6,25 @@ Read the section for the version you're coming from, and each one after it.
 Run `--validate` and `--dry-run` after upgrading, as always. Every release's
 changes are in [CHANGELOG.md](../CHANGELOG.md).
 
+- [From 1.4](#from-14)
 - [From 1.3](#from-13)
 - [From 1.3.0rc1](#from-130rc1)
 - [From 1.2](#from-12)
 - [From 1.1](#from-11)
 - [Moving off the niagara driver](#moving-off-the-niagara-driver)
 - [From a pre-1.0 release](#from-a-pre-10-release)
+
+## From 1.4
+
+Nothing to edit, and nothing the sync writes changes until you add a
+`low_temp_target:` to the room map. In the web UI:
+
+1. **The built-in Basic and Advanced roles can see the new Schedules pages**
+   (*See what's scheduled*). If you've changed a role on the Access page, it's
+   saved in `web.yaml` and doesn't pick that up: tick *See what's scheduled*
+   for it if you want it to.
+2. **Marking events low temp and posting announcements are Admin's** until you
+   give them to a role on the Access page.
 
 ## From 1.3
 

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Announcements{% endblock %}
+{% macro when(a) -%}
+  {{ a.starts.strftime('%a %d %b %Y %H:%M') }} – {{ a.ends.strftime('%a %d %b %Y %H:%M') if a.ends else 'until deleted' }}
+{%- endmacro %}
+{% macro rows(list, muted=False) %}
+  {% for a in list %}
+    <tr class="{{ 'muted' if muted }}">
+      <td class="pre">{{ a.message }}</td>
+      <td>{{ levels[a.level] }}</td>
+      <td>{{ when(a) }}</td>
+      <td>{{ a.added_by }}</td>
+      <td class="row-actions">
+        <a href="{{ url_for('announcement_form', index=a.index) }}">Edit</a>
+        <form method="post" action="{{ url_for('announcement_delete', index=a.index) }}" class="inline"
+              data-confirm="Delete this announcement?">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="version" value="{{ version }}">
+          <button class="link danger">Delete</button>
+        </form>
+      </td>
+    </tr>
+  {% endfor %}
+{% endmacro %}
+{% block body %}
+<h1>Announcements</h1>
+<p class="hint">A message on the home page for everyone signed in, from its start until its end — or until it's deleted.
+  Times are campus time.</p>
+{% if error %}<div class="flash error">{{ error }} — nothing is shown until it's fixed.</div>{% endif %}
+<div class="toolbar"><a class="button primary" href="{{ url_for('announcement_form') }}">Add announcement</a></div>
+
+{% for heading, key in [('Showing now', 'showing'), ('Coming up', 'upcoming')] %}
+  <h2>{{ heading }} <span class="count">{{ items[key] | length }}</span></h2>
+  {% if items[key] %}
+  <table class="list wide">
+    <thead><tr><th>Message</th><th>Level</th><th>When</th><th>Added by</th><th></th></tr></thead>
+    <tbody>{{ rows(items[key]) }}</tbody>
+  </table>
+  {% else %}<p class="hint">None.</p>{% endif %}
+{% endfor %}
+
+{% if items.broken %}
+  <div class="flash warn">{{ items.broken | length }} can't be shown:
+    <ul class="compact">{% for b in items.broken %}<li>number {{ b.index + 1 }}: {{ b.problem }}
+      <a href="{{ url_for('announcement_form', index=b.index) }}">Edit</a></li>{% endfor %}</ul></div>
+{% endif %}
+
+{% if items.ended %}
+<details class="card">
+  <summary>{{ items.ended | length }} ended</summary>
+  <table class="list wide">
+    <thead><tr><th>Message</th><th>Level</th><th>When</th><th>Added by</th><th></th></tr></thead>
+    <tbody>{{ rows(items.ended, True) }}</tbody>
+  </table>
+  <form method="post" action="{{ url_for('announcements_delete_ended') }}" data-confirm="Delete every ended announcement?">
+    <input type="hidden" name="csrf" value="{{ csrf_token }}">
+    <input type="hidden" name="version" value="{{ version }}">
+    <div class="buttons"><button>Delete the ended ones</button></div>
+  </form>
+</details>
+{% endif %}
+{% endblock %}

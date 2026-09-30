@@ -60,6 +60,15 @@
     <small>Otherwise the equipment starts early and runs on after, as it does for a 25Live booking there.</small>
   </div>
 
+  {% if can('low_temp') %}
+  <span class="label">Low temp</span>
+  <div class="field">
+    <label class="check"><input type="checkbox" name="low_temp" value="1" {{ 'checked' if values.low_temp }}>
+      Run the room colder for it</label>
+    <small>A room's booking only: it also runs the room's low-temp schedule, if the room map gives it one.</small>
+  </div>
+  {% endif %}
+
   <label for="b-note">Note</label>
   <div class="field"><input id="b-note" name="note" value="{{ values.note or '' }}" maxlength="500"
     placeholder="optional: who asked, a work order number"></div>

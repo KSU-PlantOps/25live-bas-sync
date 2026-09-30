@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+{% block title %}{{ space.name }} · Schedules{% endblock %}
+{% macro span(start, end) -%}
+  {{ local_time(start, '%H:%M') }}–{% if local_time(start, '%Y-%m-%d') != local_time(end, '%Y-%m-%d') %}{{ local_time(end, '%a %H:%M') }}{% else %}{{ local_time(end, '%H:%M') }}{% endif %}
+{%- endmacro %}
+{% block body %}
+<p class="hint"><a href="{{ url_for('schedules') }}">← All spaces</a></p>
+<h1>{{ space.name }}</h1>
+<p class="hint">{% if space.building_name %}{{ space.building_name }}{% if space.floor is not none %} · floor {{ space.floor }}{% endif %} · {% endif %}25Live space {{ space.id }}
+  {%- if entry %} · as of the sync at {{ local_time(entry.at, '%a %d %b %H:%M') }} ({{ relative(entry.at) }}){% endif %}</p>
+
+{% if not entry %}
+  <div class="flash warn">Not synced yet: its bookings and schedules show here after the next live sync.</div>
+{% endif %}
+{% if marks_error %}<div class="flash error">The low-temp events file can't be read: {{ marks_error }}</div>{% endif %}
+
+{% if entry %}
+<section class="card">
+  <h2>Bookings</h2>
+  <p class="hint"><em>Runs</em> is when its schedules run for a booking: its run-up before, its run-down after, joined
+    with any booking close by.
+    {% if low_capable %}This space has a low-temp schedule: an event marked low temp runs it colder for that event.
+    {% elif can('low_temp') %}This space has no low-temp schedule in the room map, so marking an event low temp doesn't
+    change anything here.{% endif %}</p>
+  {% if days %}
+  <table class="list wide">
+    <thead><tr><th>Booked</th><th>Event</th><th>Runs</th><th>Low temp</th>{% if can('low_temp') %}<th></th>{% endif %}</tr></thead>
+    {% for day, items in days %}
+    <tbody>
+      <tr class="day-head"><th colspan="{{ 5 if can('low_temp') else 4 }}">{{ day.strftime('%A %d %B') }}</th></tr>
+      {% for b in items %}
+      <tr>
+        <td class="nowrap">{{ span(b.start, b.end) }}</td>
+        <td>{{ b.title }}{% if b.extra %} <span class="badge">extra booking</span>{% else %} <small class="hint">25Live event {{ b.id }}</small>{% endif %}</td>
+        <td class="nowrap">{{ span(b.on, b.off) }}</td>
+        <td>{% if b.low_temp and (b.marked or b.extra) %}<span class="badge cold">low temp</span>
+            {% elif b.low_temp %}<span class="badge pending" title="Unmarked since the last sync">low temp until the next sync</span>
+            {% elif b.marked %}<span class="badge cold pending" title="Marked since the last sync">low temp from the next sync</span>{% endif %}</td>
+        {% if can('low_temp') %}
+        <td class="row-actions">{% if not b.extra %}
+          <form method="post" action="{{ url_for('low_temp_mark') }}" class="inline"
+                {% if not b.marked %}data-confirm="Mark “{{ b.title }}” low temp? Every room it books runs colder for it, every time it meets, from the next sync."{% endif %}>
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <input type="hidden" name="event_id" value="{{ b.id }}">
+            <input type="hidden" name="name" value="{{ b.title }}">
+            <input type="hidden" name="back" value="{{ space.id }}">
+            <input type="hidden" name="action" value="{{ 'unmark' if b.marked else 'mark' }}">
+            <button class="link">{{ 'Unmark' if b.marked else 'Mark low temp' }}</button>
+          </form>{% else %}<span class="hint">on the Bookings page</span>{% endif %}</td>
+        {% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% endfor %}
+  </table>
+  {% else %}
+    <p class="hint">No bookings in the days the last sync covered.</p>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2>What was written</h2>
+  <p class="hint">Every schedule this space drives, and the times the sync wrote to it. A shared one — a floor, the building,
+    equipment — also runs for the other spaces that feed it.</p>
+  {% for s in schedules %}
+    <h3>{{ s.label }} <span class="count">{{ s.kind_label }}</span></h3>
+    <p class="hint">
+      {% if s.status == 'written' %}<span class="ok">Written</span> at {{ local_time(s.at, '%a %d %b %H:%M') }}
+      {% elif s.status == 'preview' %}On a preview system, so nothing was sent to a BAS ({{ local_time(s.at, '%a %d %b %H:%M') }})
+      {% elif s.status == 'failed' %}<span class="bad">The last write failed</span>{% if s.error %}: {{ s.error }}{% endif %}.
+        {% if s.at %}Below is what the sync at {{ local_time(s.at, '%a %d %b %H:%M') }} wrote.{% endif %}
+      {% elif s.status == 'not written' %}<span class="warn">Not written by the last sync</span>{% if s.error %}: {{ s.error }}{% endif %}.
+        {% if s.at %}Below is what the sync at {{ local_time(s.at, '%a %d %b %H:%M') }} wrote.{% endif %}
+      {% else %}Not written yet.{% endif %}
+    </p>
+    {% if s.days %}
+      <table class="list">
+        <tbody>
+        {% for day, windows in s.days %}
+          <tr><th class="nowrap">{{ day.strftime('%a %d %b') }}</th>
+            <td>{% for w in windows %}{{ span(w[0], w[1]) }}{{ ', ' if not loop.last }}{% endfor %}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% elif s.at %}
+      <p class="hint">Nothing scheduled: cleared.</p>
+    {% endif %}
+  {% endfor %}
+</section>
+{% endif %}
+{% endblock %}
