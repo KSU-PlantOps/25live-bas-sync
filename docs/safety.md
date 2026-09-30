@@ -20,8 +20,9 @@ So each run compares itself to the last and refuses to write if:
 Both are about *change*, not absolute counts, so a genuinely quiet week still
 has last week's state to compare against, and a first-ever run is allowed
 through. [Low-temp schedules](configuration.md#low-temp) are left out: they
-only ever hold a few marked events, so one ending says nothing about 25Live. The web UI's **Settings → Safety** page sets both, turns the check
-off (after asking), and shows the current baseline.
+only ever hold a few marked events, so one ending says nothing about 25Live.
+The web UI's **Settings → Safety** page sets both, turns the check off (after
+asking), and shows the current baseline.
 
 The comparison state lives in **`state/last_run.json`**. It is kept apart from
 the logs, written atomically, and backed by the previous copy (`.prev`).
@@ -45,5 +46,7 @@ This complements, rather than replaces:
 - `verify_device` refusing to write through a stale pinned address
 - a broken room-map row or extra booking leaving its schedules alone rather
   than rewriting them without its bookings — see
-  [A broken row doesn't cost you the campus](configuration.md#a-broken-row-doesnt-cost-you-the-campus)
+  [A broken row doesn't cost you the campus](configuration.md#a-broken-row-doesnt-cost-you-the-campus) —
+  and a low-temp events file that can't be read leaving every low-temp
+  schedule as it is
 - one live sync at a time: a second one exits `8` without touching anything

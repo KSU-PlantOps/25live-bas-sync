@@ -18,7 +18,7 @@ services:
   sync:
     build: .
     # To run a published release instead of building, delete `build: .` and
-    # set: image: ghcr.io/ksu-plantops/25live-bas-sync:1.4
+    # set: image: ghcr.io/ksu-plantops/25live-bas-sync:1.5
     image: 25live-bas-sync
     container_name: 25live-bas-sync
     command: ["serve"]

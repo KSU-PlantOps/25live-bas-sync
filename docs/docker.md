@@ -153,12 +153,12 @@ published to GHCR for amd64 and arm64:
 
 | Tag | Follows |
 |---|---|
-| `ghcr.io/ksu-plantops/25live-bas-sync:1.4` | the 1.4 line, including its patch releases — recommended |
-| `ghcr.io/ksu-plantops/25live-bas-sync:1.4.0` | exactly one release |
+| `ghcr.io/ksu-plantops/25live-bas-sync:1.5` | the 1.5 line, including its patch releases — recommended |
+| `ghcr.io/ksu-plantops/25live-bas-sync:1.5.0` | exactly one release |
 | `ghcr.io/ksu-plantops/25live-bas-sync:latest` | the newest release |
 
 A release candidate is marked as a pre-release and has only its exact tag,
-e.g. `:1.5.0rc1`; `:1.5` and `:latest` never move to one.
+e.g. `:1.6.0rc1`; `:1.6` and `:latest` never move to one.
 
 To run a published release rather than build locally, delete `build: .` from
 `docker-compose.yml` and set `image:` to one of those.
@@ -188,11 +188,11 @@ The container can't update itself: replacing its own image would need the
 Docker socket mounted inside it, which is root on the host — a poor trade for
 a service on a controls network. The host can do it on a timer instead.
 
-With a published image on a **minor-version tag** (`:1.4`), a timer that runs
+With a published image on a **minor-version tag** (`:1.5`), a timer that runs
 `docker compose pull` and `docker compose up -d` picks up each patch release —
 fixes only, no settings to change — and recreates the container only when the
 image has changed. A sync that is writing gets to finish first. Minor and
-major releases (`1.5`, `2.0`) stay a deliberate change of tag, after reading
+major releases (`1.6`, `2.0`) stay a deliberate change of tag, after reading
 [Upgrading](upgrading.md); don't point a timer at `:latest`.
 
 `contrib/systemd/` has the units, for Linux hosts with systemd:
