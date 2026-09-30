@@ -29,6 +29,7 @@ Extra bookings page (or by hand):
         start: "13:00"
         end: "16:00"
         exact: true                 # no run-up or run-down
+        low_temp: true              # and run the room colder (its low-temp schedule)
 
 Each run turns them into bookings exactly like 25Live's: a room booking gets
 the room's run-up and run-down and rolls up into its floor and building; a
@@ -56,7 +57,7 @@ FILE_NAME = "extra_bookings.yaml"
 DAYS = ("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 DAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 KEYS = ("title", "space_id", "building", "floor", "date", "days", "from", "until",
-        "start", "end", "exact", "note", "added_by")
+        "start", "end", "exact", "low_temp", "note", "added_by")
 HEADER = """\
 # Bookings the sync schedules that aren't in 25Live. Managed on the web UI's
 # Extra bookings page, but plain YAML and safe to hand-edit. Each names a room
@@ -84,6 +85,7 @@ class Booking:
     end: time
     overnight: bool               # the end is on the next day
     exact: bool                   # no run-up or run-down
+    low_temp: bool = False        # a room's: also run its low-temp schedules
 
     @property
     def where(self) -> str:
@@ -224,8 +226,12 @@ def parse(row, index: int = 0) -> Booking:
         raise BookingError("`start` and `end` are the same time.")
     overnight = end <= start
     exact = row.get("exact") in (True, "true", "yes", 1)
+    low_temp = row.get("low_temp") in (True, "true", "yes", 1)
+    if low_temp and not space_id:
+        raise BookingError("`low_temp` is for a room's booking: a building or floor "
+                           "has no low-temp schedule.")
     return Booking(index, title, space_id, building, floor, day, days, first, last,
-                   start, end, overnight, exact)
+                   start, end, overnight, exact, low_temp)
 
 
 def unknown_keys(row) -> list:
@@ -295,11 +301,11 @@ def expand(path, space_map, tz, lookahead_days: int,
             pre = post = 0
         first_day = (today - timedelta(days=1)).date()
         for day in booking.start_dates(first_day, horizon.date()):
-            start = datetime.combine(day, booking.start, tzinfo=tz)
-            end = datetime.combine(day + timedelta(days=1 if booking.overnight else 0),
-                                   booking.end, tzinfo=tz)
-            start -= timedelta(minutes=pre)
-            end += timedelta(minutes=post)
+            booked_start = datetime.combine(day, booking.start, tzinfo=tz)
+            booked_end = datetime.combine(day + timedelta(days=1 if booking.overnight else 0),
+                                          booking.end, tzinfo=tz)
+            start = booked_start - timedelta(minutes=pre)
+            end = booked_end + timedelta(minutes=post)
             if end <= today or start >= horizon:
                 continue
             start = max(start, today)
@@ -307,7 +313,8 @@ def expand(path, space_map, tz, lookahead_days: int,
             event_id = f"extra:{index + 1}:{day.isoformat()}"
             if dest is None:
                 out.events.append(RawEvent(event_id, booking.title, booking.space_id,
-                                           start, end))
+                                           start, end, booked_start, booked_end,
+                                           low_temp=booking.low_temp))
             else:
                 out.windows.setdefault(dest, []).append(
                     OccupancyWindow(start, end, [event_id]))
@@ -321,7 +328,9 @@ def _targets_of_row(row, space_map) -> set:
     space_id = _space_id(row["space_id"]) if row.get("space_id") not in (None, "") else ""
     if space_id:
         sc = space_map.spaces.get(space_id)
-        return set(sc.all_destinations()) if sc is not None else set()
+        if sc is None:
+            return set()
+        return set(sc.all_destinations()) | set(sc.low_temp_destinations)
     building = str(row.get("building") or "").strip()
     info = space_map.buildings.get(building)
     if info is None:
@@ -345,8 +354,9 @@ def clean_row(row: dict) -> dict:
     for key in ("start", "end"):
         if key in out:
             out[key] = str(out[key])
-    if out.get("exact") is not True:
-        out.pop("exact", None)
+    for key in ("exact", "low_temp"):
+        if out.get(key) is not True:
+            out.pop(key, None)
     return out
 
 

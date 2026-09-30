@@ -195,6 +195,8 @@ ROOM_FIELDS = [
      "what else serves it — an AHU it shares with other rooms, or more VAVs"),
     ("system", "BAS system", "system", "blank = its building's"),
     ("target", "Target", "text", "its own schedule; blank = roll-up only"),
+    ("low_temp_target", "Low-temp target", "text",
+     "optional; a schedule that runs the room colder, for events marked low temp"),
     ("pre_condition_minutes", "Pre-condition minutes", "int", "blank = building / default"),
     ("post_buffer_minutes", "Post-buffer minutes", "int", "blank = building / default"),
     ("merge_gap_minutes", "Merge-gap minutes", "int", "blank = default"),
@@ -226,6 +228,8 @@ EQUIPMENT_FIELDS = [
     ("name", "Name", "text", "e.g. AHU-3, or VAV 2-14"),
     ("system", "BAS system", "system", "blank = its building's"),
     ("target", "Target", "text", "required; its schedule, e.g. 12001:30 for BACnet"),
+    ("low_temp_target", "Low-temp target", "text",
+     "optional; runs it colder for events marked low temp in the rooms it serves"),
     ("note", "Note", "text", ""),
 ]
 
@@ -348,9 +352,12 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── dashboard ────────────────────────────────────────────────────────────
 
     @app.route("/")
-    @requires("view_basic")
+    @requires(("view_basic", "view_schedules"))
     def dashboard():
-        from . import setup
+        from . import announce, setup
+        if not access.can(g.caps, "view_basic"):
+            # A role that sees only what's scheduled lands there.
+            return redirect(url_for("schedules"))
         if setup.wants_setup():
             return redirect(url_for("setup_step"))
         service = svc()
@@ -376,6 +383,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             systems=sorted(mapedit.config_systems(raw)),
             sync_choices=_sync_choices(raw),
             setup_steps=setup_steps,
+            announcements=announce.showing(),
             paths=files())
 
     @app.route("/api/status")

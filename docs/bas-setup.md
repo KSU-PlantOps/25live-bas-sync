@@ -132,6 +132,28 @@ default) catches it by reading the array back.
 A multistate occupancy schedule (UNSIGNED values) needs `occupied_value` and
 `unoccupied_value` on its system, because state numbers are site-specific.
 
+## A low-temp schedule
+
+For rooms that sometimes need to run colder — a blood drive, a crowded exam —
+the sync can drive a second schedule, active only during events
+[marked low temp](configuration.md#low-temp). It's set up like a booking
+schedule, on any vendor:
+
+1. Create a **dedicated low-temp schedule** for the room (or the equipment that
+   serves it), with its weekly schedule empty or inactive.
+2. In the zone's program, **lower the cooling setpoint while it's active** —
+   an offset, or a setpoint of its own. How much colder is decided here, in the
+   BAS; the sync only writes when.
+3. Name it as the room's (or equipment's) `low_temp_target:` in the room map,
+   and run `--validate`.
+
+The sync writes it exactly as it writes an occupancy schedule — active for
+each booking of a marked event, with the room's run-up so the room is cold
+when people arrive, and cleared otherwise — so the same value types
+(`occupied_value`, for a multistate one) apply. Keep the room's occupancy
+schedule as it is: a low-temp booking still runs the room through its
+`target:` as usual.
+
 ## Adding a driver
 
 A new BAS integration is one file implementing

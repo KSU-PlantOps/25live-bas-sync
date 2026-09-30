@@ -13,7 +13,7 @@ from flask import abort, g, redirect, render_template, request, url_for
 
 from .. import extras
 from ..config import ConfigError
-from . import audit, campus_zone, ctx, notice, requires
+from . import access, audit, campus_zone, ctx, notice, requires
 from .views import files, load_map, svc, version_of
 
 
@@ -70,6 +70,8 @@ def _row_from_form(form) -> dict:
     row["end"] = form.get("end") or ""
     if form.get("exact"):
         row["exact"] = True
+    if form.get("low_temp"):
+        row["low_temp"] = True
     note = (form.get("note") or "").strip()[:500]
     if note:
         row["note"] = note
@@ -168,6 +170,13 @@ def register(app) -> None:
         text_index = form.get("index", "")
         index = int(text_index) if text_index.isdigit() else None
         row = _row_from_form(form)
+        if not access.can(g.caps, "low_temp"):
+            # Only a role that may mark low temp changes it; keep what it was.
+            row.pop("low_temp", None)
+            rows_now, _err = read_rows()
+            if index is not None and 0 <= index < len(rows_now) and \
+                    isinstance(rows_now[index], dict) and rows_now[index].get("low_temp"):
+                row["low_temp"] = True
         errors = []
         if not row["title"]:
             errors.append("Give it a title, so people can tell what it is.")

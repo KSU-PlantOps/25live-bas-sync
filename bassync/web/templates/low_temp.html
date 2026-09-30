@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Low temp · Schedules{% endblock %}
+{% block body %}
+<h1>Low temp <span class="count">{{ marks | length }}</span></h1>
+<p class="hint">25Live events marked low temp. Each runs the low-temp schedule of every room it books — and of those rooms'
+  equipment — for each of its bookings, with the room's run-up and run-down, from the next sync. What colder means is set in
+  the BAS. Mark an event from its space's page, or here by its 25Live event ID.</p>
+{% if error %}<div class="flash error">{{ error }} — the low-temp schedules are left as they are until it's fixed.</div>{% endif %}
+
+{% if marks %}
+<table class="list wide">
+  <thead><tr><th>Event</th><th>Where</th><th>Next</th><th>Marked</th>{% if can('low_temp') %}<th></th>{% endif %}</tr></thead>
+  <tbody>
+  {% for m in marks %}
+    <tr>
+      <td>{{ m.row.name or 'Event' }} <small class="hint">25Live event {{ m.id }}</small>
+        {% if m.row.note %}<br><small class="hint">{{ m.row.note }}</small>{% endif %}</td>
+      <td>{% for sid, name in m.spaces %}<a href="{{ url_for('space_schedule', space_id=sid) }}">{{ name }}</a>{{ ', ' if not loop.last }}{% else %}
+        <span class="hint">{{ 'not in the last sync' if snapshot.updated else 'not synced yet' }}</span>{% endfor %}</td>
+      <td class="nowrap">{{ local_time(m.next, '%a %d %b %H:%M') if m.next else '' }}</td>
+      <td>{{ m.row.marked_by or '' }}{% if m.row.marked_at %} <small class="hint">{{ m.row.marked_at }}</small>{% endif %}</td>
+      {% if can('low_temp') %}
+      <td class="row-actions">
+        <form method="post" action="{{ url_for('low_temp_mark') }}" class="inline">
+          <input type="hidden" name="csrf" value="{{ csrf_token }}">
+          <input type="hidden" name="event_id" value="{{ m.id }}">
+          <input type="hidden" name="name" value="{{ m.row.name or '' }}">
+          <input type="hidden" name="back" value="list">
+          <input type="hidden" name="action" value="unmark">
+          <button class="link">Unmark</button>
+        </form></td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}
+  <p class="hint">No events are marked low temp.</p>
+{% endif %}
+
+{% if can('low_temp') %}
+<form method="post" action="{{ url_for('low_temp_mark') }}" class="card">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <input type="hidden" name="back" value="list">
+  <input type="hidden" name="action" value="mark">
+  <h2>Mark an event by its ID</h2>
+  <p class="hint">For an event booked since the last sync. The event ID is the number in its 25Live address.</p>
+  <div class="grid">
+    <label>25Live event ID <input name="event_id" required maxlength="64" inputmode="numeric"></label>
+    <label>Name <input name="name" maxlength="200" placeholder="for people, e.g. Red Cross blood drive"></label>
+    <label>Note <input name="note" maxlength="500" placeholder="optional"></label>
+  </div>
+  <div class="buttons"><button class="primary">Mark low temp</button></div>
+</form>
+{% endif %}
+{% endblock %}

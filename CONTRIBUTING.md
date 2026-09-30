@@ -78,11 +78,14 @@ covers:
   what discovery collects (every space, or the booked ones) and guesses
 - extra bookings: reading them, their occurrences and buffers, and a whole
   run with them
+- low temp: the room map's low-temp schedules, marked events driving them,
+  and what each sync records per space
 - the email/webhook reports, the service's scheduler (DST included), its job
   runner, run history, restarting in place, and the update check
 - the web UI: sign-in and lockout, Entra sign-in, roles, capabilities and
   sync limits, CSRF, every editing page (equipment included), the setup guide
   from nothing to a schedule, adding rooms from 25Live a building at a time,
+  the Schedules pages and marking events low temp, announcements,
   concurrent-edit and confirmation handling, branding, and the sandboxed
   report view
 - the editors' shared save logic
@@ -106,9 +109,10 @@ check.
 | `bassync/drivers/` | BAS integrations — `bacnet`, `rest`, `preview`, and the deprecated `niagara`. |
 | `bassync/service.py` · `bassync/jobs.py` · `bassync/history.py` | The long-running service (schedule + web UI, restarting in place), its job runner, and the run history. |
 | `bassync/extras.py` | Extra bookings: occupancy that isn't in 25Live. |
+| `bassync/lowtemp.py` · `bassync/scheduled.py` | Events marked low temp; and what each sync wrote, per space, for the Schedules pages. |
 | `bassync/discovery.py` | What `--discover` found, kept for Room map → From 25Live and the setup guide, and its guesses at each room's building. |
 | `bassync/updates.py` | Whether a newer release is out (GitHub's releases API). |
-| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, the setup guide in `setup.py`, and adding rooms from 25Live in `importer.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
+| `bassync/web/` | The web UI (Flask): pages (`views.py`, `bookings.py`, the setup guide in `setup.py`, adding rooms from 25Live in `importer.py`, what's scheduled and low temp in `schedules.py`, announcements in `announce.py`), templates and static files; `access.py` (roles, capabilities and branding) and `entra.py` (Microsoft sign-in). |
 | `bassync/secretstore.py` | Passwords set on the web UI, kept in `state/secrets.json`. |
 | `bassync/mapedit.py` | Reading, checking and writing the settings files — shared by both editors. |
 | `bassync/editor.py` · `editor.py` · `Edit-Rooms.bat` | The desktop editor (Tkinter), its launcher, and a double-click launcher for Windows. |

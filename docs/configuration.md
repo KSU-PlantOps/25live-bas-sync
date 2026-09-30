@@ -13,7 +13,9 @@ the repository. With Docker they're in `./config` and the
 | `defaults.yaml` | The operator-tunable defaults: run-up, run-down, merge gap, lookahead. | `defaults.example.yaml` |
 | `space_mapping.yaml` | The room map: buildings, floors, equipment and rooms, and the schedule each one drives. | `space_mapping.example.yaml` |
 | `extra_bookings.yaml` | Bookings that aren't in 25Live — see [Extra bookings](#extra-bookings). | written by the web UI (optional) |
+| `low_temp_events.yaml` | 25Live events marked low temp — see [Low temp](#low-temp). | written by the web UI (optional) |
 | `web.yaml` | The web UI's sign-in, roles (and what each may sync) and branding — see [The web UI](web-ui.md). | written by the web UI |
+| `announcements.yaml` | [Announcements](web-ui.md#announcements) on the home page. | written by the web UI (optional) |
 
 Each example documents every setting it takes. Passwords are **never** in any
 of them — see [Secrets](#secrets).
@@ -25,6 +27,7 @@ of them — see [Secrets](#secrets).
 - [Targets](#targets)
 - [A broken row doesn't cost you the campus](#a-broken-row-doesnt-cost-you-the-campus)
 - [Extra bookings](#extra-bookings)
+- [Low temp](#low-temp)
 
 ## Settings — config.yaml
 
@@ -171,6 +174,8 @@ Each entry carries:
   yet is still managed, and cleared. In the web UI it's **Room map →
   Equipment**, and ticked on each room's form; the desktop editor keeps it
   but doesn't edit it.
+- **`low_temp_target:`** (rooms and equipment) — a schedule the BAS uses to run
+  the zone colder, written only for events [marked low temp](#low-temp).
 - **`campus:`** (buildings) — an optional label. The web UI shows it on every
   room-map list, filters by it and counts rooms per campus; the sync ignores
   it, as 25Live has no campus to match it against.
@@ -257,8 +262,10 @@ Each run treats them like 25Live bookings:
 
 - **A room's** gets the room's run-up and run-down, and keeps its equipment,
   floor and building running too. **A building's or floor's** gets the
-  building's.
-  `exact: true` leaves the run-up and run-down off.
+  building's. `exact: true` leaves the run-up and run-down off.
+- A room's with `low_temp: true` also runs the room's
+  [low-temp schedule](#low-temp). Setting it on the web UI needs *Mark events
+  low temp*.
 - An `end` at or before the `start` runs past midnight; `"24:00"` is midnight
   at the end of the day. Times are in the campus `timezone:`.
 - They're scheduled up to `lookahead_days` ahead, like everything else, and a
@@ -274,3 +281,61 @@ Each run treats them like 25Live bookings:
 `--validate` checks them, and the run report counts them. On the web UI, seeing
 them needs *See everything* and changing them *Edit extra bookings*, which
 Advanced has.
+
+## Low temp
+
+Some events need a room colder than usual — a blood drive, a crowded exam. Mark
+the event **low temp** and the sync also runs the room's *low-temp schedule*
+for it.
+
+**In the BAS**, give the room a schedule of its own for this — a BACnet
+Schedule object, say — and have the zone's program lower its cooling setpoint
+while that schedule is active. How much colder is up to you, and is set there;
+the sync only says when. The sync owns that schedule like any other: it writes
+it active for each booking of a marked event, with the room's run-up and
+run-down, and clears it the rest of the time. See
+[BAS setup](bas-setup.md#a-low-temp-schedule).
+
+**In the room map**, name it as the room's `low_temp_target:`, on the room's
+system:
+
+```yaml
+spaces:
+  - space_id: 3301
+    space_name: "Student Center Ballroom"
+    building: student_center
+    target: "2001:12"
+    low_temp_target: "2001:13"      # runs the ballroom colder
+```
+
+Equipment can have one too: a low-temp booking in any room that lists the
+equipment runs the equipment's `low_temp_target:` as well — for an air handler
+that serves the room, say. The web UI's room and equipment forms have the
+field. A low-temp target must be a schedule of its own: one that is also an
+occupancy schedule is reported as a room-map problem and left out.
+
+**Marking an event** is done on the web UI's **Schedules** pages, which needs
+*Mark events low temp* (Admin, until you give it to a role). A mark covers the
+whole 25Live event: every room it books, every time it meets. Marks are kept
+by 25Live event ID in `low_temp_events.yaml`, beside `config.yaml`
+(`low_temp_file:` in `config.yaml` points elsewhere):
+
+```yaml
+events:
+  - event_id: "48213"
+    name: Red Cross blood drive      # for people; the sync goes by the ID
+    marked_by: Jane Doe
+    marked_at: 2026-09-30 10:12
+```
+
+A change applies at the next sync. A room's extra booking can be low temp too
+(`low_temp: true`).
+
+- A marked event in a room with no low-temp schedule changes nothing there; the
+  run report says so, so the BAS side can be wired up.
+- Low-temp schedules only ever hold a few marked events, so they're left out
+  of the [mass-clear check](safety.md): one ending isn't a sign that 25Live has
+  gone quiet.
+- If `low_temp_events.yaml` can't be read, every low-temp schedule keeps its
+  current schedule that night, the rest of the campus syncs, and the run
+  alerts (exit `2`).

@@ -92,6 +92,8 @@
 #   name          (optional)  label for logs and reports, e.g. "AHU-2"
 #   system        (optional)  defaults to the building's system
 #   target        (required)  the equipment's schedule address
+#   low_temp_target (optional) a schedule that runs it colder, for events
+#                             marked low temp in the rooms it serves
 #
 # ── floors: fields ──
 #   building      (required)  the building id these floors belong to
@@ -113,6 +115,12 @@
 #   target                (optional)  this room's own schedule address. OMIT for
 #                                     a building scheduled per floor or per
 #                                     building — see above.
+#   low_temp_target       (optional)  a schedule the BAS uses to run the room
+#                                     colder. The sync writes it only for events
+#                                     marked low temp (a blood drive, say), with
+#                                     the room's run-up and run-down, and clears
+#                                     it otherwise. It must not be the room's
+#                                     `target:` — see docs/configuration.md.
 #   pre_condition_minutes (optional)  HVAC lead time BEFORE events
 #   post_buffer_minutes   (optional)  hold time AFTER events
 #   merge_gap_minutes     (optional)  collapse this room's back-to-back windows
@@ -214,6 +222,7 @@ spaces:
     building: science_hall
     target: "12100:5"              # VAV 1021-A, its own schedule...
     equipment: [vav_1021b]         # ...and the second VAV, both driven
+    low_temp_target: "12100:7"     # colder, for events marked low temp
     pre_condition_minutes: 45      # large lecture hall — longer warm-up
 
   - space_id: 1235

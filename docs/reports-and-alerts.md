@@ -24,7 +24,9 @@ Every live run builds a **report**:
 ```
 
 Each one is kept in `state/runs/`, and the web UI's **History** shows them,
-with a CSV of every window.
+with a CSV of every window. For one room at a time — its bookings, and what
+was written to each of its schedules — the web UI's
+[Schedules](web-ui.md#whats-scheduled-per-space) pages are easier to read.
 
 Set `alerts.enabled: true` and it also goes out through either or both
 channels below — on the web UI's **Settings → Alerts** page, or in

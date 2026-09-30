@@ -13,6 +13,7 @@ Read-only. Nothing in this module writes to 25Live.
 
 import logging
 import xml.etree.ElementTree as ET
+from dataclasses import replace
 from datetime import datetime, timedelta
 from typing import Optional
 from urllib.parse import urlencode
@@ -427,7 +428,7 @@ class CollegeNetClient:
                 if ev.end <= today:
                     continue
                 if ev.start < today:
-                    ev = RawEvent(ev.event_id, ev.title, ev.space_id, today, ev.end)
+                    ev = replace(ev, start=today)
                 # An event booked in rooms from two different 50-id batches
                 # comes back in both; a repeated reservation id does too.
                 unique.setdefault((ev.event_id, ev.space_id, ev.start, ev.end), ev)
@@ -543,6 +544,8 @@ class CollegeNetClient:
                     space_id=space_id,
                     start=min(native_pre, configured_start),
                     end=max(native_post, configured_end),
+                    booked_start=event_start,
+                    booked_end=event_end,
                 ))
 
         return results

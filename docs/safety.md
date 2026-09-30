@@ -19,7 +19,8 @@ So each run compares itself to the last and refuses to write if:
 
 Both are about *change*, not absolute counts, so a genuinely quiet week still
 has last week's state to compare against, and a first-ever run is allowed
-through. The web UI's **Settings → Safety** page sets both, turns the check
+through. [Low-temp schedules](configuration.md#low-temp) are left out: they
+only ever hold a few marked events, so one ending says nothing about 25Live. The web UI's **Settings → Safety** page sets both, turns the check
 off (after asking), and shows the current baseline.
 
 The comparison state lives in **`state/last_run.json`**. It is kept apart from

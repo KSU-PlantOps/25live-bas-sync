@@ -9,6 +9,9 @@ Occupancy rolls up in three tiers — room -> floor corridor -> building — so 
 single evening booking on the third floor conditions that room and its corridor
 without running the whole tower.
 
+A room with a low-temp schedule (`low_temp_target:`) drives it only with its
+bookings marked low temp; it merges like a roll-up.
+
 Two merges happen, and the distinction matters when tuning:
 
   1. Within a space, using that space's own `merge_gap_minutes` — "don't cycle
@@ -74,6 +77,17 @@ class ScheduleBuilder:
                 # are booked.
                 for dest in sc.rollup_destinations():
                     rollup_windows[dest].extend(windows)
+                # Bookings marked low temp also run the room's low-temp
+                # schedules — its own and its equipment's — for the same
+                # windows, run-up and run-down included.
+                low = [e for e in evs if e.low_temp]
+                if low and sc.low_temp_destinations:
+                    low_windows = self._merge(
+                        sorted((OccupancyWindow(e.start, e.end, [e.event_id]) for e in low),
+                               key=lambda w: w.start),
+                        sc.merge_gap_minutes)
+                    for dest in sc.low_temp_destinations:
+                        rollup_windows[dest].extend(low_windows)
             elif sc.space_type == "building":
                 # A directly-booked common area (e.g. an atrium).
                 rollup_windows[sc.destination].extend(windows)

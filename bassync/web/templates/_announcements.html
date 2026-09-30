@@ -1,0 +1,14 @@
+{# The announcements showing now, on the home page. #}
+{% if announcements or can('announce') %}
+<div class="announcements">
+  {% for a in announcements %}
+    <div class="announcement {{ a.level }}" role="{{ 'alert' if a.level == 'warning' else 'status' }}">
+      <p class="pre">{{ a.message }}</p>
+      <small class="hint">{% if a.added_by %}{{ a.added_by }} · {% endif %}{% if a.ends %}until {{ a.ends.strftime('%a %d %b %H:%M') }}{% else %}since {{ a.starts.strftime('%a %d %b') }}{% endif %}</small>
+    </div>
+  {% endfor %}
+  {% if can('announce') %}
+    <p class="hint announce-link"><a href="{{ url_for('announcements') }}">{{ 'Manage announcements' if announcements else 'Post an announcement' }}</a></p>
+  {% endif %}
+</div>
+{% endif %}

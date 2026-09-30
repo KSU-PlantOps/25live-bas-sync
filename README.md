@@ -27,7 +27,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/dashboard-dark.png">
-  <img alt="The web UI's status page: the last sync, the next scheduled run, the room map, and Sync now (everything, or one system or building), Dry run, Validate, Test alert and Discover spaces" src="docs/images/dashboard-light.png">
+  <img alt="The web UI's status page: an announcement, the last sync, the next scheduled run, the room map, and Sync now (everything, or one system or building), Dry run, Validate, Test alert and Discover spaces" src="docs/images/dashboard-light.png">
 </picture>
 
 This tool pulls confirmed events from **CollegeNET 25Live** and writes them into
@@ -60,6 +60,10 @@ finely as that building actually supports.
 - **Extra bookings** for what isn't in 25Live — an open house, an evening
   shift, a building 25Live doesn't have — one day or every week, on a room, a
   floor or a whole building.
+- **Low temp** for events that need a room colder — a blood drive — marked in
+  the web UI, driving a low-temp schedule the BAS uses to lower the setpoint.
+- **What's scheduled, per space**: each room's bookings and the times written
+  to its schedules, for an events team to check without seeing the rest.
 - **Fails safe.** It refuses to stand the campus down because 25Live had a bad
   day, and a broken row in the room map costs you that row, not the whole run.
 - **Tells you what it did.** An email report lists every schedule and the exact
@@ -152,19 +156,21 @@ four patterns are first-class, and they mix freely in one map:
 ## The web UI
 
 Status and history, *Sync now*, the tools with live output, extra bookings,
-adding rooms from 25Live a building at a time, and editing of rooms,
-buildings, floors, equipment and every setting. Everything is
+what each space is scheduled to do, low-temp events, announcements, adding
+rooms from 25Live a building at a time, and editing of rooms, buildings,
+floors, equipment and every setting. Everything is
 checked by the sync's own validation before it's saved. People sign in with
 **Microsoft Entra ID**, and their groups decide what they can do — out of the
 box:
 
 | Role | Can |
 |---|---|
-| **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
+| **Basic** | See the status page, sync history and what's scheduled for each space; *Sync now* — everything, or one system or building. |
 | **Advanced** | See everything; run the tools; add rooms from 25Live; add and edit rooms, buildings, floors, equipment and extra bookings. |
 | **Admin** | Full control: connection, passwords, alerts, schedule, safety, access, appearance, restarting the service, and *Force*. |
 
-Change what each role may do, add your own, or limit a role to syncing
+Change what each role may do, add your own — an events team that sees only
+what's scheduled and marks events low temp, say — or limit a role to syncing
 particular systems or buildings, on the Access page.
 
 | Room map, with campuses | Each sync's report |

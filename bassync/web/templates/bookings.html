@@ -19,7 +19,7 @@
   <tbody>
   {% for item in upcoming %}
     <tr>
-      <td>{{ item.row.title or 'Extra booking' }}{% if item.row.note %}<br><small class="hint">{{ item.row.note }}</small>{% endif %}</td>
+      <td>{{ item.row.title or 'Extra booking' }}{% if item.row.low_temp %} <span class="badge cold">low temp</span>{% endif %}{% if item.row.note %}<br><small class="hint">{{ item.row.note }}</small>{% endif %}</td>
       <td>{{ item.where or '—' }}</td>
       <td>{% if item.problem and not item.when %}<span class="bad">{{ item.problem }}</span>{% else %}{{ item.when }}
         {% if item.problem %}<br><span class="bad">{{ item.problem }}</span>{% endif %}{% endif %}</td>

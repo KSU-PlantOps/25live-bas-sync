@@ -10,6 +10,9 @@ is saved. It follows the browser's light or dark setting.
 - [Pages](#pages)
 - [The setup guide](#the-setup-guide)
 - [Adding rooms from 25Live](#adding-rooms-from-25live)
+- [What's scheduled, per space](#whats-scheduled-per-space)
+- [Low temp](#low-temp)
+- [Announcements](#announcements)
 - [How it runs things](#how-it-runs-things)
 - [Sign-in and roles](#sign-in-and-roles)
 - [Changing the roles](#changing-the-roles)
@@ -20,15 +23,16 @@ is saved. It follows the browser's light or dark setting.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="images/dashboard-dark.png">
-  <img alt="The status page: last sync, next sync, room map summary, and Sync now with a choice of everything, one system or one building, then the Dry run, Validate, Test alert and Discover buttons" src="images/dashboard-light.png">
+  <img alt="The status page: an announcement of BAS maintenance, then last sync, next sync, room map summary, and Sync now with a choice of everything, one system or one building, then the Dry run, Validate, Test alert and Discover buttons" src="images/dashboard-light.png">
 </picture>
 
 ## Pages
 
 | Page | What it does |
 |---|---|
-| **Status** | Last sync and its result, the next scheduled run, room-map problems, missing passwords, and buttons for *Sync now* (everything, or one system or building; optionally *Force*), *Dry run*, *Validate*, *Test alert* and *Discover spaces*. |
+| **Status** | [Announcements](#announcements); last sync and its result, the next scheduled run, room-map problems, missing passwords, and buttons for *Sync now* (everything, or one system or building; optionally *Force*), *Dry run*, *Validate*, *Test alert* and *Discover spaces*. |
 | **History** | Every live sync with the report it emailed — every schedule and the exact windows written — and a CSV of every window. |
+| **Schedules** → Spaces · Low temp | [What each space is scheduled to do](#whats-scheduled-per-space): its bookings, and the times written to each schedule it drives. Events [marked low temp](#low-temp), and marking them. |
 | **Bookings** | [Extra bookings](configuration.md#extra-bookings): occupancy that isn't in 25Live — one day or every week, on a room, a floor or a whole building; add, edit, copy and delete, and clear out the ones that have ended. |
 | **Jobs** | Every sync and tool, from the schedule or the web, with its full output, live while it runs. A running job can be stopped. |
 | **Room map** → Rooms · Buildings · Floors · Equipment | The room map, with search, a campus filter and sortable columns; add, edit, copy and delete. [Equipment](configuration.md#the-room-map) — an AHU several rooms share, or a room's second VAV — is ticked on each room's form. Renaming a building or equipment repoints what uses it; deleting a building takes its floors and equipment and won't leave rooms driving nothing, and equipment in use can't be deleted. Each building has a *Sync* link, for anyone who may sync it. |
@@ -41,6 +45,7 @@ is saved. It follows the browser's light or dark setting.
 | **Settings** → Files | `config.yaml`, `defaults.yaml`, `space_mapping.yaml` and `extra_bookings.yaml` as text, for anything the forms don't cover; a zip of them all. |
 | **Settings** → Access | The roles, what each may do and what each may sync, signing in with Microsoft Entra ID, and which Entra groups get which role. |
 | **Settings** → Appearance | Your site name, logo and accent colour, and a notice and contact details on the sign-in page and at the foot of every page. |
+| **Settings** → Announcements | [Messages on the home page](#announcements), each shown from a start time to an end time. |
 | **Settings** → Service | The version, and whether a newer release is out; *Restart the service*; what's running — since when, as whom, where the web UI listens, the HTTPS certificate's expiry, and where each file is. |
 | **Logs** | The sync's and the service's logs, and **Activity**: who did what — sign-ins, refused sign-ins, every change and every job. |
 
@@ -124,6 +129,54 @@ BAS by itself. Rooms already in the map are marked *added*; a room with no
 building isn't ticked until you type one. Floors, equipment and rooms' own
 targets are set on the Room map pages afterwards.
 
+## What's scheduled, per space
+
+**Schedules** lists every space in the room map — search it, or filter by
+campus — with its next booking. Pick one to see, as of the last sync:
+
+- its **bookings**, day by day: when each is booked, and when its schedules
+  run for it — the run-up before, the run-down after, joined with any booking
+  close by — with extra bookings marked as such;
+- **what was written** to each schedule the space drives — its own, its
+  equipment's, its floor's, its building's and its low-temp one — and whether
+  the write succeeded. A shared schedule also runs for the other spaces that
+  feed it.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="images/space-schedule-dark.png">
+  <img alt="A space's schedule: its bookings day by day, each with when it's booked, the event, when its schedules run, and a Mark low temp button; a blood drive is marked low temp" src="images/space-schedule-light.png">
+</picture>
+
+It's the page for people who look after rooms rather than the BAS — an events
+team, say. Seeing it needs *See what's scheduled*, which Basic and Advanced
+have and which works on its own: a role with just that lands on Schedules when
+it signs in, and sees nothing else. Every live sync records what it wrote in
+`state/scheduled.json`; a sync limited to some systems or buildings updates
+just their part.
+
+## Low temp
+
+On a space's page, *Mark low temp* marks a 25Live event as needing its rooms
+colder — a blood drive, say — and *Unmark* takes it off. It needs *Mark events
+low temp*, which only Admin has until you give it to a role. The mark covers
+the whole event (every room it books, every time it meets) and applies at the
+next sync, which runs each room's low-temp schedule for it. **Schedules → Low
+temp** lists the marked events, and marks one by its 25Live event ID if it was
+booked since the last sync. A room's extra booking can be low temp too.
+
+The low-temp schedule itself is set up in the BAS and named in the room map —
+see [Low temp](configuration.md#low-temp). A space's page says when it has
+none, since marking an event there changes nothing.
+
+## Announcements
+
+**Settings → Announcements** (or the link on the status page) posts a short
+message on the home page for everyone signed in — "BAS maintenance Saturday
+6–10 AM; syncs may be late" — from a start time until an end time, or until
+it's deleted. An announcement is *information* or a *warning*; warnings show
+first. Posting them needs *Post announcements*, which only Admin has until you
+give it to a role. They're kept in `announcements.yaml`, beside `web.yaml`.
+
 ## How it runs things
 
 Every sync and tool runs as the ordinary `bas-sync` command in a process of its
@@ -143,7 +196,7 @@ Out of the box there are three roles, each including the one before:
 
 | Role | Can |
 |---|---|
-| **Basic** | See the status page and sync history; *Sync now* — everything, or one system or building. |
+| **Basic** | See the status page, sync history and what's scheduled for each space; *Sync now* — everything, or one system or building. |
 | **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), stop a job; add rooms from 25Live; add and edit rooms, buildings, floors, equipment and extra bookings. |
 | **Admin** | Everything: connection, systems and passwords, alerts, defaults, schedule, safety, the files, access and appearance, the activity log, restarting the service — and *Force*, which overrides the mass-clear safety check. |
 
@@ -187,12 +240,15 @@ Advanced and Admin back as they came.
 |---|---|
 | See the basics | See the status page and the sync history. |
 | See everything | See every other page — jobs, the room map, extra bookings, settings and logs — read-only. |
+| See what's scheduled | See the [Schedules](#whats-scheduled-per-space) pages: each space's bookings and the times written. It works on its own, without the status page. |
 | Sync now | Sync everything, or one system or one building — unless the role is [limited](#limiting-what-a-role-may-sync). |
 | Run the tools | Dry run, Validate, Discover and Test alert. |
 | Stop a job | Stop a running sync or tool. |
 | Force | Sync past the mass-clear safety check. |
 | Edit the room map | Add and edit rooms, buildings, floors and equipment, and add rooms found in 25Live (finding them needs *Run the tools*). |
 | Edit extra bookings | Add and edit extra bookings. |
+| Mark events low temp | [Mark a 25Live event low temp](#low-temp), or a room's extra booking, to run its rooms colder. |
+| Post announcements | Post [announcements](#announcements) on the home page. |
 | Edit settings | Change the connection, systems, alerts, schedule, defaults, safety limits and the settings files; use the setup guide (adding its rooms also needs *Edit the room map*, and finding them *Run the tools*). |
 | Set passwords | Set and clear the stored passwords. |
 | See the activity log | See who did what. |
@@ -200,7 +256,10 @@ Advanced and Admin back as they came.
 | Manage access | Change sign-in, roles and appearance — which can grant any capability, so it's for administrators. |
 
 What a capability needs is added when a role is saved: every page past the
-status page needs *See everything*, and *Force* is a kind of sync. A role with
+status page needs *See everything*, and *Force* is a kind of sync. *See what's
+scheduled* needs nothing else, and *Mark events low temp* needs only it — so an
+events team's role can be just those two, and sees only the Schedules pages.
+*Post announcements* needs the status page, where they show. A role with
 *Everything* ticked also gets capabilities that later versions add; Admin has
 it. The built-in roles aren't written to `web.yaml` until they're changed, so
 they keep picking up new capabilities too.

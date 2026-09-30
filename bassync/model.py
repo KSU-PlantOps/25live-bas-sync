@@ -84,6 +84,10 @@ class RawEvent:
     space_id: str
     start: datetime          # effective start (after pre-conditioning run-up)
     end: datetime            # effective end (after post-event run-down)
+    booked_start: Optional[datetime] = None   # the booking itself, before the
+    booked_end: Optional[datetime] = None     # run-up and run-down
+    low_temp: bool = False   # marked low temp: also drives the room's low-temp
+                             # schedules (see SpaceConfig.low_temp_destinations)
 
 
 @dataclass
@@ -113,6 +117,10 @@ class SpaceConfig:
     building_id: Optional[str] = None
     # The room-map building it's in (for a bookable building, itself) — what
     # a sync limited to some buildings (--building) goes by.
+    low_temp_destinations: tuple = ()
+    # Schedules that put this room's zone (its own `low_temp_target:`, and its
+    # equipment's) into a colder mode. Only bookings marked low temp drive
+    # them — a blood drive, say — and the BAS decides what colder means.
 
     # `destination` is optional because how finely a building can be scheduled
     # depends on how it was built out. A room-level VAV retrofit gets its own

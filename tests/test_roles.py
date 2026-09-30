@@ -36,9 +36,12 @@ def _roles(site) -> dict:
 def test_the_built_in_roles_are_the_defaults():
     roles = {r["id"]: r for r in access.clean_roles(None)}
     assert set(roles) == {"basic", "advanced", "admin"}
-    assert access.role_capabilities(roles["basic"]) == {"view_basic", "sync"}
+    assert access.role_capabilities(roles["basic"]) == {"view_basic", "view_schedules", "sync"}
     assert "edit_map" in access.role_capabilities(roles["advanced"])
     assert "edit_settings" not in access.role_capabilities(roles["advanced"])
+    # Low temp and announcements are given out, not built in.
+    for role in ("basic", "advanced"):
+        assert not {"low_temp", "announce"} & access.role_capabilities(roles[role])
     assert access.role_capabilities(roles["admin"]) == access.EVERYTHING
 
 
@@ -65,8 +68,8 @@ def test_several_roles_add_up():
                           {"group": "Ghost", "role": "gone", "note": ""}]
     roles = access.roles_for(["ops", "VIEWERS", "ghost"], settings)
     assert roles == ["basic", "scheduler"]
-    assert access.capabilities_of(roles, settings) == {"view_basic", "sync", "view_all",
-                                                       "edit_bookings"}
+    assert access.capabilities_of(roles, settings) == {"view_basic", "view_schedules", "sync",
+                                                       "view_all", "edit_bookings"}
     assert access.roles_for(["ghost"], settings) == []
 
 
@@ -117,7 +120,8 @@ def test_a_role_that_can_do_nothing_is_refused(site):
     post(c, "/settings/access/roles", {"name:basic": "Basic", "name:advanced": "Advanced",
                                        "cap:advanced": ["edit_map"], "name:admin": "Admin",
                                        "all:admin": "1"})
-    assert _roles(site)["basic"]["capabilities"] == ["view_basic", "sync"]   # unchanged
+    assert _roles(site)["basic"]["capabilities"] == ["view_basic", "view_schedules",
+                                                     "sync"]   # unchanged
 
 
 def test_add_copy_and_delete_a_role(site):
@@ -144,8 +148,8 @@ def test_restoring_the_built_in_roles_keeps_the_others(site):
                                        "cap:scheduler": ["edit_bookings"]})
     post(c, "/settings/access/roles/reset")
     roles = _roles(site)
-    assert roles["basic"]["name"] == "Basic" and roles["basic"]["capabilities"] == ["view_basic",
-                                                                                   "sync"]
+    assert roles["basic"]["name"] == "Basic" and roles["basic"]["capabilities"] == [
+        "view_basic", "view_schedules", "sync"]
     assert roles["scheduler"]["capabilities"] == ["view_basic", "view_all", "edit_bookings"]
 
 
