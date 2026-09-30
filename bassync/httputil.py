@@ -3,7 +3,7 @@
 # Licensed under the GNU General Public License v3.0 or later. See LICENSE.
 """Shared HTTP behaviour for the REST-based clients and drivers."""
 
-from typing import Optional
+from typing import Optional, Union
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -37,3 +37,15 @@ def mount_retries(session: requests.Session, retry: Optional[dict],
     adapter = HTTPAdapter(max_retries=policy)
     session.mount("https://", adapter)
     session.mount("http://", adapter)
+
+
+def tls_verify(cfg: dict) -> Union[bool, str]:
+    """A `verify_tls` setting as requests wants it: True, False or a CA
+    bundle's path. Left out or empty (`verify_tls:` alone is null) means
+    verify — requests would take None or "" as "don't"."""
+    value = cfg.get("verify_tls")
+    if value is None or value == "":
+        return True
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    return value

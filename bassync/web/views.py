@@ -25,7 +25,7 @@ from zoneinfo import available_timezones
 import yaml
 from flask import Response, abort, g, redirect, render_template, request, send_file, url_for
 
-from .. import extras, history, mapedit, safety, secretstore
+from .. import extras, history, lowtemp, mapedit, safety, secretstore
 from .. import updates as updates_mod
 from ..config import DEFAULTS as CONFIG_DEFAULTS
 from ..config import (
@@ -671,6 +671,7 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                     else:
                         audit("followed building '%s' → '%s' in the roles' sync limits",
                               original.get("id"), row.get("id"))
+                _follow_rename_in_bookings(str(original.get("id")), str(row.get("id")))
         audit("saved %s", row_label(kind, row))
         message = f"Saved {row_label(kind, row)}."
         if added:
@@ -1543,14 +1544,18 @@ def register(app) -> None:            # noqa: C901 — one place for every route
     # ── files ────────────────────────────────────────────────────────────────
 
     FILES = {"config": "config.yaml", "defaults": "defaults.yaml",
-             "map": "space_mapping.yaml", "extras": "extra_bookings.yaml"}
-    # Who may change each file: the extra bookings are an operator's, not IT's.
-    FILE_EDITORS = {"extras": "edit_bookings"}
+             "map": "space_mapping.yaml", "extras": "extra_bookings.yaml",
+             "low_temp": "low_temp_events.yaml", "announcements": "announcements.yaml"}
+    # Who may change each file: the extra bookings are an operator's, not IT's;
+    # the low-temp events and announcements whoever may change them elsewhere.
+    FILE_EDITORS = {"extras": "edit_bookings", "low_temp": "low_temp",
+                    "announcements": "announce"}
 
     def _file_path(name: str) -> Path:
         p = files()
         return {"config": p.config, "defaults": p.defaults, "map": p.space_map,
-                "extras": p.extras_file}[name]
+                "extras": p.extras_file, "low_temp": p.low_temp_file,
+                "announcements": p.announcements_file}[name]
 
     @app.route("/files")
     @requires("view_all")
@@ -1627,6 +1632,10 @@ def register(app) -> None:            # noqa: C901 — one place for every route
             tmp_path.write_text(text, encoding="utf-8")
             if name == "extras":
                 return _check_extras(tmp_path)
+            if name == "low_temp":
+                return _check_low_temp(tmp_path)
+            if name == "announcements":
+                return _check_announcements(tmp_path)
             config_path = tmp_path if name == "config" else p.config
             defaults_path = tmp_path if name == "defaults" else p.defaults
             try:
@@ -1657,6 +1666,33 @@ def register(app) -> None:            # noqa: C901 — one place for every route
                 problems.append(f"Booking {index + 1}: {exc}")
             for key in extras.unknown_keys(row):
                 problems.append(f"Booking {index + 1}: unknown key `{key}` — ignored.")
+        return [], problems
+
+    def _check_low_temp(path: Path) -> tuple:
+        try:
+            rows = lowtemp.read(path)
+        except ConfigError as exc:
+            return [f"The sync couldn't read it: {exc}"], []
+        problems = []
+        for index, row in enumerate(rows):
+            if not lowtemp.event_id_of(row):
+                problems.append(f"Entry {index + 1} has no event_id, so it marks nothing.")
+            for key in sorted(k for k in row if k not in lowtemp.KEYS):
+                problems.append(f"Entry {index + 1}: unknown key `{key}` — ignored.")
+        return [], problems
+
+    def _check_announcements(path: Path) -> tuple:
+        from . import announce
+        try:
+            rows = announce.read(path)
+        except ConfigError as exc:
+            return [f"It can't be read: {exc}"], []
+        problems = []
+        for index, row in enumerate(rows):
+            try:
+                announce.parse(row, index)
+            except announce.AnnouncementError as exc:
+                problems.append(f"Announcement {index + 1} won't show: {exc}")
         return [], problems
 
     @app.route("/files/<name>/download")
@@ -1726,6 +1762,26 @@ def register(app) -> None:            # noqa: C901 — one place for every route
 # ─────────────────────────────────────────────────────────────────────────────
 # Helpers the routes share
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _follow_rename_in_bookings(old: str, new: str) -> None:
+    """Extra bookings on a building whose id changed follow it, rather than
+    quietly driving nothing from the next sync. Called under the write lock."""
+    path = files().extras_file
+    try:
+        rows = extras.read(path)
+    except ConfigError as exc:
+        notice(f"Extra bookings on '{old}' still name it: the file can't be read "
+               f"({exc}).", "warn")
+        return
+    moved = extras.rename_building(rows, old, new)
+    if not moved:
+        return
+    try:
+        extras.save(path, rows)
+    except OSError as exc:
+        notice(f"{moved} extra booking(s) still name '{old}': {_write_error(exc)}", "warn")
+        return
+    audit("followed building '%s' → '%s' in %d extra booking(s)", old, new, moved)
 
 def _config_choices(path_t) -> list:
     if path_t[-1] == "verify_tls":

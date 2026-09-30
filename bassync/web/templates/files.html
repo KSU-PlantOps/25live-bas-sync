@@ -2,7 +2,7 @@
 {% block title %}Files{% endblock %}
 {% block body %}
 <h1>Files</h1>
-<p class="hint">The three settings files, as text. Edit them directly for anything the other pages don't cover
+<p class="hint">The settings files, as text. Edit them directly for anything the other pages don't cover
 (alerts, email, safety limits, retries). Saving checks them the way the sync will, and keeps the previous version
 as <code>.bak</code>.</p>
 <table class="list wide">
@@ -17,5 +17,5 @@ as <code>.bak</code>.</p>
   {% endfor %}
   </tbody>
 </table>
-<p><a class="button" href="{{ url_for('files_backup') }}">Download all three (zip)</a></p>
+<p><a class="button" href="{{ url_for('files_backup') }}">Download them all (zip)</a></p>
 {% endblock %}

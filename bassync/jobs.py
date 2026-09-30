@@ -246,36 +246,60 @@ class JobManager:
     # ── internals ────────────────────────────────────────────────────────────
 
     def _pump(self, job: Job) -> None:
+        """Collect a job's output until it exits, then record it and free the
+        slot. Whatever goes wrong here — a full disk, a pipe that breaks —
+        the slot is freed, or no job could ever start again."""
         log_path = self.dir / f"{job.id}.log"
         try:
             log = open(log_path, "a", encoding="utf-8")
         except OSError:
             log = None
         assert job.process is not None and job.process.stdout is not None
+        code = -1
         try:
-            for line in job.process.stdout:
-                line = line.rstrip("\n")
-                if len(job.lines) == job.lines.maxlen:
-                    job.dropped += 1
-                job.lines.append(line)
-                if log is not None:
-                    log.write(line + "\n")
-                    log.flush()
+            try:
+                for line in job.process.stdout:
+                    line = line.rstrip("\n")
+                    if len(job.lines) == job.lines.maxlen:
+                        job.dropped += 1
+                    job.lines.append(line)
+                    if log is not None:
+                        try:
+                            log.write(line + "\n")
+                            log.flush()
+                        except (OSError, ValueError) as exc:
+                            # Kept in memory still; only the saved copy stops.
+                            logging.warning("[jobs] can't save %s's output to %s: %s",
+                                            job.label, log_path, exc)
+                            _close_quietly(log)
+                            log = None
+            except (OSError, ValueError) as exc:
+                logging.warning("[jobs] lost the rest of %s's output: %s", job.label, exc)
+                try:                        # keep the pipe drained so it can finish
+                    job.process.stdout.read()
+                except (OSError, ValueError):
+                    pass
             code = job.process.wait()
         finally:
-            if log is not None:
-                log.close()
+            _close_quietly(log)
+            self._finish(job, code)
+
+    def _finish(self, job: Job, code: int) -> None:
         # Recorded and tidied up under the lock, and only then shown as
         # finished: nothing can start, or see this job done, half-way through.
         with self._lock:
             finished = datetime.now(timezone.utc).isoformat()
-            self._write_meta(job, dict(job.summary(), exit_code=code, finished=finished,
-                                       running=False))
-            self._prune(keep=job.id)
-            self._recent.append(job)
-            job.exit_code = code
-            job.finished = finished
-            self._current = None
+            try:
+                self._write_meta(job, dict(job.summary(), exit_code=code,
+                                           finished=finished, running=False))
+                self._prune(keep=job.id)
+            except Exception:                          # noqa: BLE001 — never wedge
+                logging.exception("[jobs] tidying up after %s failed", job.label)
+            finally:
+                self._recent.append(job)
+                job.exit_code = code
+                job.finished = finished
+                self._current = None
         logging.info("[jobs] %s finished with exit code %d", job.label, code)
 
     def _write_meta(self, job: Job, summary: Optional[dict] = None) -> None:
@@ -304,12 +328,13 @@ class JobManager:
             return
         records.sort()
         kept = {path.stem for _mtime, _name, path in records[-KEEP_JOBS:]} | {keep}
-        for _mtime, _name, path in records:
-            if path.stem not in kept:
+        doomed = [path for _mtime, _name, path in records if path.stem not in kept]
+        doomed += [path for path in logs if path.stem not in kept]  # output whose record is gone
+        for path in doomed:
+            try:
                 path.unlink(missing_ok=True)
-        for path in logs:                      # and output whose record is gone
-            if path.stem not in kept:
-                path.unlink(missing_ok=True)
+            except OSError as exc:
+                logging.debug("[jobs] could not remove %s: %s", path, exc)
 
     def _recover_interrupted(self) -> None:
         """A job still marked running from before a restart didn't finish."""
@@ -327,6 +352,15 @@ class JobManager:
                     path.write_text(json.dumps(meta), encoding="utf-8")
                 except OSError:
                     pass
+
+
+def _close_quietly(fh) -> None:
+    """Close a file if there is one, ignoring a failure to flush it."""
+    if fh is not None:
+        try:
+            fh.close()
+        except (OSError, ValueError):
+            pass
 
 
 def _read_json(path: Path) -> Optional[dict]:

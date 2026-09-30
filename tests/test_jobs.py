@@ -155,3 +155,42 @@ def test_a_job_is_only_shown_finished_once_it_is_recorded_and_tidied(tmp_path, m
 def test_get_refuses_ids_that_are_not_job_ids(tmp_path):
     jm = manager(tmp_path)
     assert jm.get("../../etc/passwd") is None and jm.get("") is None
+
+
+def test_a_log_that_cannot_be_written_still_frees_the_slot(tmp_path, monkeypatch):
+    """Regression: a full disk while saving a job's output killed the thread
+    collecting it, so the job never finished and no job could start again."""
+    class Broken:
+        def write(self, text):
+            raise OSError(28, "No space left on device")
+
+        def flush(self):
+            pass
+
+        def close(self):
+            raise OSError(28, "No space left on device")
+
+    real_open = open
+
+    def fake_open(path, *args, **kwargs):
+        if str(path).endswith(".log"):
+            return Broken()
+        return real_open(path, *args, **kwargs)
+    monkeypatch.setattr("builtins.open", fake_open)
+    jm = manager(tmp_path)
+    job = jm.start("dry-run", ["--lines", "5"])
+    wait(job)
+    assert job.exit_code == 0 and jm.current is None
+    assert "line 4" in list(job.lines)
+    jm.start("validate")                         # the slot is free again
+
+
+def test_tidying_up_that_fails_still_frees_the_slot(tmp_path, monkeypatch):
+    jm = manager(tmp_path)
+
+    def boom(keep=""):
+        raise RuntimeError("tidying failed")
+    monkeypatch.setattr(jm, "_prune", boom)
+    job = jm.start("dry-run")
+    wait(job)
+    assert jm.current is None and job.exit_code == 0

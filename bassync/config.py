@@ -478,6 +478,34 @@ def _as_bool(section: dict, key: str, where: str, errors: list) -> None:
     errors.append(f"{where}{key} must be true or false, got {value!r}.")
 
 
+def _as_verify(section: dict, key: str, where: str, errors: list,
+               warnings: list) -> None:
+    """TLS verification: true, false, or the path of a CA bundle. A quoted
+    "true" / "false" is taken as meant, rather than as a file name, and a
+    blank one as not set — verifying — where it used to turn checking off."""
+    value = section.get(key)
+    if isinstance(value, bool):
+        return
+    if value is None:
+        section.pop(key, None)             # `verify_tls:` alone: not set
+        return
+    if isinstance(value, str):
+        text = value.strip()
+        if text.lower() in ("true", "yes", "1", "false", "no", "0"):
+            section[key] = text.lower() in ("true", "yes", "1")
+            return
+        if not text:
+            section.pop(key)
+            warnings.append(f"{where}{key} is blank, so TLS certificates are verified "
+                            "(the default). Set it to false to turn that off, or to "
+                            "a CA bundle's path.")
+            return
+        section[key] = text
+        return
+    errors.append(f"{where}{key} must be true, false, or the path of a CA bundle, "
+                  f"got {value!r}.")
+
+
 def _as_choice(section: dict, key: str, where: str, errors: list,
                choices: tuple) -> None:
     value = section.get(key)
@@ -598,6 +626,7 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
     _int_list(cn, "include_states", w, errors)
     _int_list(cn, "exclude_reservation_states", w, errors)
     _as_choice(cn, "state_param_style", w, errors, STATE_PARAM_STYLES)
+    _as_verify(cn, "verify_tls", w, errors, warnings)
 
     retry = cfg["retry"]
     _as_int(retry, "attempts", "retry.", errors, minimum=0, maximum=20)
@@ -662,6 +691,8 @@ def validate_config(cfg: dict, warnings: Optional[list] = None) -> list:
             continue
         if sys_cfg.get("timezone") not in (None, ""):
             check_timezone(sys_cfg.get("timezone"), where, errors)
+        if "verify_tls" in cls.config_keys:
+            _as_verify(sys_cfg, "verify_tls", where, errors, warnings)
         if getattr(cls, "deprecated", ""):
             warnings.append(f"{where[:-1]}: the {cls.name} driver is deprecated — "
                             f"{cls.deprecated}")

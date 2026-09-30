@@ -114,3 +114,43 @@ def test_niagara_tls_failure_says_how_to_fix_it():
     writer.session.get = refuse
     ok, detail = writer.health_check()
     assert not ok and "verify_tls" in detail, detail
+
+
+def test_rest_local_placeholders_are_in_the_systems_own_timezone():
+    """{start_local}, {date} and the times are wall-clock time where the BAS
+    is: a system with its own `timezone:` used to get the campus's."""
+    from zoneinfo import ZoneInfo
+
+    from bassync.drivers.rest import _window_context
+    win = OccupancyWindow(dt(23, day=10), dt(23, 30, day=10))   # 23:00 EDT = 03:00 UTC
+    ctx = _window_context(win, 0, 1, ZoneInfo("UTC"))
+    assert ctx["start_local"] == "2026-06-11T03:00:00"
+    assert ctx["date"] == "2026-06-11" and ctx["start_time"] == "03:00:00"
+    assert ctx["start"] == win.start.isoformat()                 # with its offset, unchanged
+    same = _window_context(win, 0, 1, TZ)
+    assert same["start_local"] == "2026-06-10T23:00:00"
+
+
+def test_rest_target_check_logs_in_first():
+    """A bearer-token API was asked whether a schedule exists before the
+    driver had its token."""
+    from bassync.drivers.rest import RestScheduleWriter
+    writer = RestScheduleWriter("ebo", {
+        "base_url": "https://ebo.example.edu",
+        "auth": {"mode": "bearer", "login_path": "/login", "token_field": "token"},
+        "exists": {"method": "GET", "path": "/api/sched/{target}"},
+        "write": {"method": "POST", "path": "/api/sched/{target}", "payload": {}},
+    }, TZ)
+    order = []
+
+    class Resp:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"token": "t0k"}
+    writer.session.post = lambda url, json=None, timeout=None: order.append("login") or Resp()
+    writer.session.request = lambda method, url, json=None, timeout=None, **kw: (
+        order.append(method) or Resp())
+    ok, _detail = writer.target_exists("A/Occ")
+    assert ok and order[0] == "login", order

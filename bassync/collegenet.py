@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 import requests
 from dateutil import parser as dateparser
 
-from .httputil import mount_retries
+from .httputil import mount_retries, tls_verify
 from .model import RawEvent
 
 # Events returned per API page.
@@ -66,6 +66,14 @@ class CollegeNetClient:
         self.session = requests.Session()
         self.session.auth = (cfg.get("username", ""), cfg.get("password", ""))
         self.session.headers.update({"Accept": "application/xml"})
+        # A self-hosted Series25 behind a private CA: point verify_tls at its
+        # CA bundle. `false` still works, loudly.
+        self.session.verify = tls_verify(cfg)
+        if self.session.verify is False:
+            logging.warning("25Live: TLS verification is DISABLED (collegenet.verify_tls: "
+                            "false). Set it to your CA bundle instead.")
+            import urllib3
+            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
         mount_retries(self.session, retry, allowed_methods=["GET"])
 
     def close(self) -> None:
@@ -331,21 +339,24 @@ class CollegeNetClient:
 
     # ── paging ───────────────────────────────────────────────────────────────
 
-    def _page_ids(self, root: ET.Element, endpoint: str) -> set:
-        """What one page holds, as ids: its events for events.xml, its
-        spaces for spaces.xml. Spaces are the top-level <space> entries, so
-        related spaces nested inside one (a divisible room's parts) don't
-        make a full page look over-full; with an unexpected layout, every
-        distinct space id counts, so it can't read as a short, final page."""
+    def _page_items(self, root: ET.Element, endpoint: str) -> tuple:
+        """(how many entries one page holds, their ids): its events for
+        events.xml, its spaces for spaces.xml. The count, not the ids, says
+        whether the page was full — an event listed twice on one page must
+        not make it look short, and final. Spaces are the top-level <space>
+        entries, so related spaces nested inside one (a divisible room's
+        parts) don't make a full page look over-full; with an unexpected
+        layout, every distinct space id counts."""
         if endpoint == "events.xml":
             events = root.findall("r25:event", R25_NS)
-            return {ev.findtext("r25:event_id", "", R25_NS) or f"#{i}"
-                    for i, ev in enumerate(events)}
+            return len(events), {ev.findtext("r25:event_id", "", R25_NS) or f"#{i}"
+                                 for i, ev in enumerate(events)}
         top = root.findall("r25:space", R25_NS)
         if top:
-            return {self._child_text(sp, "space_id") or f"#{i}" for i, sp in enumerate(top)}
-        return {sid for elem in root.iter()
-                if (sid := self._child_text(elem, "space_id"))}
+            return len(top), {self._child_text(sp, "space_id") or f"#{i}"
+                              for i, sp in enumerate(top)}
+        ids = {sid for elem in root.iter() if (sid := self._child_text(elem, "space_id"))}
+        return len(ids), ids
 
     def _pages(self, extra_params: dict, start: Optional[datetime],
                end: Optional[datetime], context: str, endpoint: str = "events.xml"):
@@ -379,7 +390,7 @@ class CollegeNetClient:
                                     timeout=HTTP_TIMEOUT_FETCH)
             resp.raise_for_status()
             root = self._parse_xml(resp.text, context)
-            ids = self._page_ids(root, endpoint)
+            count, ids = self._page_items(root, endpoint)
             if offset and ids and not (ids - seen_ids):
                 raise CollegeNetError(
                     f"25Live returned the same {len(ids)} {what}(s) for page "
@@ -394,11 +405,11 @@ class CollegeNetClient:
             # total-count element: if a response omits it, or names it
             # differently across API versions, stopping early would silently
             # drop every event past the first page.
-            if len(ids) != PAGE_SIZE:
-                if len(ids) > PAGE_SIZE:
+            if count != PAGE_SIZE:
+                if count > PAGE_SIZE:
                     logging.debug("25Live ignored page_size (%d %ss in one "
                                   "page); treating it as the full result.",
-                                  len(ids), what)
+                                  count, what)
                 return
             offset += PAGE_SIZE
         logging.warning("Reached MAX_PAGES (%d) while %s; results may be "

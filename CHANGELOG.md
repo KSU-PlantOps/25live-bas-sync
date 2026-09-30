@@ -35,6 +35,40 @@ semantic versioning from 1.0 onward.
   events low temp and posting announcements are Admin's until given to a role.
 - 25Live bookings keep their booked times alongside the run-up and run-down,
   for the Schedules pages.
+- The Files page also has `low_temp_events.yaml` and `announcements.yaml`,
+  each checked the way it's read before saving and editable by whoever may
+  change it elsewhere, and both are in the settings zip.
+- Renaming a building on its Room map form moves the extra bookings on it and
+  its floors to the new id; they used to keep the old one and drive nothing.
+- `--validate` reads the low-temp events file, and with `--system` checks
+  only that system (it used to check every one).
+- The desktop editor's room form has the low-temp target.
+- The import page's building guesses take linear time: 3,000 spaces without
+  room numbers took about ten seconds on every load, now a twentieth of one.
+- Run history keeps each run's summary while its file is unchanged, so the
+  status page no longer re-reads the latest full report every few seconds.
+
+### Fixed
+- A 25Live page holding one event twice was taken for the last page, so every
+  event after it was dropped. Paging now counts entries, not distinct ids.
+- `collegenet.verify_tls` was accepted but ignored; it now reaches the 25Live
+  connection, for a self-hosted Series25 behind your own CA. Every
+  `verify_tls` is checked: true, false (quoted or not), or a CA bundle's path.
+  A blank or empty one (`verify_tls:` alone), which requests took as "don't
+  check", now means the default: verifying.
+- The job runner could stop for good: a full disk while saving a job's output
+  killed the thread collecting it, so the job never finished and no sync could
+  start again until a restart. The slot is now always freed.
+- The `rest` driver's `{start_local}`, `{date}` and time placeholders are in
+  the system's own `timezone:` when it has one, not the campus's; and it logs
+  in before checking a schedule exists.
+- A schedule held back because the low-temp events file can't be read says
+  so, instead of blaming a broken room-map row or extra booking.
+- *Delete ended* on Extra bookings and Announcements reports a file it can't
+  save instead of failing with an error page; a conflicting change shows the
+  site's own error page.
+- A history record that failed to save no longer leaves a temporary file
+  behind.
 
 ## [1.4.0] — 2026-09-28 — Rooms from 25Live, equipment, and a building at a time
 

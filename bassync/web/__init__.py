@@ -362,6 +362,8 @@ def create_app(service, settings: dict) -> Flask:
     @app.errorhandler(400)
     @app.errorhandler(403)
     @app.errorhandler(404)
+    @app.errorhandler(405)
+    @app.errorhandler(409)
     @app.errorhandler(413)
     def _error(exc):
         return render_template("error.html", error=exc), exc.code

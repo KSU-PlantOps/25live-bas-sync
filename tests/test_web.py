@@ -412,3 +412,82 @@ def test_campus_is_kept_shown_and_filterable(client, site):
     assert 'data-campus="Kennesaw"' in rooms and "All campuses" in rooms
     assert '<option value="Kennesaw">' in client.get("/map/buildings/new").text
     assert "Kennesaw: 2 rooms" in client.get("/").text
+
+
+# ── review fixes ─────────────────────────────────────────────────────────────
+
+def test_renaming_a_building_moves_its_extra_bookings(client, site):
+    """They used to keep the old id, and from the next sync drive nothing."""
+    from bassync import extras
+    extras.save(site.paths.extras_file, [
+        {"title": "Open house", "building": "SCI", "date": "2030-01-05",
+         "start": "09:00", "end": "12:00"},
+        {"title": "Lab night", "building": "SCI", "floor": 1, "days": ["mon"],
+         "start": "18:00", "end": "21:00"},
+        {"title": "Recital", "building": "ART", "date": "2030-01-05",
+         "start": "19:00", "end": "21:00"},
+        {"title": "Lab session", "space_id": 101, "date": "2030-01-05",
+         "start": "09:00", "end": "10:00"}])
+    v = version(client, "/map/buildings/0/edit")
+    post(client, "/map/buildings/save", {"version": v, "index": "0", "id": "SCIENCE",
+                                         "target": "12001:5"})
+    rows = extras.read(site.paths.extras_file)
+    assert [r.get("building") for r in rows] == ["SCIENCE", "SCIENCE", "ART", None]
+
+
+def test_the_low_temp_and_announcements_files_are_on_the_files_page(client, site):
+    import io
+    import zipfile
+    page = client.get("/files").text
+    assert "low_temp_events.yaml" in page and "announcements.yaml" in page
+    v = version(client, "/files/low_temp")
+    r = post(client, "/files/low_temp", {"version": v, "text": "events: {a: 1}\n"})
+    assert r.status_code == 422 and "must be a list" in r.text
+    r = post(client, "/files/low_temp", {"version": v, "text": "events:\n  - name: x\n"})
+    assert r.status_code == 422 and "no event_id" in r.text          # asked to confirm
+    r = post(client, "/files/low_temp",
+             {"version": v, "text": "events:\n  - event_id: '48213'\n"})
+    assert r.status_code == 302 and site.paths.low_temp_file.exists()
+    v = version(client, "/files/announcements")
+    r = post(client, "/files/announcements",
+             {"version": v, "text": "announcements:\n  - message: hi\n"})
+    assert r.status_code == 422 and "give it a start time" in r.text
+    r = client.get("/files/backup.zip")
+    assert "low_temp_events.yaml" in zipfile.ZipFile(io.BytesIO(r.data)).namelist()
+
+
+def test_a_conflict_gets_the_sites_own_error_page(client, site):
+    site.paths.extras_file.write_text("bookings: [unclosed", encoding="utf-8")
+    r = client.get("/bookings/0/edit")
+    assert r.status_code == 409 and "Back to the status page" in r.text
+
+
+def test_delete_ended_says_so_when_it_cannot_save(client, site, monkeypatch):
+    from bassync import extras
+    extras.save(site.paths.extras_file, [
+        {"title": "Past", "building": "SCI", "date": "2020-01-05",
+         "start": "09:00", "end": "12:00"}])
+    v = version(client, "/bookings")
+
+    def full(*_a, **_kw):
+        raise OSError(28, "No space left on device")
+    monkeypatch.setattr(extras, "save", full)
+    r = post(client, "/bookings/delete-ended", {"version": v}, follow_redirects=True)
+    assert r.status_code == 200 and "No space left" in r.text
+
+
+def test_run_history_is_read_once_per_change(site, monkeypatch):
+    """The status page asks for the latest run every few seconds; its record
+    carries the whole rendered report, so it's only parsed when it changes."""
+    report = RunReport("SYNC", "t", TZ)
+    report.finish(0, "ok")
+    directory = site.paths.runs_dir
+    history.save_report(report, directory)
+    reads = []
+    real = history._read
+    monkeypatch.setattr(history, "_read", lambda path: reads.append(path) or real(path))
+    first = history.list_runs(directory)
+    again = history.list_runs(directory)
+    assert first == again and len(first) == 1 and len(reads) == 1
+    history.save_report(report, directory)
+    assert len(history.list_runs(directory)) == 2 and len(reads) == 2
