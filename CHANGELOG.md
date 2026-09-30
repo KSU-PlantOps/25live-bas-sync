@@ -4,7 +4,16 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.5.0] — 2026-09-30 — Low temp, what's scheduled, and announcements
+
+A room can run colder for the events that need it: mark a 25Live event low
+temp — a blood drive, say — and the sync drives the room's low-temp schedule
+for each of its bookings. An events team can see what's scheduled for every
+space, and nothing else, and announcements can be posted on the home page for
+a set time. A full review also fixes a 25Live paging bug that could drop
+events, a job runner that could stop for good on a full disk, and
+`collegenet.verify_tls`, which was ignored. Nothing in your files needs to
+change; read *From 1.4* in `docs/upgrading.md` for what behaves differently.
 
 ### Added
 - **Low temp.** A room, or a piece of equipment, can name a

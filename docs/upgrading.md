@@ -17,7 +17,7 @@ changes are in [CHANGELOG.md](../CHANGELOG.md).
 ## From 1.4
 
 Nothing to edit, and nothing the sync writes changes until you add a
-`low_temp_target:` to the room map. In the web UI:
+`low_temp_target:` to the room map. Three things behave differently:
 
 1. **The built-in Basic and Advanced roles can see the new Schedules pages**
    (*See what's scheduled*). If you've changed a role on the Access page, it's
@@ -25,6 +25,13 @@ Nothing to edit, and nothing the sync writes changes until you add a
    for it if you want it to.
 2. **Marking events low temp and posting announcements are Admin's** until you
    give them to a role on the Access page.
+3. **An empty `verify_tls` now verifies TLS.** A `verify_tls:` with nothing
+   after it, or `verify_tls: ""`, on a `rest` or `niagara` system used to turn
+   certificate checking off without saying so. It now means the default, and
+   checks. If that system's certificate isn't trusted, its writes fail with a
+   TLS error until you set `verify_tls` to its CA bundle's path, or to
+   `false`. `--validate` shows it before a live run does.
+   `collegenet.verify_tls`, which used to be ignored, now applies to 25Live.
 
 ## From 1.3
 

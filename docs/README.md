@@ -15,7 +15,7 @@
 
 | Page | What's in it |
 |---|---|
-| [**25Live setup**](25live.md) | The service account, the instance, the `state` parameter, and finding your rooms. |
+| [**25Live setup**](25live.md) | The service account, the instance (and a self-hosted one's certificate), the `state` parameter, and finding your rooms. |
 | [**BAS setup, by vendor**](bas-setup.md) | Automated Logic WebCTRL, Schneider EcoStruxure, Tridium Niagara, and any other BTL-listed controller. |
 | [**Networking**](networking.md) | BACnet/IP addresses, BBMDs and foreign-device registration, and running in a datacenter or the cloud. |
 

@@ -28,7 +28,8 @@ python main.py --force          # override the mass-clear safety check
 ```
 
 - **`--validate`** is the deployment-confidence command, and writes nothing. It
-  checks that the room map loads and 25Live authenticates. It checks that
+  checks that the room map, the extra bookings and the low-temp events load,
+  and that 25Live authenticates. It checks that
   25Live **actually returns bookings** for your rooms — and if it returns none,
   tries each `state_param_style` and names any that work. It checks that every
   BAS is reachable and **every schedule target resolves**, reporting each
@@ -161,10 +162,14 @@ both use the same checks:
 
 - **Rooms** tab — Add/Edit/Delete rooms. **Building**, **Floor** and **System**
   are dropdowns, so joining a roll-up or moving a room to another BAS is a pick
-  from a list rather than something to remember. The Target is checked against
-  the chosen system's driver when you confirm the row.
+  from a list rather than something to remember. The Target, and the optional
+  Low-temp target, are checked against the chosen system's driver when you
+  confirm the row. A room's equipment is ticked in the web UI; the editor keeps
+  it.
 - **Buildings** tab — manage roll-up schedules and each building's campus;
-  renaming a building id repoints the rooms and floors that referenced it.
+  renaming a building id repoints the rooms and floors that referenced it (the
+  web UI's Room map also moves the extra bookings on it; here, edit
+  `extra_bookings.yaml` to match).
   Deleting one removes its floors too, and won't proceed while rooms roll up
   *only* into it.
 - **Floors** tab — per-floor corridor schedules (building + floor # + target).
