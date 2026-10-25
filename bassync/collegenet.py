@@ -206,7 +206,7 @@ class CollegeNetClient:
                            f"SSO) or a proxy error page. First 150 chars: {snippet!r}")
         return True, f"HTTP {r.status_code} from {self.base_url}/events.xml"
 
-    def probe_state_styles(self, space_map) -> dict:
+    def probe_state_styles(self, space_map, now: Optional[datetime] = None) -> dict:
         """
         {style: assignments returned} for every `state` encoding, for
         --validate to suggest a working one when the configured style returns
@@ -227,7 +227,7 @@ class CollegeNetClient:
                 sent[key] = style
                 self.state_param_style = style
                 try:
-                    results[style] = len(self.fetch_events(space_map))
+                    results[style] = len(self.fetch_events(space_map, now=now))
                 except (requests.RequestException, CollegeNetError) as exc:
                     results[style] = f"error: {exc}"
         finally:

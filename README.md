@@ -12,7 +12,7 @@
   <a href="https://github.com/KSU-PlantOps/25live-bas-sync/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/KSU-PlantOps/25live-bas-sync/actions/workflows/ci.yml/badge.svg?branch=main"></a>
   <a href="https://github.com/KSU-PlantOps/25live-bas-sync/releases"><img alt="Latest release" src="https://img.shields.io/github/v/release/KSU-PlantOps/25live-bas-sync?include_prereleases&label=release"></a>
   <a href="https://github.com/KSU-PlantOps/25live-bas-sync/pkgs/container/25live-bas-sync"><img alt="Docker image on GHCR" src="https://img.shields.io/badge/docker-ghcr.io-2496ED?logo=docker&logoColor=white"></a>
-  <img alt="Python 3.13 | 3.14" src="https://img.shields.io/badge/python-3.13%20%7C%203.14-3776AB?logo=python&logoColor=white">
+  <img alt="Python 3.13 | 3.14 | 3.15" src="https://img.shields.io/badge/python-3.13%20%7C%203.14%20%7C%203.15-3776AB?logo=python&logoColor=white">
   <a href="LICENSE"><img alt="License: GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-blue"></a>
 </p>
 

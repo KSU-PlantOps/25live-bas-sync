@@ -31,8 +31,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # 3.13 is the supported floor; 3.14 is what we recommend running.
-        python-version: ["3.13", "3.14"]
+        # 3.13 is the supported floor; 3.14 is what we recommend running; 3.15
+        # is the newest, tested ahead of moving the Docker image to it.
+        python-version: ["3.13", "3.14", "3.15"]
         # The BACnet driver is an optional extra. Run the suite both with and
         # without BACpypes3 installed, so neither the lazy import nor the
         # "skipped" path silently rots. With it installed, the simulated-

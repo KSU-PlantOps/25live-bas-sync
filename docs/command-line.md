@@ -124,7 +124,7 @@ either way, the config files are looked for in the current directory, or in
 
 Then create the settings files — see [Configuration](configuration.md).
 
-CI tests 3.13 and 3.14, each with and without BACpypes3.
+CI tests 3.13, 3.14 and 3.15, each with and without BACpypes3.
 
 > [!NOTE]
 > **Windows:** `requirements.txt` includes `tzdata` on purpose — Windows has no
