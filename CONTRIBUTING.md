@@ -30,7 +30,7 @@ issues or PRs.
 git clone https://github.com/KSU-PlantOps/25live-bas-sync.git
 cd 25live-bas-sync
 python3.14 -m venv .venv && . .venv/bin/activate   # (.venv\Scripts\activate on Windows)
-# Python 3.13+ required, 3.14 recommended; CI tests both.
+# Python 3.13+ required, 3.14 recommended; CI tests 3.13 to 3.15.
 pip install -r requirements.txt -r requirements-dev.txt -c constraints.txt
 pip install -r requirements-bacnet.txt -c constraints.txt   # the bacnet driver
 pip install -r requirements-web.txt -c constraints.txt      # the web UI / service
@@ -95,7 +95,7 @@ covers:
 With BACpypes3 installed it also runs the **BACnet driver against simulated
 controllers** over real BACnet/IP on loopback. Those tests cover value types,
 stale-pin refusal, error handling, offline devices, foreign exceptions and the
-heartbeat. CI runs everything on Python 3.13 and 3.14, with and without
+heartbeat. CI runs everything on Python 3.13, 3.14 and 3.15, with and without
 BACpypes3, and also runs ruff, mypy, shellcheck, pip-audit, a package install
 and a Docker build that starts the service and checks its web UI and health
 check.

@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [1.5.1] — 2026-10-25 — Dependency updates
+
+Every dependency updated to its newest release, and tested on Python 3.15.
+Nothing in your files needs to change.
+
+### Changed
+- **python-dateutil 3.0.** The sync only uses its date parser, which 3.0
+  leaves as it was; its time zone changes don't reach the sync, which uses the
+  standard library's `zoneinfo`. `requirements.txt` and the package now allow
+  `python-dateutil` up to, but not including, 4.
+- The pinned versions in `constraints.txt`, which the Docker image is built
+  with: certifi 2026.10.23, more-itertools 11.2.1 and python-dateutil 3.0.0.
+  `pip-audit` finds no known vulnerabilities in them.
+- CI also tests Python 3.15, with and without BACpypes3, and the package lists
+  it as supported. The Docker image stays on Python 3.14, the recommended
+  version, until PyYAML publishes wheels for 3.15.
+- The release workflow logs in to GHCR with `docker/login-action` v4; ruff
+  0.17 is the lint floor.
+
+### Fixed
+- A test of `--validate`'s `state_param_style` suggestion queried 25Live from
+  the real date instead of the test's own, so it started failing once its
+  fixed booking date had passed.
+
 ## [1.5.0] — 2026-09-30 — Low temp, what's scheduled, and announcements
 
 A room can run colder for the events that need it: mark a 25Live event low

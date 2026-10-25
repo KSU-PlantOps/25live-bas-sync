@@ -279,7 +279,7 @@ def test_probe_reports_which_state_style_returns_events():
     def respond(p):
         return doc if p.get("state") == "2,4" else _doc([])
     c = _client(respond, include_states=[2, 4])
-    counts = c.probe_state_styles(_spaces(1))
+    counts = c.probe_state_styles(_spaces(1), now=NOW)
     assert counts["comma"] == 1 and counts["plus"] == 0 and counts["space"] == 0
     assert c.state_param_style == "plus"               # restored afterwards
 
