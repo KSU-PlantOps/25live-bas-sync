@@ -1451,6 +1451,10 @@ def register(app) -> None:            # noqa: C901 — one place for every route
         changed = []
         for role in conf["roles"]:
             rid = role["id"]
+            if f"name:{rid}" not in form:
+                # Not on the page that was saved (added since it was drawn,
+                # say): leave it as it is rather than take everything away.
+                continue
             before = (role["name"], role["capabilities"], role.get("sync_only"))
             name = (form.get(f"name:{rid}") or "").strip()[:40]
             if name:

@@ -4,7 +4,7 @@
 """
 Roles, what each may do, and the web UI's access settings.
 
-A role is a name and a set of capabilities (CAPABILITY_LIST). Three come
+A role is a name and a set of capabilities (CAPABILITY_LIST). Four come
 built in, and are what a site gets until it changes them on the Access page:
 
     basic     the status page and sync history; what's scheduled for each
@@ -14,6 +14,9 @@ built in, and are what a site gets until it changes them on the Access page:
               buildings, floors, equipment and extra bookings, and adding
               rooms from 25Live
     admin     everything, including capabilities added in later versions
+    ai        for API tokens given to an AI assistant (tokens.py): what the
+              API shows, Dry run and Validate, extra bookings and low temp —
+              not Sync now until someone adds it
 
 Marking events low temp and posting announcements are Admin's until a role is
 given them. "What's scheduled" works on its own, without the status page — an
@@ -83,6 +86,12 @@ DEFAULT_ROLES = (
                       "stop_job", "edit_map", "edit_bookings"]},
     # "all" also grants capabilities added by later versions.
     {"id": "admin", "name": "Admin", "capabilities": "all"},
+    # For API tokens (tokens.py) given to an AI assistant: read everything the
+    # API shows, Dry run and Validate, extra bookings and low temp. Not Sync
+    # now — add it here once you trust what it does with the rest.
+    {"id": "ai", "name": "AI assistant",
+     "capabilities": ["view_basic", "view_all", "view_schedules", "run_tools",
+                      "edit_bookings", "low_temp"]},
 )
 EVERYTHING = frozenset(ALL_CAPABILITIES)
 _ROLE_ID = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}$")
@@ -126,7 +135,7 @@ def default_roles() -> list:
 
 def clean_roles(data) -> list:
     """The roles section, checked: unique ids, a name each, known capabilities
-    (plus what they need). Missing or unusable, it's the built-in three."""
+    (plus what they need). Missing or unusable, it's the built-in ones."""
     if not isinstance(data, list):
         return default_roles()
     out: list = []

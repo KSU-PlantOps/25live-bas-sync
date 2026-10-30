@@ -26,6 +26,7 @@
 | [**Reports and alerts**](reports-and-alerts.md) | The run report, email, Slack/Teams webhooks, and the dead-man's switch. |
 | [**Safety rails**](safety.md) | Why a run refuses to stand the campus down, and when to `--force`. |
 | [**The command line**](command-line.md) | Every command and exit code, including syncing one system or building; running without Docker from Task Scheduler or cron; the desktop editor. |
+| [**The API and AI assistants**](api.md) | API tokens, the JSON API, and the MCP server that gives an AI assistant read access and a few safe changes. |
 | [**Upgrading**](upgrading.md) | What each release asks of you. |
 
 ### Elsewhere

@@ -6,6 +6,7 @@ Read the section for the version you're coming from, and each one after it.
 Run `--validate` and `--dry-run` after upgrading, as always. Every release's
 changes are in [CHANGELOG.md](../CHANGELOG.md).
 
+- [From 1.5](#from-15)
 - [From 1.4](#from-14)
 - [From 1.3](#from-13)
 - [From 1.3.0rc1](#from-130rc1)
@@ -13,6 +14,21 @@ changes are in [CHANGELOG.md](../CHANGELOG.md).
 - [From 1.1](#from-11)
 - [Moving off the niagara driver](#moving-off-the-niagara-driver)
 - [From a pre-1.0 release](#from-a-pre-10-release)
+
+## From 1.5
+
+Nothing to edit. Two things to know:
+
+1. **The new AI assistant role, for [API tokens](api.md), appears only if
+   your roles are the built-in ones.** If you've changed a role on the Access
+   page, the roles are saved in `web.yaml` and don't pick it up: add a role
+   for tokens on the Access page, or *Restore the built-in roles* (which keeps
+   your own). Tokens live in `state/api_tokens.json`, in the state volume,
+   so back that up with the rest of `state/`.
+2. **A routed pin with a MAC longer than one byte is now kept in hex**
+   (`3001:0x0012ab34cd56`). Such a pin used to fail at every write; one
+   written in decimal over 255 is now refused by `--validate`, with the
+   spelling to use. One-byte MS/TP pins (`2001:0x21`) are unchanged.
 
 ## From 1.4
 

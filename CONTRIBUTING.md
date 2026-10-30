@@ -122,6 +122,7 @@ check.
 | `tests/` · `Test.py` | The pytest suite, and a `python Test.py` shortcut to it. |
 | `Dockerfile` · `docker-compose.yml` · `docker-entrypoint.sh` · `.env.example` | The container image, the compose service, its entrypoint (`serve` or one-shot `sync`), and the secrets template. |
 | `contrib/systemd/` | A host-side timer that keeps the container on the newest patch release. |
+| `contrib/mcp-server/` | The MCP server for the JSON API, run where the AI assistant runs. Not part of the package or the image. |
 | `docs/` | The documentation. `docs/images/` holds the screenshots, taken from a demo site, and `social-preview.png`, the repository's social preview (Settings → General). |
 | `.github/` | CI and release workflows, the release helper script, Dependabot, and the issue and pull request templates. |
 
@@ -159,7 +160,7 @@ reaches `main`; nobody tags or uploads anything by hand.
    the top of `CHANGELOG.md`:
 
    ```markdown
-   ## [1.6.0] — 2026-12-01 — A short title for the release
+   ## [1.7.0] — 2026-12-01 — A short title for the release
    ```
 
    If the changelog has an `## [Unreleased]` section, that becomes it. The

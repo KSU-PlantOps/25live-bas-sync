@@ -13,8 +13,9 @@ things. It never talks to 25Live or a BAS itself: every sync and tool is a
 
 Security, since this can start a sync that writes to building controllers:
 
-- Microsoft Entra ID single sign-on, with Entra groups mapped to three roles
-  (Basic, Advanced, Admin — see access.py), set up on the Access page; and
+- Microsoft Entra ID single sign-on, with Entra groups mapped to roles
+  (Basic, Advanced, Admin, AI assistant — see access.py), set up on the
+  Access page; and
   one local password, BAS_WEB_PASSWORD, which is Admin, for setting SSO up
   and for getting back in when it breaks. The password is checked in
   constant time, and five wrong attempts from an address lock it out for
@@ -28,6 +29,10 @@ Security, since this can start a sync that writes to building controllers:
   anywhere but this server — which also means it works on a controls network
   with no internet.
 - Every change and every job is logged with who made it, and from where.
+- API tokens (tokens.py) work only under /api/v1/, never for a page, and
+  can never hold an administrator's capabilities whatever their role. A
+  token request carries no cookie, so it needs no CSRF token; wrong tokens
+  are throttled per address, like passwords.
 """
 
 import functools
@@ -47,7 +52,7 @@ from zoneinfo import ZoneInfo
 from flask import Flask, abort, flash, g, redirect, render_template, request, session, url_for
 
 from .. import __version__, secretstore
-from . import access, entra
+from . import access, entra, tokens
 
 SESSION_HOURS = 12
 LOGIN_ATTEMPTS = 5
@@ -56,6 +61,7 @@ _OPEN_ENDPOINTS = {"login", "static", "healthz", "auth_login", "auth_callback",
                    "branding_css", "branding_logo"}
 SSO_SECRET = "BAS_WEB_SSO_CLIENT_SECRET"
 SSO_PENDING_SECONDS = 600
+API_PREFIX = "/api/v1/"
 
 
 class LoginThrottle:
@@ -134,6 +140,10 @@ def create_app(service, settings: dict) -> Flask:
     key = app.config["SECRET_KEY"]
     password_fp = hmac.new(key, password.encode(), hashlib.sha256).hexdigest()[:32]
     throttle = LoginThrottle()
+    # Separate, so a script with a stale token can't lock the address's
+    # people out of the sign-in page.
+    token_throttle = LoginThrottle(attempts=10)
+    tokens_file = tokens.path_for(service.paths.state_dir)
     authority_override = os.environ.get("BAS_WEB_SSO_AUTHORITY", "")
     app.extensions["bassync"] = {"service": service, "settings": settings,
                                  "write_lock": threading.Lock(), "last_refusal": None}
@@ -177,12 +187,44 @@ def create_app(service, settings: dict) -> Flask:
                         " + ".join(names[r] for r in roles), access.sync_scope(roles, conf))
         return None
 
+    def _token_who() -> tuple:
+        """(user, capabilities, role label, sync scope) for the API token in
+        this request's Authorization header; aborts 401 or 429 if there's
+        no usable one."""
+        wait = token_throttle.locked_for(g.addr)
+        if wait:
+            abort(429, f"Too many wrong API tokens from this address. Try again in "
+                       f"{wait // 60 + 1} minute(s).")
+        scheme, _, secret = request.headers.get("Authorization", "").partition(" ")
+        row = (tokens.verify(tokens_file, secret.strip())
+               if scheme.lower() == "bearer" else None)
+        if row is None:
+            token_throttle.failed(g.addr)
+            logging.warning("[web] API request with an unknown, revoked or expired "
+                            "token from %s", g.addr)
+            abort(401)
+        token_throttle.succeeded(g.addr)
+        conf = load_access()
+        role = next((r for r in conf["roles"] if r["id"] == row.get("role")), None)
+        if role is None:
+            abort(403, f"This token's role ({row.get('role')!r}) no longer exists. "
+                       "Give it a role on the Access page's API tokens.")
+        tokens.touch(tokens_file, row["id"])
+        caps = access.role_capabilities(role) - tokens.TOKEN_NEVER
+        return ({"name": f"token “{row['name']}”", "via": "token", "token": row["id"]},
+                caps, role["name"], access.sync_scope([role["id"]], conf))
+
     @app.before_request
     def _guard():
         g.addr = request.remote_addr or "?"
         g.user, g.caps, g.role_label = {"name": "", "via": ""}, frozenset(), ""
         g.sync_scope = {"systems": set(), "buildings": set()}
         if request.endpoint in _OPEN_ENDPOINTS:
+            return None
+        if request.path.startswith(API_PREFIX) and "Authorization" in request.headers:
+            # A token stands alone: the session cookie, if one came too, is
+            # not used, and nothing is stored in it.
+            g.user, g.caps, g.role_label, g.sync_scope = _token_who()
             return None
         who = _who()
         if who is None:
@@ -365,15 +407,22 @@ def create_app(service, settings: dict) -> Flask:
     @app.errorhandler(405)
     @app.errorhandler(409)
     @app.errorhandler(413)
+    @app.errorhandler(422)
+    @app.errorhandler(429)
     def _error(exc):
+        if request.path.startswith("/api/"):
+            return {"error": exc.description}, exc.code
         return render_template("error.html", error=exc), exc.code
 
     @app.errorhandler(401)
     def _unauthorised(exc):
+        if request.path.startswith(API_PREFIX):
+            return {"error": "Send a valid API token: Authorization: Bearer bsk_…"}, 401
         return {"error": "sign in again"}, 401
 
-    from . import announce, bookings, importer, schedules, setup, views
+    from . import announce, api, bookings, importer, schedules, setup, views
     views.register(app)
+    api.register(app)
     bookings.register(app)
     importer.register(app)
     setup.register(app)

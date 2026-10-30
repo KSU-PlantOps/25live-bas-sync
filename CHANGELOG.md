@@ -4,9 +4,31 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.6.0] — 2026-10-30 — An API for AI assistants, and BACnet/SC
+
+An AI assistant can work with the sync: a JSON API with revocable tokens, and
+an MCP server for Claude or any MCP client, let it read everything the web UI
+shows, run dry runs, and change extra bookings and low temp — while a token,
+whatever its role, can never force a sync or change settings. BACnet/SC devices
+can be pinned behind a router, which fixes pins with a MAC longer than one byte,
+and email alerts can be tested without posting to the team's channel. Nothing
+in your files needs to change; read *From 1.5* in `docs/upgrading.md`.
 
 ### Added
+- **A JSON API and an MCP server, for AI assistants.** `/api/v1/` reads the
+  status, run history and reports, what's scheduled for every space, the room
+  map, extra bookings and low temp; starts Dry run, Validate and — if the role
+  may — a sync; and adds, changes and deletes extra bookings and low-temp
+  marks. `contrib/mcp-server/` is an MCP server over it, for Claude Desktop,
+  Claude Code or any MCP client. [The API and AI assistants](docs/api.md)
+- **API tokens**, on Settings → API tokens: each has a role, can expire, and
+  can be revoked; only a hash is kept. A token works only for the API, and
+  whatever its role can never force a sync, edit the room map, change settings,
+  passwords or access, stop a job or restart the service.
+- **The AI assistant role**, for tokens: it reads, runs Dry run and Validate,
+  and changes extra bookings and low temp, but doesn't sync. Sites whose roles
+  were changed before this release don't get it automatically: add a role for
+  tokens on the Access page, or *Restore the built-in roles*.
 - **BACnet/SC devices, through a router.** A target can pin a device on a
   BACnet/SC network by its six-byte VMAC, `12001:5@3001:0x0012ab34cd56`, and
   [Networking → BACnet/SC](docs/networking.md#bacnetsc) covers the layout. The
@@ -24,6 +46,9 @@ semantic versioning from 1.0 onward.
   rejects, so every write to it failed. It's now kept in hex, every byte. A
   decimal MAC over 255, or hex with half a byte, is reported in Validate with
   the spelling to use.
+- Saving the Access page's roles table took every capability from a role that
+  wasn't on the page when it was opened — one added in the meantime — and
+  refused the whole save. Such a role is now left as it was.
 
 ## [1.5.1] — 2026-10-25 — Dependency updates
 

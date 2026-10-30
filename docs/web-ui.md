@@ -44,6 +44,7 @@ is saved. It follows the browser's light or dark setting.
 | **Settings** → Safety | The [mass-clear check](safety.md) (on or off, the share of schedules one run may clear, the fewest 25Live bookings), what a broken row does, and retries; the current baseline. |
 | **Settings** → Files | `config.yaml`, `defaults.yaml`, `space_mapping.yaml`, `extra_bookings.yaml`, `low_temp_events.yaml` and `announcements.yaml` as text, for anything the forms don't cover, each checked the way the sync reads it; a zip of them all. |
 | **Settings** → Access | The roles, what each may do and what each may sync, signing in with Microsoft Entra ID, and which Entra groups get which role. |
+| **Settings** → API tokens | Tokens for the [JSON API](api.md): what an MCP server giving an AI assistant access, or a script, signs in with; when each expires and was last used; *Revoke*. |
 | **Settings** → Appearance | Your site name, logo and accent colour, and a notice and contact details on the sign-in page and at the foot of every page. |
 | **Settings** → Announcements | [Messages on the home page](#announcements), each shown from a start time to an end time. |
 | **Settings** → Service | The version, and whether a newer release is out; *Restart the service*; what's running — since when, as whom, where the web UI listens, the HTTPS certificate's expiry, and where each file is. |
@@ -192,13 +193,15 @@ field.
 
 ## Sign-in and roles
 
-Out of the box there are three roles, each including the one before:
+Out of the box there are three roles for people, each including the one before,
+and one for API tokens:
 
 | Role | Can |
 |---|---|
 | **Basic** | See the status page, sync history and what's scheduled for each space; *Sync now* — everything, or one system or building. |
 | **Advanced** | See everything; run the tools (dry run, validate, discover, test alert), stop a job; add rooms from 25Live; add and edit rooms, buildings, floors, equipment and extra bookings. |
 | **Admin** | Everything: connection, systems and passwords, alerts, defaults, schedule, safety, the files, access and appearance, the activity log, restarting the service — and *Force*, which overrides the mass-clear safety check. |
+| **AI assistant** | For [API tokens](api.md) given to an AI assistant: see everything the API shows; dry run and validate; add and edit extra bookings; mark events low temp. Not *Sync now* until you add it. |
 
 They can be changed, and more added — see [Changing the roles](#changing-the-roles).
 
@@ -234,7 +237,7 @@ The Access page shows the roles as a table: a column per role, a row per
 capability. Tick what each may do and *Save roles*; rename a role in its
 column's heading; *Add role* starts a new one as a copy of another. A role can
 be deleted once no group has it, and *Restore the built-in roles* puts Basic,
-Advanced and Admin back as they came.
+Advanced, Admin and AI assistant back as they came.
 
 | Capability | Lets someone |
 |---|---|
@@ -341,6 +344,9 @@ The web UI can start a sync that writes to building controllers, so:
   script and nothing from other sites, so it also works with no internet at all.
 - Every change and every job is logged with who made it and from where: in
   **Logs → Activity**, and in the service log.
+- **API tokens** work only for the [JSON API](api.md), never a page; only
+  their hashes are stored; and whatever their role, they can never force a
+  sync, edit the room map, or change settings, passwords or access.
 
 ## Branding
 

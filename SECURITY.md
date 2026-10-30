@@ -33,6 +33,8 @@ patch of its minor version (the `:X.Y` image tag follows it).
   root.
 - Anything that makes the sync write to a schedule it wasn't mapped to, or
   bypass the safety check without `--force`.
+- The JSON API and its tokens: anything that lets a token do more than its
+  role, or anything on the never list in [docs/api.md](docs/api.md#what-a-token-may-do).
 
 ## Out of scope
 

@@ -35,11 +35,15 @@ def _roles(site) -> dict:
 
 def test_the_built_in_roles_are_the_defaults():
     roles = {r["id"]: r for r in access.clean_roles(None)}
-    assert set(roles) == {"basic", "advanced", "admin"}
+    assert set(roles) == {"basic", "advanced", "admin", "ai"}
     assert access.role_capabilities(roles["basic"]) == {"view_basic", "view_schedules", "sync"}
+    # The AI assistant role, for API tokens, may change bookings and low temp
+    # but not sync until someone decides it may.
+    assert access.role_capabilities(roles["ai"]) == {
+        "view_basic", "view_all", "view_schedules", "run_tools", "edit_bookings", "low_temp"}
     assert "edit_map" in access.role_capabilities(roles["advanced"])
     assert "edit_settings" not in access.role_capabilities(roles["advanced"])
-    # Low temp and announcements are given out, not built in.
+    # Low temp and announcements are given out to people, not built in.
     for role in ("basic", "advanced"):
         assert not {"low_temp", "announce"} & access.role_capabilities(roles[role])
     assert access.role_capabilities(roles["admin"]) == access.EVERYTHING
@@ -129,7 +133,7 @@ def test_add_copy_and_delete_a_role(site):
     post(c, "/settings/access/roles/add", {"name": "Scheduler", "copy": "advanced"})
     assert _roles(site)["scheduler"]["capabilities"] == _roles(site)["advanced"]["capabilities"]
     post(c, "/settings/access/roles/add", {"name": "scheduler"})         # same name
-    assert len(_roles(site)) == 4
+    assert len(_roles(site)) == 5
     post(c, "/settings/access/groups", {"group": "Sched", "role": "scheduler"})
     post(c, "/settings/access/roles/delete", {"role": "scheduler"})      # in use
     assert "scheduler" in _roles(site)
