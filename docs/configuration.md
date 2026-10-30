@@ -204,6 +204,7 @@ paste in.
 | `bacnet` | `12001:5` | device instance 12001, Schedule object instance 5 |
 | `bacnet` | `12001:5@10.4.2.30` | …with the address pinned, skipping Who-Is |
 | `bacnet` | `12001:5@2001:0x21` | …a routed MS/TP device: network 2001, MAC 0x21 |
+| `bacnet` | `12001:5@3001:0x0012ab34cd56` | …a BACnet/SC device behind a router: network 3001, its six-byte VMAC — see [BACnet/SC](networking.md#bacnetsc) |
 | `bacnet` | `2001:1` | a Niagara station's exported schedule — see [Tridium Niagara](bas-setup.md#tridium-niagara) |
 | `niagara` *(deprecated)* | `Bldg/Rm101_Occ` | ORD relative to `schedule_base_path` |
 | `rest` | whatever your path template expects | see `bassync/drivers/rest.py` |

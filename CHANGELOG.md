@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Added
+- **BACnet/SC devices, through a router.** A target can pin a device on a
+  BACnet/SC network by its six-byte VMAC, `12001:5@3001:0x0012ab34cd56`, and
+  [Networking → BACnet/SC](docs/networking.md#bacnetsc) covers the layout. The
+  sync still speaks BACnet/IP to the router; BACpypes3 has no working SC
+  datalink yet, so a direct connection to an SC hub waits on it.
+
+### Fixed
+- A routed pin with a MAC longer than one byte — a BACnet/SC VMAC, or a
+  BACnet/IP device behind a router — was rewritten in decimal, which BACpypes3
+  rejects, so every write to it failed. It's now kept in hex, every byte. A
+  decimal MAC over 255, or hex with half a byte, is reported in Validate with
+  the spelling to use.
+
 ## [1.5.1] — 2026-10-25 — Dependency updates
 
 Every dependency updated to its newest release, and tested on Python 3.15.

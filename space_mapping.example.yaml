@@ -139,6 +139,9 @@
 #   bacnet    "12001:5"              device instance : Schedule object instance
 #             "12001:5@10.4.2.30"    pin the address, skipping Who-Is
 #             "12001:5@2001:0x21"    a routed MS/TP device (network 2001, MAC 0x21)
+#             "12001:5@3001:0x0012ab34cd56"
+#                                    a BACnet/SC device behind a router (network
+#                                    3001, its six-byte VMAC, every digit kept)
 #             A pin applies to the whole device: pin it once and every target
 #             on that device uses it; two different pins are an error.
 #             "2001:1"               a Niagara station's BACnet-exported schedule
