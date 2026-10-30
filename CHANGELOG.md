@@ -7,6 +7,20 @@ semantic versioning from 1.0 onward.
 ## [Unreleased]
 
 ### Added
+- **A JSON API and an MCP server, for AI assistants.** `/api/v1/` reads the
+  status, run history and reports, what's scheduled for every space, the room
+  map, extra bookings and low temp; starts Dry run, Validate and — if the role
+  may — a sync; and adds, changes and deletes extra bookings and low-temp
+  marks. `contrib/mcp-server/` is an MCP server over it, for Claude Desktop,
+  Claude Code or any MCP client. [The API and AI assistants](docs/api.md)
+- **API tokens**, on Settings → API tokens: each has a role, can expire, and
+  can be revoked; only a hash is kept. A token works only for the API, and
+  whatever its role can never force a sync, edit the room map, change settings,
+  passwords or access, stop a job or restart the service.
+- **The AI assistant role**, for tokens: it reads, runs Dry run and Validate,
+  and changes extra bookings and low temp, but doesn't sync. Sites whose roles
+  were changed before this release don't get it automatically: add a role for
+  tokens on the Access page, or *Restore the built-in roles*.
 - **BACnet/SC devices, through a router.** A target can pin a device on a
   BACnet/SC network by its six-byte VMAC, `12001:5@3001:0x0012ab34cd56`, and
   [Networking → BACnet/SC](docs/networking.md#bacnetsc) covers the layout. The

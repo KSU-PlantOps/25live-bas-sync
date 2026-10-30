@@ -1,0 +1,5 @@
+# The MCP server for 25live-bas-sync. It runs where the AI assistant runs,
+# not in the service, so the service doesn't carry these.
+#   pip install -r requirements.txt
+mcp>=2.3,<3
+requests>=2.31,<3

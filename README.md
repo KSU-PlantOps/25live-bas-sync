@@ -73,6 +73,10 @@ finely as that building actually supports.
   groups: Basic, Advanced and Admin out of the box, or your own, down to
   individual capabilities. A role can be limited to syncing particular systems
   or buildings.
+- **AI assistant access, safely.** A JSON API with revocable tokens, and an
+  MCP server for Claude or any MCP client: it reads everything, runs dry runs,
+  and changes extra bookings and low temp — but a token can never force a sync
+  or change settings, whatever its role. → [The API](docs/api.md)
 - **Low-risk.** It's read-only against 25Live, and it only ever writes occupancy
   schedules. `--validate` and `--dry-run` prove a change before it goes live.
 

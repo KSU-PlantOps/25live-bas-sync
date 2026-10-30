@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}API tokens{% endblock %}
+{% block body %}
+<h1>API tokens</h1>
+<p class="hint">A token lets a program — an MCP server giving an AI assistant access, or a script — use the JSON API at
+  <code>{{ api_url }}</code>. It may do what its role may, through the API only: it can't open these pages. Whatever its
+  role, a token can never sync with Force, change the room map, settings, passwords or access, restart the service or
+  stop a job. See <em>docs/api.md</em>.</p>
+{% for e in errors %}<div class="flash error">{{ e }}</div>{% endfor %}
+
+{% if new %}
+<section class="flash ok">
+  <p><strong>Made “{{ new.name }}”.</strong> Copy the token now: it isn't stored, so it can't be shown again.</p>
+  <p class="mono"><code id="new-token">{{ new.secret }}</code></p>
+  <p class="hint">Give it to the program as <code>Authorization: Bearer …</code>; for the MCP server, as
+    <code>BAS_SYNC_TOKEN</code>. Keep it like a password.</p>
+</section>
+{% endif %}
+
+<section class="card">
+  <h2>Tokens</h2>
+  {% if tokens %}
+  <div class="scroll-x">
+  <table class="list wide">
+    <thead><tr><th>Name</th><th>Role</th><th>Made</th><th>Expires</th><th>Last used</th><th></th></tr></thead>
+    <tbody>
+    {% for t in tokens %}
+      <tr>
+        <td><strong>{{ t.name }}</strong> <small class="mono">…{{ t.hint }}</small></td>
+        <td>{% if t.role_name %}{{ t.role_name }}{% else %}<span class="bad">no role “{{ t.role }}” — refused</span>{% endif %}</td>
+        <td>{{ local_time(t.created) }}{% if t.created_by %} <small>by {{ t.created_by }}</small>{% endif %}</td>
+        <td>{% if t.expired %}<span class="bad">expired {{ local_time(t.expires) }}</span>
+            {% elif t.expires %}{{ local_time(t.expires, '%Y-%m-%d') }}{% else %}never{% endif %}</td>
+        <td>{{ relative(t.last_used) if t.last_used else 'not yet' }}</td>
+        <td class="row-actions">
+          <form method="post" action="{{ url_for('api_token_revoke', token_id=t.id) }}" class="inline"
+                data-confirm="Revoke {{ t.name }}? Anything using it is refused from then on.">
+            <input type="hidden" name="csrf" value="{{ csrf_token }}">
+            <button class="link danger">Revoke</button>
+          </form></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
+  <p class="hint">None yet.</p>
+  {% endif %}
+</section>
+
+<form method="post" action="{{ url_for('api_token_create') }}" class="card form">
+  <input type="hidden" name="csrf" value="{{ csrf_token }}">
+  <h2 class="full">Make a token</h2>
+  <label for="tk-name">Name</label>
+  <div class="field"><input id="tk-name" name="name" value="{{ values.name or '' }}" maxlength="60" required
+    placeholder="e.g. Claude Desktop, facilities office"><small>what uses it, so you know what you're revoking</small></div>
+  <label for="tk-role">Role</label>
+  <div class="field"><select id="tk-role" name="role">
+    {% for r in roles %}<option value="{{ r.id }}" {{ 'selected' if r.id == values.role }}>{{ r.name }}</option>{% endfor %}
+  </select>
+    <small>{% if 'ai' in role_caps %}<em>AI assistant</em> is made for this: it reads, runs Dry run and Validate, and
+      changes extra bookings and low temp, but doesn't sync.{% else %}Your roles were changed before the <em>AI
+      assistant</em> role existed; add a role for tokens on the Access page.{% endif %}
+      Change what a role may do on the <a href="{{ url_for('access_page') }}">Access</a> page.</small></div>
+  <label for="tk-days">Expires</label>
+  <div class="field"><select id="tk-days" name="days">
+    {% for d in expiry_days %}<option value="{{ d }}" {{ 'selected' if d | string == values.days | string }}>
+      {{ 'never' if d == 0 else 'in %d days' % d }}</option>{% endfor %}
+  </select></div>
+  <div class="buttons full"><button class="primary">Make token</button></div>
+</form>
+
+<details class="card">
+  <summary>What each role's tokens may do</summary>
+  <table class="list wide">
+    <tbody>
+    {% for r in roles %}
+      <tr><th scope="row">{{ r.name }}</th>
+        <td>{{ role_caps[r.id] | join('; ') or 'nothing' }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  <p class="hint">Never, through a token: {{ never | join('; ') }}.</p>
+</details>
+{% endblock %}

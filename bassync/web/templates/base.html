@@ -19,7 +19,7 @@
   ('Jobs', url_for('jobs'), 'view_all', ['jobs', 'job']),
   ('Room map', url_for('map_list', kind='rooms'), 'view_all', ['map_list', 'map_form', 'map_delete', 'map_import']),
   ('Settings', url_for('connection'), 'view_all', ['connection', 'alerts', 'schedule', 'defaults', 'safety_page',
-                                                    'files_list', 'file_edit', 'access_page', 'appearance',
+                                                    'files_list', 'file_edit', 'access_page', 'api_tokens', 'appearance',
                                                     'service_page', 'setup_step', 'announcements',
                                                     'announcement_form']),
   ('Logs', url_for('logs'), 'view_all', ['logs'])] %}
@@ -57,7 +57,7 @@
 {% elif request.endpoint in ['schedules', 'space_schedule', 'low_temp_list'] %}
   {% set nav_sub = [('Spaces', url_for('schedules'), 'view_schedules', request.endpoint in ['schedules', 'space_schedule']),
                    ('Low temp', url_for('low_temp_list'), 'view_schedules', request.endpoint == 'low_temp_list')] %}
-{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'appearance', 'service_page', 'setup_step', 'announcements', 'announcement_form'] %}
+{% elif request.endpoint in ['connection', 'alerts', 'schedule', 'defaults', 'safety_page', 'files_list', 'file_edit', 'access_page', 'api_tokens', 'appearance', 'service_page', 'setup_step', 'announcements', 'announcement_form'] %}
   {% set nav_sub = [('Setup guide', url_for('setup_step'), 'edit_settings', request.endpoint == 'setup_step'),
                    ('Connection', url_for('connection'), 'view_all', request.endpoint == 'connection'),
                    ('Alerts', url_for('alerts'), 'view_all', request.endpoint == 'alerts'),
@@ -66,6 +66,7 @@
                    ('Safety', url_for('safety_page'), 'view_all', request.endpoint == 'safety_page'),
                    ('Files', url_for('files_list'), 'view_all', request.endpoint in ['files_list', 'file_edit']),
                    ('Access', url_for('access_page'), 'manage_access', request.endpoint == 'access_page'),
+                   ('API tokens', url_for('api_tokens'), 'manage_access', request.endpoint == 'api_tokens'),
                    ('Appearance', url_for('appearance'), 'manage_access', request.endpoint == 'appearance'),
                    ('Announcements', url_for('announcements'), 'announce', request.endpoint in ['announcements', 'announcement_form']),
                    ('Service', url_for('service_page'), 'view_all', request.endpoint == 'service_page')] %}
