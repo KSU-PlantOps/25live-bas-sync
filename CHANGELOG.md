@@ -12,6 +12,11 @@ semantic versioning from 1.0 onward.
   [Networking → BACnet/SC](docs/networking.md#bacnetsc) covers the layout. The
   sync still speaks BACnet/IP to the router; BACpypes3 has no working SC
   datalink yet, so a direct connection to an SC hub waits on it.
+- **Send a test email**, on Settings → Alerts, tests the SMTP settings alone:
+  a sample run report to the To addresses, and nothing posted to the
+  webhook. *Send a test webhook* does the reverse, and *Test both* is the old
+  button. On the command line, `--test-alert email` and `--test-alert
+  webhook`; a bare `--test-alert` still tests every channel.
 
 ### Fixed
 - A routed pin with a MAC longer than one byte — a BACnet/SC VMAC, or a

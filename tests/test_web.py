@@ -329,6 +329,18 @@ def test_jobs_refuse_unknown_kinds_and_systems(client, site):
     assert site.jobs.started == []
 
 
+def test_test_email_and_test_webhook_are_jobs(client, site):
+    """The Alerts page's buttons test one channel each, as tools."""
+    from bassync.jobs import KINDS
+    for kind, channel in (("test-email", "email"), ("test-webhook", "webhook")):
+        assert KINDS[kind][1] == ["--test-alert", channel]
+        assert post(client, "/jobs", {"kind": kind}).status_code == 302
+    assert [k for k, _args, _trigger in site.jobs.started] == ["test-email", "test-webhook"]
+    page = client.get("/settings/alerts").text
+    for kind in ("test-email", "test-webhook", "test-alert"):
+        assert f'value="{kind}"' in page
+
+
 def test_discover_days_are_bounded(client, site):
     post(client, "/jobs", {"kind": "discover", "days": "99999"})
     assert site.jobs.started[0][1] == ["--discover-days", "366"]

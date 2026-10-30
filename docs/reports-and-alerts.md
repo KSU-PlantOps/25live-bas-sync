@@ -31,7 +31,9 @@ was written to each of its schedules — the web UI's
 Set `alerts.enabled: true` and it also goes out through either or both
 channels below — on the web UI's **Settings → Alerts** page, or in
 `config.yaml`. `--test-alert` (*Test alert* on the web UI) sends a sample
-through each one.
+through each one. The Alerts page also has *Send a test email* and *Send a
+test webhook*, to test one alone (`--test-alert email`, `--test-alert
+webhook`).
 
 Alerting never changes a run's outcome — a dead mail relay won't turn a
 successful sync into a failure.

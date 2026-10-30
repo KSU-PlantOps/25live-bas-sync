@@ -39,7 +39,7 @@ is saved. It follows the browser's light or dark setting.
 | **Room map** → From 25Live | The spaces in 25Live, booked or not, [grouped by building](#adding-rooms-from-25live), to add a building at a time. |
 | **Settings** → Setup guide | A new install's [walk through setup](#the-setup-guide): 25Live, the campus, a BAS system, rooms found in 25Live, each building's schedule, and the checks before the schedule goes on. |
 | **Settings** → Connection | 25Live, BAS systems (add, remove, change driver), timezone and default system; the passwords, set or cleared here. *Validate* per system. |
-| **Settings** → Alerts | Email (SMTP server, security, account and password, recipients, full or summary report, CSV), webhooks (Slack, Teams, generic) and the dead-man's-switch pings; *Send a test*. |
+| **Settings** → Alerts | Email (SMTP server, security, account and password, recipients, full or summary report, CSV), webhooks (Slack, Teams, generic) and the dead-man's-switch pings; *Send a test email*, *Send a test webhook*, or test both. |
 | **Settings** → Schedule · Defaults | When the sync runs; the run-up/run-down/merge-gap/lookahead defaults. |
 | **Settings** → Safety | The [mass-clear check](safety.md) (on or off, the share of schedules one run may clear, the fewest 25Live bookings), what a broken row does, and retries; the current baseline. |
 | **Settings** → Files | `config.yaml`, `defaults.yaml`, `space_mapping.yaml`, `extra_bookings.yaml`, `low_temp_events.yaml` and `announcements.yaml` as text, for anything the forms don't cover, each checked the way the sync reads it; a zip of them all. |

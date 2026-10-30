@@ -163,3 +163,43 @@ def test_send_alert_survives_a_dead_webhook():
         notify.send_alert({"enabled": True, "webhook_url": "http://hook"}, "s", "b")
     finally:
         notify.requests.post = original
+
+
+def _test_alert_channels(monkeypatch, alerts: dict, channel: str):
+    """Run --test-alert for one channel; return (exit code, what was sent)."""
+    from bassync import cli, notify
+    sent = []
+    monkeypatch.setattr(notify.requests, "post", lambda url, **kw: (
+        sent.append("webhook"), type("R", (), {"status_code": 200, "text": ""})())[1])
+    monkeypatch.setattr(notify, "_send_email", lambda *a, **kw: (
+        sent.append("email"), notify.AlertResult("email", True))[1])
+    code = cli.run_test_alert({"timezone": "America/New_York", "alerts": alerts}, channel)
+    return code, sent
+
+
+BOTH = {"webhook_url": "http://hook",
+        "email": {"smtp_host": "smtp.example.edu", "from_addr": "a@example.edu",
+                  "to_addrs": ["b@example.edu"]}}
+
+
+def test_test_alert_can_test_one_channel(monkeypatch):
+    """Working on the mail relay shouldn't post a test into the team's Slack
+    channel every time, and the other way round."""
+    assert _test_alert_channels(monkeypatch, BOTH, "email") == (0, ["email"])
+    assert _test_alert_channels(monkeypatch, BOTH, "webhook") == (0, ["webhook"])
+    assert _test_alert_channels(monkeypatch, BOTH, "all") == (0, ["webhook", "email"])
+
+
+def test_test_email_without_smtp_says_so(monkeypatch, caplog):
+    code, sent = _test_alert_channels(monkeypatch, {"webhook_url": "http://hook"}, "email")
+    assert (code, sent) == (1, [])
+    assert "smtp_host" in caplog.text
+
+
+def test_test_alert_channel_argument():
+    """A bare --test-alert still tests everything, as it always has."""
+    from bassync import cli
+    parser = cli.build_parser()
+    assert parser.parse_args(["--test-alert"]).test_alert == "all"
+    assert parser.parse_args(["--test-alert", "email"]).test_alert == "email"
+    assert parser.parse_args([]).test_alert is None
