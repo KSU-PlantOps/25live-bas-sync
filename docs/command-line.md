@@ -50,6 +50,8 @@ python main.py --force          # override the mass-clear safety check
   gets a sample run report — and reports each one. Worth running the day you
   set alerting up: alerting only matters when something has already gone
   wrong, which is a bad time to discover the relay rejects your `from` address.
+  `--test-alert email` or `--test-alert webhook` tests just that one, so
+  working on the mail relay doesn't post to the team's channel each time.
 - **`--system NAME`** limits a run to one BAS system, for commissioning one
   before the rest. With `--validate`, only that system is checked.
 - **`--building ID`** (repeatable) limits a sync or `--dry-run` to those

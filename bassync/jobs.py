@@ -47,6 +47,8 @@ KINDS: dict = {
     "validate": ("Validate", ["--validate"], False),
     "discover": ("Discover spaces", ["--discover"], False),
     "test-alert": ("Test alert", ["--test-alert"], False),
+    "test-email": ("Test email", ["--test-alert", "email"], False),
+    "test-webhook": ("Test webhook", ["--test-alert", "webhook"], False),
 }
 
 _JOB_ID = re.compile(r"^\d{8}T\d{6}Z-[a-z-]+-[0-9a-f]{6}$")

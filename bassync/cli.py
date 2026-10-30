@@ -120,7 +120,10 @@ def _sample_report(cfg: dict) -> RunReport:
     return report
 
 
-def run_test_alert(cfg: dict) -> int:
+TEST_ALERT_CHANNELS = ("all", "email", "webhook")
+
+
+def run_test_alert(cfg: dict, channel: str = "all") -> int:
     """
     Send a test notification and report each channel's outcome.
 
@@ -128,11 +131,15 @@ def run_test_alert(cfg: dict) -> int:
     already gone wrong — which is exactly when you find out it was never
     configured correctly. This exercises it on demand. Email gets a sample
     run report, so you can see what the nightly one will look like.
+
+    `channel` tests one of them alone: "email", to work on the mail relay
+    without posting a test into the team's Slack channel each time, or
+    "webhook".
     """
     alerts = cfg.get("alerts") or {}
     stamp = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S %Z")
     results = []
-    if alerts.get("webhook_url"):
+    if channel in ("all", "webhook") and alerts.get("webhook_url"):
         results += send_alert(
             {**alerts, "email": {}},
             "25Live -> BAS sync: test alert",
@@ -141,7 +148,7 @@ def run_test_alert(cfg: dict) -> int:
             "If you are reading this, failure alerts will reach you.",
             force=True)
     email = alerts.get("email") or {}
-    if email.get("enabled") or email.get("smtp_host"):
+    if channel in ("all", "email") and (email.get("enabled") or email.get("smtp_host")):
         forced = {**cfg, "alerts": {**alerts, "enabled": True, "webhook_url": "",
                                     "email": {**email, "enabled": True,
                                               "notify_on_success": True}}}
@@ -151,6 +158,14 @@ def run_test_alert(cfg: dict) -> int:
         logging.info("monitoring.ping_url is set; it is pinged after real runs "
                      "only (a test ping would reset the monitor's timer).")
 
+    if not results and channel == "email":
+        logging.error("Email isn't set up: set alerts.email.smtp_host (Settings → "
+                      "Alerts → Email) and save, then test again.")
+        return EXIT_ERROR
+    if not results and channel == "webhook":
+        logging.error("No webhook is set up: set alerts.webhook_url (Settings → "
+                      "Alerts → Webhook) and save, then test again.")
+        return EXIT_ERROR
     if not results:
         logging.error(
             "No alert channels are configured. Set alerts.webhook_url and/or "
@@ -216,11 +231,14 @@ def build_parser() -> argparse.ArgumentParser:
                            "(read-only)")
     mode.add_argument("--list-drivers", action="store_true",
                       help="Show the available BAS drivers and exit")
-    mode.add_argument("--test-alert", action="store_true",
+    mode.add_argument("--test-alert", nargs="?", const="all", choices=TEST_ALERT_CHANNELS,
+                      metavar="CHANNEL",
                       help="Send a test notification through every configured "
                            "alert channel (email gets a sample run report) and "
-                           "report the result. Works even with alerts.enabled "
-                           "false, so you can prove the plumbing first")
+                           "report the result; `--test-alert email` or "
+                           "`--test-alert webhook` tests just that one. Works "
+                           "even with alerts.enabled false, so you can prove "
+                           "the plumbing first")
     parser.add_argument("--discover-days", type=int, default=30,
                         help="--discover counts bookings over this many days "
                              "(default 30)")
@@ -314,7 +332,7 @@ def main(argv=None) -> int:
         return live_sync(cfg, args.force, args.system, args.building)
     try:
         if args.test_alert:
-            code = run_test_alert(cfg)
+            code = run_test_alert(cfg, args.test_alert)
         elif args.validate:
             code = run_validate(cfg, config_warnings, only_system=args.system)
         elif args.discover:

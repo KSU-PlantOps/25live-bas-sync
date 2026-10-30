@@ -88,13 +88,18 @@ dead-man's-switch ping. <code>alerts:</code> and <code>monitoring:</code> in con
 {% if can('run_tools') %}
 <section class="card">
   <h2>Test</h2>
+  <p class="hint">Sends even with alerts off, using the saved settings, so save first. The job's output
+    says what the mail server or webhook answered. A test email is a sample run report, and it goes
+    to the To addresses only.</p>
+  {% for kind, label, hint in [('test-email', 'Send a test email', 'a sample run report, to the To addresses, and nothing to the webhook'),
+                               ('test-webhook', 'Send a test webhook', 'a test message to the webhook, and no email'),
+                               ('test-alert', 'Test both', 'every channel at once')] %}
   <form method="post" action="{{ url_for('jobs') }}" class="inline">
     <input type="hidden" name="csrf" value="{{ csrf_token }}">
-    <input type="hidden" name="kind" value="test-alert">
-    <button {{ 'disabled' if current_job }}>Send a test</button>
-    <span class="hint">sends a sample run report through every channel — even with alerts off — and says what each did.
-      Save first: it uses the saved settings.</span>
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <button title="{{ hint }}" {{ 'disabled' if current_job }}>{{ label }}</button>
   </form>
+  {% endfor %}
 </section>
 {% endif %}
 {% endblock %}
