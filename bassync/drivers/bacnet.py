@@ -64,6 +64,8 @@ Target syntax (the `target:` in space_mapping.yaml)
     "12001:5@10.4.2.30"         same, but skip Who-Is and talk to that address
     "12001:5@10.4.2.30:47808"   ...with an explicit UDP port
     "12001:5@2001:0x21"         a routed MS/TP device: network 2001, MAC 0x21
+    "12001:5@3001:0x0012ab34cd56"  a BACnet/SC device behind an SC router:
+                                network 3001, VMAC 00:12:AB:34:CD:56
 
 The address form is worth using on a big campus: it removes a broadcast
 round-trip per schedule and works even where Who-Is does not cross a subnet.
@@ -90,6 +92,15 @@ written after every run so the BAS itself can alarm when the job stops:
 an analog value gets the Unix time in hours, a characterstring-value an ISO
 timestamp, a datetime-value the date and time. Alarm on "unchanged for more
 than a day".
+
+BACnet/SC
+---------
+The driver speaks BACnet/IP only. BACpypes3 has BACnet/SC message encoding
+but not a working datalink (no TLS client certificates, connect handshake,
+heartbeats or hub failover, and Application cannot bind an SC port), so SC
+devices are reached through a BACnet router with an IP port and an SC port —
+an SC hub's own router, a Niagara station, a vendor's SC router. Their
+targets use the routed form with the device's six-byte VMAC, as above.
 
 Requirements
 ------------
@@ -177,15 +188,35 @@ def _normalize_address(address: Optional[str]) -> Optional[str]:
     """
     One spelling per address, so two ways of writing the same pin agree.
 
-    `10.4.2.30` -> `10.4.2.30:47808` (the default port). A routed MS/TP
-    station, `network:mac`, gets its MAC in decimal: `2001:0x21` ->
-    `2001:33`, which is also how BACpypes3 prints it.
+    `10.4.2.30` -> `10.4.2.30:47808` (the default port). A routed station,
+    `network:mac`, is spelt the way BACpypes3 prints it: a one-byte MS/TP
+    MAC in decimal (`2001:0x21` -> `2001:33`), and a longer one — a
+    BACnet/SC VMAC, or a BACnet/IP device behind a router — as hex with
+    every byte kept (`3001:0x0012AB34CD56` -> `3001:0x0012ab34cd56`).
+    Converting a six-byte VMAC to decimal, as this once did, made an address
+    BACpypes3 rejects; and its leading zero bytes are part of the address.
     """
     if not address:
         return None
     routed = _ROUTED_RE.match(address)
     if routed:
-        return f"{int(routed.group('net'))}:{int(routed.group('mac'), 0)}"
+        net, mac = int(routed.group("net")), routed.group("mac")
+        if mac[:2].lower() == "0x":
+            digits = mac[2:].lower()
+            if len(digits) <= 2:
+                return f"{net}:{int(digits, 16)}"
+            if len(digits) % 2:
+                raise DriverError(
+                    f"BACnet address {address!r}: a MAC longer than one byte "
+                    "is written as whole bytes in hex, e.g. a BACnet/SC VMAC "
+                    "'3001:0x0012ab34cd56' (six bytes, twelve digits).")
+            return f"{net}:0x{digits}"
+        if int(mac) > 255:
+            raise DriverError(
+                f"BACnet address {address!r}: a decimal MAC is one byte "
+                "(0-255), as on MS/TP. Write a longer one — a BACnet/SC VMAC, "
+                "say — in hex: '3001:0x0012ab34cd56'.")
+        return f"{net}:{int(mac)}"
     if ":" not in address:
         return f"{address}:{DEFAULT_BACNET_PORT}"
     return address

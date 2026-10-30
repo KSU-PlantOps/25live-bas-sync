@@ -17,6 +17,52 @@ def test_bacnet_target_parsing():
     assert parse_target("12001:5@10.4.2.30:47810").address == "10.4.2.30:47810"
 
 
+def test_bacnet_routed_mac_spellings():
+    """A one-byte MS/TP MAC is canonical in decimal; a longer one — a
+    BACnet/SC VMAC, or an IP device behind a router — stays hex with every
+    byte, leading zeros included. Decimal used to swallow a six-byte VMAC
+    into a number BACpypes3 rejects."""
+    from bassync.drivers.bacnet import parse_target
+    assert parse_target("12001:5@2001:0x21").address == "2001:33"
+    assert parse_target("12001:5@2001:33").address == "2001:33"
+    assert parse_target("12001:5@2001:0x0A").address == "2001:10"
+    assert (parse_target("12001:5@3001:0x0012AB34CD56").address
+            == "3001:0x0012ab34cd56")
+
+
+def test_bacnet_routed_mac_rejects_ambiguous():
+    from bassync.drivers.bacnet import parse_target
+    from bassync.drivers.base import DriverError
+    # Half a byte, and a decimal too big for one byte, are both mistakes.
+    for bad in ("12001:5@3001:0x012ab34cd56", "12001:5@3001:1250999896491"):
+        with pytest.raises(DriverError, match="0x0012ab34cd56"):
+            parse_target(bad)
+
+
+def test_bacnet_routed_vmac_pin_applies_to_the_device():
+    """Two spellings of one SC device's pin agree, so they are one pin."""
+    from bassync.drivers.bacnet import BacnetScheduleWriter
+    canonical, errors = BacnetScheduleWriter.normalize_targets(
+        {}, ["12001:5@3001:0x0012AB34CD56", "12001:6@3001:0x0012ab34cd56", "12001:7"])
+    assert errors == {}
+    assert set(canonical.values()) == {f"12001:{n}@3001:0x0012ab34cd56" for n in (5, 6, 7)}
+
+
+def test_bacnet_routed_addresses_are_ones_bacpypes3_accepts():
+    """The canonical spelling must round-trip through BACpypes3's Address,
+    which is what the driver hands it."""
+    pytest.importorskip("bacpypes3")
+    from bacpypes3.pdu import Address
+
+    from bassync.drivers.bacnet import parse_target
+    for text, mac in (("12001:5@2001:0x21", "21"),
+                      ("12001:5@3001:0x0012AB34CD56", "0012ab34cd56")):
+        address = Address(parse_target(text).address)
+        assert address.addrNet == int(text.split("@")[1].split(":")[0])
+        assert bytes(address.addrAddr).hex() == mac
+        assert str(address) == parse_target(text).address
+
+
 def test_bacnet_target_rejects_garbage():
     from bassync.drivers.bacnet import parse_target
     from bassync.drivers.base import DriverError

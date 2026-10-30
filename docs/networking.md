@@ -4,6 +4,7 @@
 
 - [On the controls network](#on-the-controls-network)
 - [Running in a datacenter or the cloud](#running-in-a-datacenter-or-the-cloud)
+- [BACnet/SC](#bacnetsc)
 
 In Docker, BACnet also needs host networking — see
 [Running with Docker](docker.md#bacnet-needs-host-networking).
@@ -74,3 +75,36 @@ And on the network side:
 > [!CAUTION]
 > **Never expose UDP 47808 to the internet** — BACnet/IP has no
 > authentication. The same goes for the web UI's port without HTTPS.
+
+## BACnet/SC
+
+The sync speaks **BACnet/IP**. It reaches BACnet/SC devices **through a BACnet
+router** that has an IP port and an SC port — the router on your SC hub, a
+Niagara station with an SC network, or a vendor's SC router — the same way it
+reaches MS/TP through a building's router. It doesn't connect to an SC hub
+itself: BACpypes3, the BACnet library it's built on, encodes SC messages but
+has no working SC datalink yet (no TLS client certificates, connect
+handshake, heartbeat or failover hub). When it has one, the driver can
+connect to a hub directly.
+
+```mermaid
+flowchart LR
+    S["25live-bas-sync"] -- "BACnet/IP<br/>(keep this leg short)" --> R["BACnet router<br/>IP port + SC port"]
+    R -- "BACnet/SC<br/>TLS, via the hub" --> H["SC hub"]
+    H --> C1["SC controller"]
+    H --> C2["SC controller"]
+```
+
+- **Unpinned targets need nothing new.** Who-Is goes through the router to the
+  SC network, and the device answers with its routed address.
+- **To pin one**, use the routed form with the SC network number the router
+  gives that port and the device's six-byte **VMAC**, in hex:
+  `12001:5@3001:0x0012ab34cd56`. The VMAC is the `MAC_Address` of the device's
+  SC Network Port object, and most hubs list it for each connected node. Keep
+  all twelve digits, leading zeros too; a decimal MAC is one byte, for MS/TP.
+- Finding the router takes a broadcast on the IP side, as for MS/TP: on the
+  router's subnet, or with `bbmd_address` set.
+- **The IP leg is still BACnet/IP**, unauthenticated. SC protects what's
+  behind the router, so put the router on the sync's own host or VLAN, not
+  across campus — otherwise the cleartext hop is the one you were trying to
+  get rid of.

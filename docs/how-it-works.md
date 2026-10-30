@@ -72,9 +72,9 @@ property.
 | Visibility | Exceptions show up in the vendor tool | Native objects |
 
 The tradeoff that matters is the third row: BACnet/IP has no authentication, so
-this must run on a segmented controls network (and BACnet/SC is worth asking
-your vendors about for new work). Where that isn't acceptable the `rest` driver
-is there.
+this must run on a segmented controls network. BACnet/SC devices are reached
+through a router — see [BACnet/SC](networking.md#bacnetsc). Where that isn't
+acceptable the `rest` driver is there.
 
 ## The sync owns what it writes
 
