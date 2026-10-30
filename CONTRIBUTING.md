@@ -160,7 +160,7 @@ reaches `main`; nobody tags or uploads anything by hand.
    the top of `CHANGELOG.md`:
 
    ```markdown
-   ## [1.6.0] — 2026-12-01 — A short title for the release
+   ## [1.7.0] — 2026-12-01 — A short title for the release
    ```
 
    If the changelog has an `## [Unreleased]` section, that becomes it. The

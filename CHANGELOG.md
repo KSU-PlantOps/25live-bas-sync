@@ -4,7 +4,15 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.6.0] — 2026-10-30 — An API for AI assistants, and BACnet/SC
+
+An AI assistant can work with the sync: a JSON API with revocable tokens, and
+an MCP server for Claude or any MCP client, let it read everything the web UI
+shows, run dry runs, and change extra bookings and low temp — while a token,
+whatever its role, can never force a sync or change settings. BACnet/SC devices
+can be pinned behind a router, which fixes pins with a MAC longer than one byte,
+and email alerts can be tested without posting to the team's channel. Nothing
+in your files needs to change; read *From 1.5* in `docs/upgrading.md`.
 
 ### Added
 - **A JSON API and an MCP server, for AI assistants.** `/api/v1/` reads the
@@ -38,6 +46,9 @@ semantic versioning from 1.0 onward.
   rejects, so every write to it failed. It's now kept in hex, every byte. A
   decimal MAC over 255, or hex with half a byte, is reported in Validate with
   the spelling to use.
+- Saving the Access page's roles table took every capability from a role that
+  wasn't on the page when it was opened — one added in the meantime — and
+  refused the whole save. Such a role is now left as it was.
 
 ## [1.5.1] — 2026-10-25 — Dependency updates
 
