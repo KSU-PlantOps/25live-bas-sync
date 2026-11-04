@@ -67,7 +67,7 @@ docker compose up -d --build</pre>
     <tr><th scope="row">Schedule</th><td>{{ service.describe() }}</td></tr>
     <tr><th scope="row">Process</th><td>PID {{ about.pid }}{% if about.uid is not none %}, running as {% if about.user %}{{ about.user }} ({{ about.uid }}:{{ about.gid }}){% else %}user {{ about.uid }}, group {{ about.gid }}{% endif %}{% endif %}{{ ', in a container' if about.container }}</td></tr>
     <tr><th scope="row">Python</th><td>{{ about.python }} on {{ about.platform }}</td></tr>
-    <tr><th scope="row">Web UI</th><td>{% if web %}{{ 'https' if web.cert else 'http' }}://{{ web.host }}:{{ web.port }}{{ ', behind a reverse proxy' if web.behind_proxy }}{{ ' — no sign-in (BAS_WEB_AUTH=none)' if web.auth == 'none' }}{% else %}—{% endif %}</td></tr>
+    <tr><th scope="row">Web UI</th><td>{% if web %}{{ 'https' if web.cert else 'http' }}://{{ web.host }}:{{ web.port }}{{ web.base_path ~ '/' if web.base_path }}{{ ', behind a reverse proxy' if web.behind_proxy }}{{ ' — no sign-in (BAS_WEB_AUTH=none)' if web.auth == 'none' }}{% else %}—{% endif %}</td></tr>
     <tr><th scope="row">HTTPS certificate</th><td>{% if cert %}{{ cert.name }}, expires {{ cert.expires.strftime('%Y-%m-%d') }}
       <span class="{{ 'bad' if cert.days_left < 14 else 'hint' }}">({{ 'expired' if cert.days_left < 0 else 'in %d days' % cert.days_left }})</span>
       {% elif web and web.cert %}<span class="hint">{{ web.cert }}</span>{% else %}<span class="hint">none — plain HTTP{{ ', HTTPS at the proxy' if web and web.behind_proxy }}</span>{% endif %}</td></tr>

@@ -4,6 +4,23 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
+## [Unreleased]
+
+### Added
+- **The web UI under a path**, e.g. `http://<host>/bas/`, to share a host with
+  other sites behind its reverse proxy. `BAS_WEB_BASE_PATH=/bas` is for a
+  proxy that forwards the full path (IIS URL Rewrite + ARR): every link,
+  redirect, the sign-in cookie and the Microsoft sign-in redirect URI are then
+  under it, `/bas` redirects to `/bas/`, and other paths are 404. Behind a
+  proxy that strips the prefix, `BAS_WEB_BEHIND_PROXY=1` now also honours
+  `X-Forwarded-Prefix`. Unset, nothing changes.
+  [Behind a reverse proxy, under a path](docs/web-ui.md#behind-a-reverse-proxy-under-a-path)
+
+### Changed
+- After signing in, a `next=` address with a backslash or control character
+  goes to the status page instead. It was already escaped, so never left the
+  site; now it isn't followed at all.
+
 ## [1.6.0] — 2026-10-30 — An API for AI assistants, and BACnet/SC
 
 An AI assistant can work with the sync: a JSON API with revocable tokens, and

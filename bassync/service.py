@@ -22,7 +22,13 @@ Environment:
     BAS_WEB_PORT            listen port (default 8080)
     BAS_WEB_TLS_CERT        serve HTTPS with this certificate (PEM, full chain)
     BAS_WEB_TLS_KEY         ...and this private key
-    BAS_WEB_BEHIND_PROXY=1  trust X-Forwarded-For/-Proto from one reverse proxy
+    BAS_WEB_BEHIND_PROXY=1  trust X-Forwarded-For/-Proto/-Host/-Prefix from one
+                            reverse proxy
+    BAS_WEB_BASE_PATH       serve the web UI under this path, e.g. /bas, for a
+                            reverse proxy that forwards the full path
+                            (https://host/bas/...) without stripping it. Paths
+                            outside it get 404; /bas redirects to /bas/. Unset,
+                            the web UI is at the site root, as before
     SYNC_AT                 overrides schedule.times with one HH:MM time
     SYNC_ON_START=1         overrides schedule.run_on_start
 
@@ -42,6 +48,7 @@ import argparse
 import logging
 import logging.handlers
 import os
+import re
 import secrets
 import signal
 import sys
@@ -63,6 +70,8 @@ RESTART_QUIET = 120                # no restart this close to a scheduled sync (
 HEARTBEAT_FILE = "service.alive"
 HEARTBEAT_MAX_AGE = 120            # seconds; the loop touches it every ~15 s
 TICK_SECONDS = 15
+# A path prefix for the web UI: /segment/segment, of URL-safe characters.
+SAFE_PATH = re.compile(r"(/[A-Za-z0-9_~-][A-Za-z0-9._~-]*)*")
 
 
 @dataclass
@@ -374,6 +383,14 @@ def sso_ready(files: Paths, environ) -> bool:
             and not access.sso_problems(settings, bool(secret)))
 
 
+def base_path(value) -> Optional[str]:
+    """BAS_WEB_BASE_PATH as `/bas`: one leading slash, no trailing one, runs
+    of slashes collapsed. '' when unset (or just '/'), None when it isn't a
+    plain path — a query, a space, `..` or the like."""
+    path = "".join("/" + part for part in str(value or "").strip().split("/") if part)
+    return path if SAFE_PATH.fullmatch(path) else None
+
+
 def web_settings(environ, sso: bool = False) -> dict:
     """What the web UI should do, from the environment. `enabled` is False
     (with a reason) when nobody could sign in: no password, no working
@@ -386,10 +403,11 @@ def web_settings(environ, sso: bool = False) -> dict:
         port = int(environ.get("BAS_WEB_PORT") or 8080)
     except ValueError:
         port = -1
+    prefix = base_path(environ.get("BAS_WEB_BASE_PATH"))
     out = {"auth": auth, "password": password, "host": environ.get("BAS_WEB_HOST") or "0.0.0.0",
            "port": port, "cert": cert, "key": key,
            "behind_proxy": (environ.get("BAS_WEB_BEHIND_PROXY") or "").strip() in ("1", "true", "yes"),
-           "enabled": True, "reason": ""}
+           "base_path": prefix or "", "enabled": True, "reason": ""}
     if auth not in ("password", "none"):
         out.update(enabled=False, reason=f"BAS_WEB_AUTH={auth!r} is not `password` or `none`")
     elif auth == "password" and not password and not sso:
@@ -399,6 +417,9 @@ def web_settings(environ, sso: bool = False) -> dict:
         out.update(enabled=False, reason=f"BAS_WEB_PORT={environ.get('BAS_WEB_PORT')!r} is not a port")
     elif bool(cert) != bool(key):
         out.update(enabled=False, reason="set both BAS_WEB_TLS_CERT and BAS_WEB_TLS_KEY, or neither")
+    elif prefix is None:
+        out.update(enabled=False, reason=f"BAS_WEB_BASE_PATH={environ.get('BAS_WEB_BASE_PATH')!r} "
+                                         "is not a path like /bas")
     return out
 
 
@@ -480,10 +501,13 @@ def main(argv: Optional[list] = None) -> int:
                           "schedule still runs.", settings["host"], settings["port"], exc)
         else:
             service.web_enabled = True
-            service.web = {k: settings[k] for k in ("host", "port", "cert", "behind_proxy", "auth")}
+            service.web = {k: settings[k] for k in ("host", "port", "cert", "behind_proxy",
+                                                    "auth", "base_path")}
             scheme = "https" if settings["cert"] else "http"
-            logging.info("[service] web UI on %s://%s:%d%s", scheme, settings["host"],
-                         settings["port"],
+            prefix = settings["base_path"]
+            logging.info("[service] web UI on %s://%s:%d%s%s%s", scheme, settings["host"],
+                         settings["port"], prefix + "/" if prefix else "",
+                         f" (path prefix {prefix}, from BAS_WEB_BASE_PATH)" if prefix else "",
                          " — NO LOGIN (BAS_WEB_AUTH=none)" if settings["auth"] == "none" else "")
             if settings["password"] and len(settings["password"]) < 12:
                 logging.warning("[service] BAS_WEB_PASSWORD is shorter than 12 "

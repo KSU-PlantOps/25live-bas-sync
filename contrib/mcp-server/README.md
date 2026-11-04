@@ -23,7 +23,7 @@ the service, so it can't do anything the token can't.
 
    | Variable | |
    |---|---|
-   | `BAS_SYNC_URL` | The web UI's address, e.g. `https://bas-sync.example.edu` |
+   | `BAS_SYNC_URL` | The web UI's address, e.g. `https://bas-sync.example.edu` — with its path, if it's served under one: `https://ops.example.edu/bas` |
    | `BAS_SYNC_TOKEN` | The token, `bsk_…` |
    | `BAS_SYNC_CA_BUNDLE` | Optional: a CA file, if the web UI's certificate is signed by your own CA |
 

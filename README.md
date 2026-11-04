@@ -184,6 +184,10 @@ particular systems or buildings, on the Access page.
 → [The web UI](docs/web-ui.md): every page, setting up Entra sign-in, roles,
 security, and branding with your logo and contact details.
 
+To share a host with other sites, serve it under a path such as
+`https://<host>/bas/` behind the host's reverse proxy (IIS URL Rewrite + ARR,
+nginx, Traefik): set `BAS_WEB_BASE_PATH=/bas`. → [Behind a reverse proxy, under a path](docs/web-ui.md#behind-a-reverse-proxy-under-a-path)
+
 ## Built to fail safe
 
 The dangerous failure isn't a crash. It's a run that looks successful and

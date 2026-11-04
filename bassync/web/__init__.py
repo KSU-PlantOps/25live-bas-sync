@@ -29,6 +29,9 @@ Security, since this can start a sync that writes to building controllers:
   anywhere but this server — which also means it works on a controls network
   with no internet.
 - Every change and every job is logged with who made it, and from where.
+- Served under a path prefix (BAS_WEB_BASE_PATH, or X-Forwarded-Prefix from
+  a trusted proxy — see prefix.py), the session cookie is scoped to that
+  path, so it isn't sent to the other apps on the same host.
 - API tokens (tokens.py) work only under /api/v1/, never for a page, and
   can never hold an administrator's capabilities whatever their role. A
   token request carries no cookie, so it needs no CSRF token; wrong tokens
@@ -121,6 +124,7 @@ def create_app(service, settings: dict) -> Flask:
     """The Flask app for a running Service. `settings` is service.web_settings()."""
     app = Flask(__name__)
     secure = bool(settings.get("cert")) or bool(settings.get("behind_proxy"))
+    prefix = settings.get("base_path") or ""
     app.config.update(
         SECRET_KEY=_secret_key(service.paths.state_dir),
         SESSION_COOKIE_NAME="bas_sync_session",
@@ -131,9 +135,27 @@ def create_app(service, settings: dict) -> Flask:
         MAX_CONTENT_LENGTH=4 * 1024 * 1024,
         TEMPLATES_AUTO_RELOAD=False,
     )
+    if prefix or settings.get("behind_proxy"):
+        # Under a prefix (see prefix.py): ProxyFix, outermost, may set
+        # SCRIPT_NAME from X-Forwarded-Prefix; PathPrefix checks it, or moves
+        # BAS_WEB_BASE_PATH from the path into it. The session cookie follows.
+        from flask.sessions import SecureCookieSessionInterface
+
+        from .prefix import PathPrefix
+
+        class _PrefixedSessions(SecureCookieSessionInterface):
+            def get_cookie_path(self, app):
+                return request.script_root or super().get_cookie_path(app)
+
+        # Not APPLICATION_ROOT: Flask's test client would send it as
+        # SCRIPT_NAME, which the server (cheroot) never does.
+        app.config["SESSION_COOKIE_PATH"] = prefix or None
+        app.session_interface = _PrefixedSessions()
+        app.wsgi_app = PathPrefix(app.wsgi_app, prefix)  # type: ignore[method-assign]
     if settings.get("behind_proxy"):
         from werkzeug.middleware.proxy_fix import ProxyFix
-        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1,  # type: ignore[method-assign]
+                                x_prefix=1)
 
     auth_required = settings.get("auth", "password") != "none"
     password = settings.get("password") or ""
@@ -283,7 +305,7 @@ def create_app(service, settings: dict) -> Flask:
                 throttle.succeeded(g.addr)
                 _signed_in("password", {"name": "local admin"}, password_fp)
                 logging.info("[web] local-password sign-in from %s", g.addr)
-                return redirect(target)
+                return redirect(_local(target))
             else:
                 throttle.failed(g.addr)
                 logging.warning("[web] wrong password from %s", g.addr)
@@ -346,7 +368,7 @@ def create_app(service, settings: dict) -> Flask:
         names = access.role_names(conf)
         logging.info("[web] SSO sign-in: %s (%s) as %s, from %s", user["name"],
                      user["username"], " + ".join(names[r] for r in roles), g.addr)
-        return redirect(pending.get("next") or "/")
+        return redirect(_local(_safe_next(pending.get("next"))))
 
     @app.route("/logout", methods=["POST"])
     def logout():
@@ -455,9 +477,16 @@ def sso_secret() -> Optional[str]:
 
 def redirect_uri(conf: dict) -> str:
     """Where Entra sends the browser back: the Public URL if one is set, else
-    this request's own address. It must match the app registration exactly."""
+    this request's own address. It must match the app registration exactly.
+    Under a path prefix the callback is under it too, whether or not the
+    Public URL already ends with it."""
     base = conf["sso"]["public_url"].rstrip("/")
-    return f"{base}/auth/callback" if base else url_for("auth_callback", _external=True)
+    if not base:
+        return url_for("auth_callback", _external=True)
+    root = request.script_root
+    if root and not base.endswith(root):
+        base += root
+    return f"{base}/auth/callback"
 
 
 def requires(view, change: Optional[str] = None):
@@ -492,13 +521,28 @@ def notice(message: str, kind: str = "ok") -> None:
 
 
 def _safe_next(target: Optional[str]) -> str:
-    """Only ever redirect to a path on this server after signing in."""
+    """Only ever redirect to a path in this web UI after signing in. The
+    answer is a path within the app, like request.full_path (`/runs`), so
+    it's the same under a prefix; _local() adds the prefix. A `next` that
+    already carries the prefix (`/bas/runs`) is taken as that path."""
     if not target:
         return "/"
     parts = urlsplit(target)
-    if parts.scheme or parts.netloc or not target.startswith("/") or target.startswith("//"):
+    # A backslash or control character: browsers read `/\evil.example` as
+    # `//evil.example`, another site.
+    if (parts.scheme or parts.netloc or not target.startswith("/") or target.startswith("//")
+            or any(ch == "\\" or ord(ch) < 32 or ord(ch) == 127 for ch in target)):
         return "/"
+    root = request.script_root
+    if root and (target == root or target.startswith(root + "/")):
+        target = target[len(root):] or "/"
     return target
+
+
+def _local(path: str) -> str:
+    """A path within the app (from _safe_next) as a URL path on this server:
+    under the prefix, if the web UI has one."""
+    return request.script_root + path
 
 
 def campus_zone(service) -> ZoneInfo:

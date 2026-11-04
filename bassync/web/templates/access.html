@@ -187,7 +187,7 @@ in the service's state folder instead.</p>
   </select></div>
   <label for="a-url">Public URL</label>
   <div class="field"><input id="a-url" name="public_url" value="{{ conf.sso.public_url }}" placeholder="https://bas-sync.example.edu">
-    <small>the https address people use for this page; blank = the address of this request</small></div>
+    <small>the https address people use for this page; blank = the address of this request{% if request.script_root %}. The path prefix ({{ request.script_root }}) is added if this doesn't end with it{% endif %}</small></div>
   <label>Redirect URI</label>
   <div class="field"><code>{{ redirect }}</code>
     <small>register this exactly, as a <strong>Web</strong> platform redirect URI. Microsoft requires https (http only for localhost).</small></div>
