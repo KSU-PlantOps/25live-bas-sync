@@ -49,10 +49,10 @@ class FakeResponse:
 
 
 def sso_sign_in(client, monkeypatch, groups, *, claims=None, state=None, status=200,
-                body=None, host="login.microsoftonline.com"):
+                body=None, host="login.microsoftonline.com", prefix=""):
     """Walk the browser side of the flow against a fake Entra token endpoint.
     Returns the callback's response."""
-    start = client.get("/auth/login?next=/runs")
+    start = client.get(f"{prefix}/auth/login?next=/runs")
     assert start.status_code == 302, start.text
     query = parse_qs(urlparse(start.location).query)
     assert start.location.startswith(f"https://{host}/{TENANT}/oauth2/v2.0/authorize?")
@@ -73,7 +73,7 @@ def sso_sign_in(client, monkeypatch, groups, *, claims=None, state=None, status=
         return FakeResponse(status, body if body is not None else {"id_token": jwt(token)})
 
     monkeypatch.setattr(entra.requests, "post", fake_post)
-    r = client.get(f"/auth/callback?code=the-code&state={state or query['state'][0]}")
+    r = client.get(f"{prefix}/auth/callback?code=the-code&state={state or query['state'][0]}")
     if seen:
         assert seen["url"] == f"https://{host}/{TENANT}/oauth2/v2.0/token"
         assert seen["data"]["client_secret"] == "s3cret" and seen["data"]["code"] == "the-code"

@@ -4,6 +4,10 @@
 #   mkdir -p config          # your settings live here; the web UI edits them
 #   docker compose up -d     # then browse to http://<this host>:8080
 #
+# Behind a reverse proxy at http://<this host>/bas/ (IIS URL Rewrite + ARR, say),
+# set BAS_WEB_BASE_PATH=/bas and BAS_WEB_BEHIND_PROXY=1 in .env, and
+# BAS_WEB_HOST=127.0.0.1 so only the proxy reaches the port.
+#
 #   docker compose logs -f                           # watch it
 #   docker compose run --rm sync sync --validate     # one-shot pre-flight
 #   docker compose run --rm sync sync --dry-run      # one-shot, writes nothing

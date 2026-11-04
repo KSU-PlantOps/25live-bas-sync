@@ -326,6 +326,51 @@ A user in more groups than a token can hold is refused, with an explanation of
 the fix (*Groups assigned to the application*). Government clouds (GCC High,
 DoD) are a setting on the Access page.
 
+## Behind a reverse proxy, under a path
+
+To share a host with other sites — `https://ops.example.edu/bas/` beside
+`/SensorView` — put the web UI behind the host's reverse proxy and give it a
+path prefix. How depends on what the proxy forwards for `/bas/login`:
+
+- **The full path, `/bas/login`** (IIS URL Rewrite + ARR; nginx `proxy_pass`
+  with no URI): set `BAS_WEB_BASE_PATH=/bas`. Every link, redirect and the
+  sign-in cookie are then under `/bas/`; `/bas` redirects to `/bas/`, and
+  any other path is *404*.
+- **The path with the prefix stripped, `/login`**, and an
+  `X-Forwarded-Prefix: /bas` header (Traefik's StripPrefix, nginx with
+  `proxy_set_header X-Forwarded-Prefix /bas;`): set `BAS_WEB_BEHIND_PROXY=1`
+  and leave `BAS_WEB_BASE_PATH` unset.
+
+Either way also set `BAS_WEB_BEHIND_PROXY=1`, so the address in the audit log
+and the wrong-password lockout is the person's, from `X-Forwarded-For`, not
+the proxy's — and then let **only the proxy** reach the port
+(`BAS_WEB_HOST=127.0.0.1` with host networking, or
+`ports: ["127.0.0.1:8080:8080"]`), since anyone who reaches it directly could
+send those headers themselves. With both variables set, `BAS_WEB_BASE_PATH`
+wins: a forwarded prefix only tells it the proxy has stripped `/bas` already.
+
+For IIS, with the URL Rewrite and Application Request Routing modules
+installed and *Enable proxy* ticked in ARR's *Server Proxy Settings*, a rule on
+the site that forwards `/bas` and everything under it, path unchanged:
+
+```xml
+<rewrite>
+  <rules>
+    <rule name="25live-bas-sync" stopProcessing="true">
+      <match url="^bas(/.*)?$" />
+      <action type="Rewrite" url="http://localhost:8080/bas{R:1}" />
+    </rule>
+  </rules>
+</rewrite>
+```
+
+For Microsoft sign-in under a prefix, the redirect URI is
+`https://<this server>/bas/auth/callback`; the Access page shows the exact one.
+If the proxy doesn't pass the browser's `Host` header through, set the
+**Public URL** there (`https://ops.example.edu`, with or without `/bas`) so
+the redirect URI names the proxy, not `localhost:8080`. An MCP server's
+`BAS_SYNC_URL` includes the prefix too: `https://ops.example.edu/bas`.
+
 ## Security
 
 The web UI can start a sync that writes to building controllers, so:
@@ -334,7 +379,8 @@ The web UI can start a sync that writes to building controllers, so:
   the address out for five minutes; changing the password, the SSO app or a
   group's role applies to open sessions. Sessions last 12 hours.
 - **HTTPS**: set `BAS_WEB_TLS_CERT` and `BAS_WEB_TLS_KEY`, or put it behind a
-  reverse proxy that terminates TLS and set `BAS_WEB_BEHIND_PROXY=1`. Only
+  reverse proxy that terminates TLS and set `BAS_WEB_BEHIND_PROXY=1` (and
+  `BAS_WEB_BASE_PATH` to serve it [under a path](#behind-a-reverse-proxy-under-a-path)). Only
   behind a proxy that does its own sign-in, `BAS_WEB_AUTH=none` turns the
   password off.
 - **Where it listens**: with host networking (needed for BACnet) the web UI is

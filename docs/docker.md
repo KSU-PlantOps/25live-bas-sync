@@ -220,7 +220,8 @@ Set these in `.env`; every variable in it is passed into the container.
 | `BAS_WEB_PASSWORD` | The local password, which signs in as Admin. Without it, and without single sign-on, the web UI stays off and only the schedule runs. |
 | `BAS_WEB_HOST` · `BAS_WEB_PORT` | Where the web UI listens (default `0.0.0.0`, `8080`). |
 | `BAS_WEB_TLS_CERT` · `BAS_WEB_TLS_KEY` | Serve HTTPS with this certificate (PEM, full chain) and key. |
-| `BAS_WEB_BEHIND_PROXY=1` | Trust `X-Forwarded-For`/`-Proto` from one reverse proxy that terminates HTTPS. |
+| `BAS_WEB_BEHIND_PROXY=1` | Trust `X-Forwarded-For`/`-Proto`/`-Host`/`-Prefix` from one reverse proxy, e.g. one that terminates HTTPS. |
+| `BAS_WEB_BASE_PATH` | Serve the web UI under a path, e.g. `/bas`, behind a proxy that forwards the full path (IIS URL Rewrite + ARR). Unset, it's at the site root. → [Under a path](web-ui.md#behind-a-reverse-proxy-under-a-path) |
 | `BAS_WEB_AUTH=none` | No sign-in at all — only behind a proxy that does its own. |
 | `BAS_WEB_SSO_CLIENT_SECRET` | The Entra app's client secret, instead of setting it on the Access page. |
 | `BAS_25LIVE_PASSWORD` | The 25Live service account's password. |
