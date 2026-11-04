@@ -1,9 +1,9 @@
 # Test and lint tooling (not needed to run the sync).
 #   pip install -r requirements.txt -r requirements-dev.txt
-pytest>=9.1.1
+pytest>=9.2.0
 pytest-cov>=7.1.0
-ruff>=0.17.2
-mypy>=2.4.0
+ruff>=0.17.3
+mypy>=2.4.1
 types-PyYAML
 types-requests
 types-python-dateutil
