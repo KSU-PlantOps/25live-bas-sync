@@ -29,7 +29,7 @@
 # Matches the recommended runtime rather than the 3.13 floor. CI also tests
 # 3.15, but PyYAML has no 3.15 wheels yet, so the image stays on 3.14 until
 # it does rather than building it from source.
-FROM python:3.14-slim
+FROM python:3.15-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
