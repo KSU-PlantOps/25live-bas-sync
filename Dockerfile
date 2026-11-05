@@ -12,7 +12,7 @@
 #     --env-file .env \
 #     -v "$(pwd)/config:/config" \
 #     -v bas-sync-state:/app/state \
-#     ghcr.io/ksu-plantops/25live-bas-sync:1.6 serve
+#     ghcr.io/ksu-plantops/25live-bas-sync:1.7 serve
 #
 # `sync --validate`, `sync --dry-run` or plain `sync` instead of `serve` runs
 # once and exits (host cron, a Kubernetes CronJob). See docker-entrypoint.sh.
@@ -29,7 +29,7 @@
 # Matches the recommended runtime rather than the 3.13 floor. CI also tests
 # 3.15, but PyYAML has no 3.15 wheels yet, so the image stays on 3.14 until
 # it does rather than building it from source.
-FROM python:3.15-slim
+FROM python:3.14-slim
 
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \

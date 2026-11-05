@@ -4,7 +4,12 @@ All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project aims to follow
 semantic versioning from 1.0 onward.
 
-## [Unreleased]
+## [1.7.0] — 2026-11-05 — The web UI under a path
+
+The web UI can share a host with other sites, at a path such as
+`http://<host>/bas/` behind the host's reverse proxy — IIS with URL Rewrite and
+ARR, nginx or Traefik. Without the new setting nothing changes. Read
+*From 1.6* in `docs/upgrading.md`.
 
 ### Added
 - **The web UI under a path**, e.g. `http://<host>/bas/`, to share a host with
@@ -20,6 +25,9 @@ semantic versioning from 1.0 onward.
 - After signing in, a `next=` address with a backslash or control character
   goes to the status page instead. It was already escaped, so never left the
   site; now it isn't followed at all.
+- `tzdata` 2026.6, for the latest timezone rules.
+- The Docker image stays on Python 3.14: PyYAML has no wheels for 3.15 yet.
+  Dependabot no longer offers the next Python until it does.
 
 ## [1.6.0] — 2026-10-30 — An API for AI assistants, and BACnet/SC
 
