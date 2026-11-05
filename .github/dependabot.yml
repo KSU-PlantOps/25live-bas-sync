@@ -20,3 +20,8 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    # The image stays on the recommended Python (see the Dockerfile) until
+    # PyYAML ships wheels for the next one; remove this then.
+    ignore:
+      - dependency-name: python
+        update-types: ["version-update:semver-minor"]

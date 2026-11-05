@@ -6,6 +6,7 @@ Read the section for the version you're coming from, and each one after it.
 Run `--validate` and `--dry-run` after upgrading, as always. Every release's
 changes are in [CHANGELOG.md](../CHANGELOG.md).
 
+- [From 1.6](#from-16)
 - [From 1.5](#from-15)
 - [From 1.4](#from-14)
 - [From 1.3](#from-13)
@@ -14,6 +15,21 @@ changes are in [CHANGELOG.md](../CHANGELOG.md).
 - [From 1.1](#from-11)
 - [Moving off the niagara driver](#moving-off-the-niagara-driver)
 - [From a pre-1.0 release](#from-a-pre-10-release)
+
+## From 1.6
+
+Nothing to edit. Two things to know:
+
+1. **To serve the web UI under a path**, such as `http://<host>/bas/` behind
+   IIS, set `BAS_WEB_BASE_PATH` — see
+   [Behind a reverse proxy, under a path](web-ui.md#behind-a-reverse-proxy-under-a-path).
+   Everyone signs in again the first time, since the sign-in cookie moves to
+   that path. Under a path, Microsoft sign-in's redirect URI gains it too:
+   register the one the Access page shows.
+2. **With `BAS_WEB_BEHIND_PROXY=1`, an `X-Forwarded-Prefix` header is now
+   used.** If your proxy sends one that isn't the path the web UI is really
+   at, links will point there: stop it sending the header, or set
+   `BAS_WEB_BASE_PATH`, which wins.
 
 ## From 1.5
 
