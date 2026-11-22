@@ -13,7 +13,7 @@ authors = [{ name = "Ryan Bibby and contributors" }]
 dynamic = ["version"]
 dependencies = [
     "requests>=2.31,<3",
-    "python-dateutil>=2.8,<4",
+    "python-dateutil>=2.8,<5",
     "PyYAML>=6,<7",
     "tzdata>=2024.1",
 ]
@@ -28,7 +28,7 @@ classifiers = [
 
 [project.optional-dependencies]
 # The BACnet driver. Imported lazily, so HTTP-only sites can skip it.
-bacnet = ["bacpypes3>=0.0.98,<0.1"]
+bacnet = ["bacpypes3>=0.0.98,<0.2"]
 # The web UI and the long-running service that runs the schedule (Docker).
 web = ["flask>=3.1,<4", "cheroot>=10"]
 
